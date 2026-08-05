@@ -1,0 +1,20 @@
+{
+  "id": "general",
+  "displayName": "Anything on screen",
+
+  "_comment": "No windowTitles, which means the capture region is stored against the whole screen instead of against one application's window. Use this for a browser, a PDF, a subtitle bar, a chat client - anything rendered on the desktop. A game profile is still better for a game, because it survives the window being moved and carries a glossary.",
+
+  "windowTitles": [],
+
+  "sourceLanguage": "eng",
+
+  "styleHint": "Ordinary contemporary prose. Translate plainly and accurately; do not add formality the original does not have.",
+
+  "hasSpeakerNames": false,
+
+  "notes": "General-purpose profile. Nothing here is game-specific, so there is no glossary - add one if you use this for something with recurring proper nouns.",
+
+  "regions": {
+    "dialogue": { "x": 0.10, "y": 0.60, "w": 0.80, "h": 0.30 }
+  }
+}

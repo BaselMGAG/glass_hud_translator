@@ -112,3 +112,53 @@ public class GameProfileTests : IDisposable
         if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
     }
 }
+
+public class GeneralProfileTests
+{
+    private static string ProfilesDirectory()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null && !File.Exists(Path.Combine(dir, "GamingTranslatorGlassHUD.slnx")))
+            dir = Path.GetDirectoryName(dir);
+
+        return Path.Combine(dir ?? ".", "profiles");
+    }
+
+    [Fact]
+    public void ShippedProfilesLoad()
+    {
+        var found = GameProfileStore.Discover(ProfilesDirectory());
+
+        Assert.Contains("ffxiv", found);
+        Assert.Contains("general", found);
+        Assert.DoesNotContain("_template", found);
+    }
+
+    [Fact]
+    public void FfxivStaysTheDefaultWhenNoneIsChosen()
+    {
+        // Discovery is alphabetical, so a profile named before "ffxiv" would silently become the
+        // default for everyone who has not picked one. "general" was named to sort after it.
+        Assert.Equal("ffxiv", GameProfileStore.LoadOrFallback(ProfilesDirectory(), null).Id);
+    }
+
+    [Fact]
+    public void GeneralProfileHasNoWindowTitles()
+    {
+        // An empty title list is what makes the region measure against the whole screen instead of
+        // one application's window - that is the entire mechanism behind "works on anything".
+        var general = GameProfileStore.Load(ProfilesDirectory(), "general");
+
+        Assert.Empty(general.WindowTitles);
+        Assert.False(string.IsNullOrWhiteSpace(general.StyleHint));
+    }
+
+    [Fact]
+    public void FfxivProfileStillCarriesItsGlossaryAndWindowTitle()
+    {
+        var ffxiv = GameProfileStore.Load(ProfilesDirectory(), "ffxiv");
+
+        Assert.NotEmpty(ffxiv.WindowTitles);
+        Assert.True(ffxiv.Glossary.Count > 50, $"glossary had {ffxiv.Glossary.Count} terms");
+    }
+}

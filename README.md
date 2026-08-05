@@ -28,7 +28,7 @@ injection, no memory reads, no modified files, nothing that could put an account
 I built it so my brother could follow the story in games he was otherwise only half understanding.
 
 <div align="center">
-<img src="docs/images/in-game.jpg" alt="Arabic translation drawn over Final Fantasy XIV. The game's dialogue box reads 'City folk ought to thank us every day for our hard work...' and the overlay above it shows the Arabic translation with the speaker's name" width="880">
+<img src="docs/images/in-game.jpeg" alt="Arabic translation drawn over Final Fantasy XIV. The game's dialogue box reads 'City folk ought to thank us every day for our hard work...' and the overlay above it shows the Arabic translation with the speaker's name" width="880">
 <br>
 <sub>Running over Final Fantasy XIV. The game's English dialogue is at the bottom; the Arabic is drawn above it.</sub>
 </div>
@@ -235,6 +235,26 @@ are obvious.
 
 Drop the folder in, restart, done. No code change, no rebuild. Profile contributions are very
 welcome.
+
+### It isn't only for games
+
+Nothing about the capture is game-specific — it reads pixels off the desktop, not out of a game
+process. Switch the profile to **general** in Settings and the capture region is measured against
+the whole screen instead of one application's window, which makes it work on a browser, a PDF, a
+video player's subtitle bar, a chat client, or anything else rendered on screen.
+
+The difference between a game profile and the general one:
+
+| | game profile | `general` |
+|---|---|---|
+| Region measured against | the game's window | the whole screen |
+| Survives the window being moved | yes | no — repick if you move things |
+| Glossary of proper nouns | yes | none by default |
+| Prompt voice | tuned per game | plain contemporary prose |
+
+So `general` is the right choice for reading something once, and a game profile is worth making for
+anything you'll come back to. Changing profile needs a restart, since the glossary and OCR language
+load at startup.
 
 ### Why Final Fantasy XIV shows up everywhere
 

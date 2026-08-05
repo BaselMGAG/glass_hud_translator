@@ -124,6 +124,29 @@ public sealed class SettingsWindow : Window
         stack.Children.Add(Row("Groq", _groqKey));
         stack.Children.Add(Button("Save keys", SaveSecrets));
 
+        stack.Children.Add(Section("What are you translating?"));
+        var profiles = new ComboBox
+        {
+            ItemsSource = _services.AvailableProfiles,
+            SelectedItem = _services.Profile.Id,
+            Width = 240,
+        };
+        profiles.SelectionChanged += (_, _) =>
+        {
+            if (profiles.SelectedItem is not string id || id == _settings.ProfileId) return;
+
+            _settings.ProfileId = id;
+            _settings.Save();
+            _status.Text = $"Profile set to '{id}'. Restart the app for it to take effect — the "
+                         + "glossary and OCR language are loaded at startup.";
+        };
+        stack.Children.Add(Row("Profile", profiles));
+        stack.Children.Add(Note(
+            $"Active: {_services.Profile.DisplayName}. A game profile carries that game's glossary "
+            + "and measures the capture region against the game window, so it survives the window "
+            + "being moved. The 'general' profile has no window of its own — it measures against "
+            + "the whole screen, which is what you want for a browser, a PDF or a video player."));
+
         stack.Children.Add(Section("Translation"));
         stack.Children.Add(Row("Register", _register));
         stack.Children.Add(Note(

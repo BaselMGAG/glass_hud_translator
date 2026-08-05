@@ -131,12 +131,22 @@ public static class PlatformServices
     }
 
     /// <summary>
-    /// Locates the game window and reports whether it can be captured. Off Windows there is no game
-    /// to find, so this returns null and the caller falls back to the primary screen.
+    /// Locates the window a region should be measured against, and reports whether it can be
+    /// captured. Off Windows there is no window to find, so this returns null and the caller falls
+    /// back to the primary screen.
+    ///
+    /// <para>
+    /// A profile with no window titles means "anything on screen" - a browser, a PDF, a video
+    /// player. In that case the region is measured against the whole screen rather than against
+    /// whatever happens to be in front, which matters because the foreground window is often this
+    /// app's own Settings window at the moment a hotkey is pressed.
+    /// </para>
     /// </summary>
     public static GameWindowInfo? FindGameWindow(IReadOnlyList<string> titleFragments)
     {
 #if WINDOWS
+        if (titleFragments.Count == 0) return WholeScreen();
+
         var window = Windows.GameWindowLocator.Find(titleFragments)
                      ?? Windows.GameWindowLocator.Foreground();
         if (window is null) return null;
@@ -149,4 +159,16 @@ public static class PlatformServices
         return null;
 #endif
     }
+
+#if WINDOWS
+    private static GameWindowInfo? WholeScreen()
+    {
+        var width = Interop.NativeMethods.GetSystemMetrics(Interop.NativeMethods.SmCxScreen);
+        var height = Interop.NativeMethods.GetSystemMetrics(Interop.NativeMethods.SmCyScreen);
+        if (width <= 0 || height <= 0) return null;
+
+        return new GameWindowInfo(new CaptureRegion(0, 0, width, height), "Whole screen", 1.0,
+            true, $"Whole screen — {width}x{height}");
+    }
+#endif
 }
