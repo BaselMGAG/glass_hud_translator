@@ -28,9 +28,17 @@ injection, no memory reads, no modified files, nothing that could put an account
 I built it so my brother could follow the story in games he was otherwise only half understanding.
 
 <div align="center">
-<img src="docs/images/overlay.png" alt="The overlay showing a loading state, a finished Arabic translation with an embedded English place name, and the English fallback when translation fails" width="820">
+<img src="docs/images/in-game.jpg" alt="Arabic translation drawn over Final Fantasy XIV. The game's dialogue box reads 'City folk ought to thank us every day for our hard work...' and the overlay above it shows the Arabic translation with the speaker's name" width="880">
 <br>
-<sub>The overlay in its three states. <b>Screenshots from real gameplay to follow</b> — these are rendered from the actual overlay control.</sub>
+<sub>Running over Final Fantasy XIV. The game's English dialogue is at the bottom; the Arabic is drawn above it.</sub>
+</div>
+
+<br>
+
+<div align="center">
+<img src="docs/images/settings.png" alt="The settings window showing region pickers, five configurable hotkeys all registered, manual controls, and a diagnostics panel reporting native Tesseract loaded, quota usage, cache statistics and a 937 millisecond translation" width="880">
+<br>
+<sub>Settings, with the diagnostics panel that answers "why isn't it working" without touching a log file.</sub>
 </div>
 
 ## Status
@@ -43,17 +51,20 @@ Early. Honest picture of what works today:
 | Arabic rendering, shaping, bidi, diacritics | working and verified |
 | Game profiles, glossary, OCR corrections | working |
 | Provider failover, quota tracking, caching | working |
-| Screen capture on Windows | **confirmed on real hardware** |
-| Overlay rendering over a running game | **confirmed on real hardware** |
-| Click-through, hotkeys under game focus, live translation | written, still being tested |
+| Screen capture, OCR, global hotkeys | **working on Windows** |
+| Overlay drawn over a running game | **working** |
+| End-to-end translation in game | **working** — about 1 second per line |
+| Click-through, 125%/150% display scaling | not yet verified |
 
-Being tested against **Final Fantasy XIV** on real hardware right now. Screen capture and the
-overlay are confirmed working over a live game. The remaining Windows behaviour — clicks passing
-through to the game, hotkeys firing while the game holds focus, and the full translation round
-trip — is written and building but still going through its first real runs.
+**It works.** Tested against **Final Fantasy XIV** on Windows: capture, OCR, hotkeys, the overlay
+and the full translation round trip all run against the live game, at roughly a second a line.
 
-I develop on macOS, so everything Windows-specific was written against the API contracts and is
-being verified on a borrowed laptop. Expect rough edges for a little while yet.
+Still early, though. Click-through and display scaling above 100% haven't been checked yet, the
+glossary is a first draft, and OCR accuracy against a real game font hasn't been measured properly.
+Expect rough edges.
+
+I develop on macOS and test on a borrowed Windows laptop, so Windows-specific fixes arrive in
+batches rather than continuously.
 
 ## How it works
 

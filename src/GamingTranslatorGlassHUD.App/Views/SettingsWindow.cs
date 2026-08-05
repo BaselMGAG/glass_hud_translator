@@ -87,6 +87,16 @@ public sealed class SettingsWindow : Window
             _settings.Save();
         };
 
+        _register.SelectionChanged += (_, _) =>
+        {
+            _settings.Register = _register.SelectedIndex == 1
+                ? ArabicRegister.Egyptian
+                : ArabicRegister.ModernStandard;
+            _settings.Save();
+            _services.Pipeline.Register = _settings.Register;
+            _status.Text = $"Register set to {(_settings.Register == ArabicRegister.Egyptian ? "Egyptian" : "Modern Standard")} Arabic.";
+        };
+
         LoadSecrets();
         _ = RefreshAsync();
     }
@@ -333,7 +343,15 @@ public sealed class SettingsWindow : Window
             : string.Join("  ·  ", failed.Select(f => $"{DefaultHotkeys.Describe(f.Action)}: {f.Error}"));
     }
 
-    public void ReportStatus(string message) => _status.Text = message;
+    public void ReportStatus(string message)
+    {
+        _status.Text = message;
+
+        // Quota, cache and the router log were only read at startup, so they still showed zeroes
+        // after a translation had plainly succeeded. Anything the session reports is a good moment
+        // to re-read them.
+        _ = RefreshAsync();
+    }
 
     private async Task TestTranslationAsync()
     {
@@ -342,12 +360,6 @@ public sealed class SettingsWindow : Window
 
         try
         {
-            _settings.Register = _register.SelectedIndex == 1
-                ? ArabicRegister.Egyptian
-                : ArabicRegister.ModernStandard;
-            _settings.Save();
-            _services.Pipeline.Register = _settings.Register;
-
             var frame = Core.Diagnostics.SyntheticFrames.Render(
                 new Core.Diagnostics.SyntheticLine("Y'shtola", "Come, the aether here grows unstable."));
 

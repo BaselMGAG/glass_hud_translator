@@ -127,14 +127,16 @@ carries GHSA-2m69-gcr7-jv3q. Drop the pin once the dependency moves past it on i
 
 The pipeline, UI, profiles, caching and provider routing all work and are tested.
 
-The Windows layer is under test on real hardware against Final Fantasy XIV.
+**The Windows layer works.** Verified against Final Fantasy XIV: BitBlt capture, native Tesseract,
+all five global hotkeys registering and firing under game focus, the overlay drawing over the game,
+and the full translation round trip at roughly 940 ms a line with OCR confidence around 95.
 
-Confirmed working: **BitBlt capture** and **the overlay rendering over a live game** — the two
-things most likely to have been wrong, since both were written blind. `BITMAPINFOHEADER` and the
-Avalonia window-handle timing were the specific worries and neither materialised.
+Every part of it was written on macOS without ever running it, so that is worth recording: the two
+things expected to break — the `BITMAPINFOHEADER` layout in `GetDIBits` and Avalonia's window-handle
+timing for the overlay styles — both turned out fine.
 
-Still unverified: click-through, hotkeys firing while the game holds focus, DPI scaling above 100%,
-and the full translation round trip.
+Still unverified: click-through, display scaling above 100%, auto-watch under sustained load, and
+cache hit rate over a real session.
 
 Found and fixed so far, all from one screenshot:
 
