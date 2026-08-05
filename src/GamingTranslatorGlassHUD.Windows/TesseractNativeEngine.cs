@@ -61,6 +61,7 @@ public sealed class TesseractNativeEngine : IOcrEngine
         {
             InitialisationWarning =
                 $"Native Tesseract failed to start ({e.GetType().Name}: {e.Message}). " +
+                $"Looked for natives beside {AppContext.BaseDirectory}. " +
                 "Falling back to tesseract.exe. OCR will be slower but still works.";
 
             _engine = null;
@@ -79,7 +80,20 @@ public sealed class TesseractNativeEngine : IOcrEngine
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         if (_engine is null)
-            return await _fallback!.RecognizeAsync(frame, ct).ConfigureAwait(false);
+        {
+            try
+            {
+                return await _fallback!.RecognizeAsync(frame, ct).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                // Report why the NATIVE engine failed, not just that the fallback has no binary.
+                // Reporting only the fallback's complaint sent the user hunting for a tesseract.exe
+                // when the real problem was upstream of it.
+                throw new InvalidOperationException(
+                    $"OCR unavailable. {InitialisationWarning} Fallback also failed: {e.Message}", e);
+            }
+        }
 
         var prepared = OcrPreprocessor.Prepare(frame, _options.Preprocess);
         var png = prepared.ToPng();
