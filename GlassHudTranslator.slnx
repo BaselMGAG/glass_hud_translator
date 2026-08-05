@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GlassHudTranslator.App/GlassHudTranslator.App.csproj" />
+    <Project Path="src/GlassHudTranslator.Core/GlassHudTranslator.Core.csproj" />
+    <Project Path="src/GlassHudTranslator.Interop/GlassHudTranslator.Interop.csproj" />
+    <Project Path="src/GlassHudTranslator.Windows/GlassHudTranslator.Windows.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GlassHudTranslator.Core.Tests/GlassHudTranslator.Core.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Replay/Replay.csproj" />
+  </Folder>
+</Solution>

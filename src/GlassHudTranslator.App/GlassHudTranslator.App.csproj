@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      Multi-target so the platform analyzer keeps an honest line between "runs anywhere" and
+      "Windows only". Build -f net10.0 on macOS; CI publishes -f net10.0-windows.
+    -->
+    <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>GlassHudTranslator.App</RootNamespace>
+    <AssemblyName>GlassHudTranslator</AssemblyName>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <!-- Per-monitor-v2 DPI awareness. Windows-only concept; the manifest is ignored elsewhere. -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="Avalonia.Diagnostics" Condition="'$(Configuration)' == 'Debug'" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\GlassHudTranslator.Core\GlassHudTranslator.Core.csproj" />
+  </ItemGroup>
+
+  <!-- The Win32 layer exists only under the Windows TFM. This is the whole platform seam. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
+    <ProjectReference Include="..\GlassHudTranslator.Windows\GlassHudTranslator.Windows.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+
+  <!--
+    Tesseract language data, copied next to the exe rather than embedded: the native engine takes a
+    directory path, and a single-file bundle has no directory to point it at. eng.traineddata is the
+    "fast" model (~4 MB); swap in "best" from tessdata_best if accuracy on real frames warrants it.
+  -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\..\tessdata\**\*"
+          Link="tessdata\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

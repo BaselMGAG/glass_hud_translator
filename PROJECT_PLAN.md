@@ -1,4 +1,4 @@
-# GamingTranslatorGlassHUD — Build Plan
+# Glass HUD Translator — Build Plan
 
 Implementation companion to [`docs/BRIEF.md`](docs/BRIEF.md).
 
@@ -46,7 +46,7 @@ line between "runs anywhere" and "Windows only":
 <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
 
 <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
-  <ProjectReference Include="..\GamingTranslatorGlassHUD.Windows\GamingTranslatorGlassHUD.Windows.csproj" />
+  <ProjectReference Include="..\GlassHudTranslator.Windows\GlassHudTranslator.Windows.csproj" />
 </ItemGroup>
 ```
 
@@ -134,9 +134,9 @@ Only #1 and #7 need a human. #1 is a 15-minute test; #7 is a text message.
 ## 3. Solution layout
 
 ```
-GamingTranslatorGlassHUD.sln
+GlassHudTranslator.sln
 ├── src/
-│   ├── GamingTranslatorGlassHUD.Core/           net10.0                  ← all logic, all tests
+│   ├── GlassHudTranslator.Core/           net10.0                  ← all logic, all tests
 │   │   ├── Capture/        IFrameSource, Frame, FolderFrameSource, FrameHasher
 │   │   ├── Ocr/            IOcrEngine, TesseractCliEngine, OcrPreprocessor, StableOcrReader
 │   │   ├── Text/           TextNormalizer, DialogueParser, CacheKey
@@ -146,19 +146,19 @@ GamingTranslatorGlassHUD.sln
 │   │   ├── Storage/        AppDatabase, TranslationCache, TranslationLog, ISecretStore
 │   │   ├── Regions/        RegionProfile, RegionProfileStore
 │   │   └── Config/         AppSettings, ModelsConfig
-│   ├── GamingTranslatorGlassHUD.Interop/        net10.0-windows          ← P/Invoke declarations only
-│   ├── GamingTranslatorGlassHUD.Windows/        net10.0-windows          ← Win32 implementations
+│   ├── GlassHudTranslator.Interop/        net10.0-windows          ← P/Invoke declarations only
+│   ├── GlassHudTranslator.Windows/        net10.0-windows          ← Win32 implementations
 │   │   ├── Win32FrameSource, GameWindowLocator, DisplayModeGuard
 │   │   ├── GlobalHotkeyService (RegisterHotKey + message-only window)
 │   │   ├── OverlayWindowStyles (WS_EX_TRANSPARENT, topmost, WDA_EXCLUDEFROMCAPTURE)
 │   │   ├── TesseractNativeEngine (nuget natives)
 │   │   └── DpapiSecretStore
-│   └── GamingTranslatorGlassHUD.App/            net10.0;net10.0-windows  ← Avalonia
+│   └── GlassHudTranslator.App/            net10.0;net10.0-windows  ← Avalonia
 │       ├── Views/          OverlayWindow, RegionPickerWindow, SettingsWindow, FirstRunWindow
 │       ├── ViewModels/
 │       ├── PlatformServices.cs         ← the single #if WINDOWS switchboard
 │       └── Assets/Fonts/NotoSansArabic-Regular.ttf
-├── tests/GamingTranslatorGlassHUD.Core.Tests/   net10.0   xunit
+├── tests/GlassHudTranslator.Core.Tests/   net10.0   xunit
 ├── tools/Replay/                       net10.0   headless pipeline harness
 ├── data/    glossary.json · ocr-corrections.json · models.json · regions.default.json
 ├── test-frames/                        ← Session 0 corpus, ~40 PNGs + expected.json
@@ -325,7 +325,7 @@ Every outcome increments `QuotaLedger`, which is what actually answers open ques
 `devOnly: true` entries are skipped unless `--dev` — the shipped app must never wait on a
 localhost port that does not exist (brief §2.7).
 
-### SQLite — one file, `%APPDATA%\GamingTranslatorGlassHUD\glasshud.db`, WAL
+### SQLite — one file, `%APPDATA%\Glass HUD Translator\glasshud.db`, WAL
 
 ```sql
 CREATE TABLE translations (            -- the cache
@@ -378,7 +378,7 @@ resolution changes.
 **Verdict (Session 1): Avalonia. All four criteria met.** Run it again any time with:
 
 ```bash
-dotnet run --project src/GamingTranslatorGlassHUD.App -f net10.0 -- --render-test
+dotnet run --project src/GlassHudTranslator.App -f net10.0 -- --render-test
 ```
 
 Verified: contextual joining · RTL flow · embedded Latin LTR inside RTL (`Limsa Lominsa`,

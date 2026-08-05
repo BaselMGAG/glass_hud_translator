@@ -1,6 +1,6 @@
 <div align="center">
 
-# GamingTranslatorGlassHUD
+# Glass HUD Translator
 
 **Arabic subtitles for games that never shipped with Arabic support.**
 
@@ -36,9 +36,26 @@ I built it so my brother could follow the story in games he was otherwise only h
 <br>
 
 <div align="center">
-<img src="docs/images/settings.png" alt="The settings window showing region pickers, five configurable hotkeys all registered, manual controls, and a diagnostics panel reporting native Tesseract loaded, quota usage, cache statistics and a 937 millisecond translation" width="880">
+<img src="docs/images/on-desktop.jpeg" alt="A YouTube page being translated into Arabic, with the overlay showing the Arabic below the video description" width="880">
 <br>
-<sub>Settings, with the diagnostics panel that answers "why isn't it working" without touching a log file.</sub>
+<sub>Not only games. The same overlay reading a browser, using the <code>general</code> profile.</sub>
+</div>
+
+<br>
+
+<div align="center">
+<img src="docs/images/settings-full.png" alt="Settings showing API key fields, the profile selector, the Arabic register selector, overlay font size and opacity sliders, and region pickers" width="880">
+<br>
+<sub>Settings: keys, which profile you are translating, dialect, and the capture regions.</sub>
+</div>
+
+<br>
+
+<div align="center">
+<img src="docs/images/diagnostics.png" alt="The diagnostics panel showing native Tesseract loaded, per-provider quota, cache statistics, and a router log entry recording that a Gemini model returned 404 and the router fell through to another" width="880">
+<br>
+<sub>Diagnostics. Here the router log has caught Google retiring a model mid-session — it fell
+through to the next one and carried on, which is exactly what the ordered model list is for.</sub>
 </div>
 
 ## Status
@@ -202,7 +219,7 @@ dotnet run --project tools/Replay -- --provider gemini
 Check the Arabic renders correctly on your machine:
 
 ```bash
-dotnet run --project src/GamingTranslatorGlassHUD.App -f net10.0 -- --render-test
+dotnet run --project src/GlassHudTranslator.App -f net10.0 -- --render-test
 ```
 
 ## Adding your game

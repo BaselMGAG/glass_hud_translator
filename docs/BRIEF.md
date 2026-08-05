@@ -1,4 +1,4 @@
-# GamingTranslatorGlassHUD — Project Brief
+# Glass HUD Translator — Project Brief
 
 **Purpose:** Real-time Arabic translation overlay for games that ship without Arabic support (Windows)
 **Reference game:** Final Fantasy XIV — what everything was designed and tested against
@@ -322,20 +322,20 @@ Use both.
 ### Project structure
 
 ```
-GamingTranslatorGlassHUD/
-├── GamingTranslatorGlassHUD.Core/          net9.0          → builds on Mac ✓
+GlassHudTranslator/
+├── GlassHudTranslator.Core/          net9.0          → builds on Mac ✓
 │   ├── Translation/               (providers, prompt construction)
 │   ├── Caching/                   (SQLite, hashing, normalization)
 │   ├── Glossary/
 │   ├── TextNormalization/         (OCR correction dictionary)
 │   └── Models/
-├── GamingTranslatorGlassHUD.Interop/       net9.0-windows  → builds on Mac ✓
+├── GlassHudTranslator.Interop/       net9.0-windows  → builds on Mac ✓
 │   └── (P/Invoke declarations — attributes only, compile anywhere)
-├── GamingTranslatorGlassHUD.Windows/       net9.0-windows
+├── GlassHudTranslator.Windows/       net9.0-windows
 │   ├── ScreenCapture/
 │   ├── Ocr/
 │   └── Hotkeys/
-└── GamingTranslatorGlassHUD.Ui/            (WPF → Windows only ✗ / Avalonia → Mac ✓)
+└── GlassHudTranslator.Ui/            (WPF → Windows only ✗ / Avalonia → Mac ✓)
 ```
 
 Roughly **50–70% of the codebase compiles on macOS** with this split, depending on the UI framework decision.
@@ -409,7 +409,7 @@ jobs:
              -p:PublishSingleFile=true
              -p:IncludeNativeLibrariesForSelfExtract=true -o out
       - uses: actions/upload-artifact@v4
-        with: { name: GamingTranslatorGlassHUD, path: out }
+        with: { name: Glass HUD Translator, path: out }
 ```
 
 Windows runners bill at 2× multiplier; a 90-second build costs ~3 minutes of the 2,000/month private quota. ~600 pushes/month before exhaustion.
@@ -475,7 +475,7 @@ Three reasons:
 2. Google's Gemini API Additional Terms state that only Paid Services may be used when making API Clients available to users in the **EEA, Switzerland, or the UK**. Both of us are in Germany. BYO-key moves this question onto whoever holds the key.
 3. Quota isolation — his usage never affects mine.
 
-**Storage:** first-run settings dialog → `%APPDATA%\GamingTranslatorGlassHUD\config.json`, key fields wrapped in `ProtectedData.Protect(..., DataProtectionScope.CurrentUser)` (DPAPI). Tied to the Windows account, unreadable if the file is copied elsewhere.
+**Storage:** first-run settings dialog → `%APPDATA%\Glass HUD Translator\config.json`, key fields wrapped in `ProtectedData.Protect(..., DataProtectionScope.CurrentUser)` (DPAPI). Tied to the Windows account, unreadable if the file is copied elsewhere.
 
 **Data note:** free-tier prompts on all these providers may be used for training, and human reviewers may read API input and output. Irrelevant here — FFXIV dialogue is public game text. Do not use free tiers for anything sensitive.
 

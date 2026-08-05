@@ -46,8 +46,8 @@ Flags: `--provider stub|gemini|groq|ollama|all`, `--profile <id>`, `--frames <di
 to bypass change detection, `--generate-frames` to rewrite the sample corpus.
 
 ```bash
-dotnet run --project src/GamingTranslatorGlassHUD.App -f net10.0 -- --stub
-dotnet run --project src/GamingTranslatorGlassHUD.App -f net10.0 -- --render-test
+dotnet run --project src/GlassHudTranslator.App -f net10.0 -- --stub
+dotnet run --project src/GlassHudTranslator.App -f net10.0 -- --render-test
 ```
 
 Run `--render-test` after touching anything to do with fonts, text layout or the Avalonia version.
@@ -57,10 +57,10 @@ actually loaded rather than the OS quietly substituting one.
 ## Layout
 
 ```
-src/GamingTranslatorGlassHUD.Core/     net10.0                  all logic, all tests
-src/GamingTranslatorGlassHUD.Interop/  net10.0-windows          P/Invoke declarations, no logic
-src/GamingTranslatorGlassHUD.Windows/  net10.0-windows          Win32 impls (untested on hardware)
-src/GamingTranslatorGlassHUD.App/      net10.0;net10.0-windows  Avalonia UI
+src/GlassHudTranslator.Core/     net10.0                  all logic, all tests
+src/GlassHudTranslator.Interop/  net10.0-windows          P/Invoke declarations, no logic
+src/GlassHudTranslator.Windows/  net10.0-windows          Win32 impls (untested on hardware)
+src/GlassHudTranslator.App/      net10.0;net10.0-windows  Avalonia UI
 tools/Replay/                          net10.0                  headless harness
 profiles/<game>/                       per-game data, no code
 data/models.json                       provider and model config

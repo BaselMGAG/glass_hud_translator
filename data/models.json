@@ -5,7 +5,11 @@
     "observed silently deleting free models. A 404 falls through to the next entry and logs loudly.",
     "rpm sits deliberately under the published ceiling - those numbers are not guaranteed and are",
     "no longer documented per model. Session 3 replaces these with numbers measured from the quota",
-    "table during real play."
+    "table during real play.",
+    "",
+    "2026-08: gemini-2.5-flash-lite started returning 404 'no longer available to new users', which",
+    "is exactly the churn this ordered list exists for - the router fell through and kept working.",
+    "It stays last in the list because existing keys can still use it."
   ],
   "providers": [
     {
@@ -14,7 +18,7 @@
       "secret": "GeminiApiKey",
       "rpm": 13,
       "rpd": 1000,
-      "models": ["gemini-2.5-flash-lite", "gemini-2.5-flash"]
+      "models": ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-flash-lite"]
     },
     {
       "name": "groq",

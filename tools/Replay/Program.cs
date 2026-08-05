@@ -1,14 +1,14 @@
 using System.Diagnostics;
-using GamingTranslatorGlassHUD.Core.Capture;
-using GamingTranslatorGlassHUD.Core.Config;
-using GamingTranslatorGlassHUD.Core.Diagnostics;
-using GamingTranslatorGlassHUD.Core.Glossary;
-using GamingTranslatorGlassHUD.Core.Ocr;
-using GamingTranslatorGlassHUD.Core.Pipeline;
-using GamingTranslatorGlassHUD.Core.Profiles;
-using GamingTranslatorGlassHUD.Core.Storage;
-using GamingTranslatorGlassHUD.Core.Text;
-using GamingTranslatorGlassHUD.Core.Translation;
+using GlassHudTranslator.Core.Capture;
+using GlassHudTranslator.Core.Config;
+using GlassHudTranslator.Core.Diagnostics;
+using GlassHudTranslator.Core.Glossary;
+using GlassHudTranslator.Core.Ocr;
+using GlassHudTranslator.Core.Pipeline;
+using GlassHudTranslator.Core.Profiles;
+using GlassHudTranslator.Core.Storage;
+using GlassHudTranslator.Core.Text;
+using GlassHudTranslator.Core.Translation;
 
 // Headless pipeline harness - the main development loop on macOS. Runs recorded (or synthetic)
 // frames through exactly the same TranslationPipeline the overlay uses, and prints what each stage
@@ -169,7 +169,7 @@ static List<(ITranslationProvider Provider, int Rpm)> BuildLanes(
 static string FindRepoRoot()
 {
     var dir = AppContext.BaseDirectory;
-    while (dir is not null && !File.Exists(Path.Combine(dir, "GamingTranslatorGlassHUD.slnx")))
+    while (dir is not null && !File.Exists(Path.Combine(dir, "GlassHudTranslator.slnx")))
         dir = Path.GetDirectoryName(dir);
 
     return dir ?? Directory.GetCurrentDirectory();
@@ -189,7 +189,7 @@ internal sealed record ReplayOptions
         if (args.Contains("--help") || args.Contains("-h"))
         {
             Console.WriteLine("""
-                replay - headless GamingTranslatorGlassHUD pipeline harness
+                replay - headless GlassHudTranslator pipeline harness
 
                   --provider <name>   stub (default) | gemini | groq | ollama | all
                   --profile <id>      game profile from profiles/ (default: first found)

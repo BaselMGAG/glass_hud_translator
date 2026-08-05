@@ -21,7 +21,7 @@ jobs:
 
       - run: dotnet restore
       - run: dotnet build --no-restore -c Release
-      - run: dotnet test tests/GamingTranslatorGlassHUD.Core.Tests --no-build -c Release --logger "console;verbosity=normal"
+      - run: dotnet test tests/GlassHudTranslator.Core.Tests --no-build -c Release --logger "console;verbosity=normal"
 
       # Proves the whole pipeline still runs end to end - capture, OCR, normalisation, cache,
       # glossary, routing - without a game, a key, or a network call.
@@ -48,7 +48,7 @@ jobs:
       # launcher scripts all ship alongside regardless, so it was always a folder.
       - name: Publish self-contained
         run: >
-          dotnet publish src/GamingTranslatorGlassHUD.App/GamingTranslatorGlassHUD.App.csproj
+          dotnet publish src/GlassHudTranslator.App/GlassHudTranslator.App.csproj
           -f net10.0-windows -c Release -r win-x64
           --self-contained true
           -p:PublishSingleFile=false
@@ -69,7 +69,7 @@ jobs:
       - name: Verify the published payload
         run: |
           $missing = @()
-          if (-not (Test-Path out/GamingTranslatorGlassHUD.exe)) { $missing += 'GamingTranslatorGlassHUD.exe' }
+          if (-not (Test-Path out/GlassHudTranslator.exe)) { $missing += 'GlassHudTranslator.exe' }
           if (-not (Test-Path out/tessdata/eng.traineddata))     { $missing += 'tessdata/eng.traineddata' }
           if (-not (Test-Path out/profiles/ffxiv/profile.json))  { $missing += 'profiles/ffxiv/profile.json' }
           if (-not (Test-Path out/data/models.json))             { $missing += 'data/models.json' }
@@ -85,6 +85,6 @@ jobs:
 
       - uses: actions/upload-artifact@v5
         with:
-          name: GamingTranslatorGlassHUD-win-x64
+          name: GlassHudTranslator-win-x64
           path: out
           if-no-files-found: error

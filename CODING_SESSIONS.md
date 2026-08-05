@@ -1,4 +1,4 @@
-# GamingTranslatorGlassHUD — Coding Sessions
+# Glass HUD Translator — Coding Sessions
 
 Three coding sessions, plus one human-only prep session. Each coding prompt below is
 **copy-paste ready** into a fresh Claude Code session in this directory.
@@ -28,7 +28,7 @@ Ollama is dev-only (brief §2.7) but gives you an unlimited local provider for p
 Fetch the font — bundled, never assumed installed (brief §6):
 
 ```bash
-mkdir -p "src/GamingTranslatorGlassHUD.App/Assets/Fonts" && curl -L -o "src/GamingTranslatorGlassHUD.App/Assets/Fonts/NotoSansArabic-Regular.ttf" "https://github.com/notofonts/arabic/raw/main/fonts/NotoSansArabic/hinted/ttf/NotoSansArabic-Regular.ttf"
+mkdir -p "src/GlassHudTranslator.App/Assets/Fonts" && curl -L -o "src/GlassHudTranslator.App/Assets/Fonts/NotoSansArabic-Regular.ttf" "https://github.com/notofonts/arabic/raw/main/fonts/NotoSansArabic/hinted/ttf/NotoSansArabic-Regular.ttf"
 ```
 
 Get both keys — neither needs a credit card:
@@ -181,8 +181,8 @@ borderless windowed the whole time.
 <summary><b>Copy-paste prompt</b></summary>
 
 ```
-Read PROJECT_PLAN.md and CLAUDE.md. Session 1 left GamingTranslatorGlassHUD.Windows and
-GamingTranslatorGlassHUD.Interop as compiling stubs. Implement them and ship a working .exe.
+Read PROJECT_PLAN.md and CLAUDE.md. Session 1 left GlassHudTranslator.Windows and
+GlassHudTranslator.Interop as compiling stubs. Implement them and ship a working .exe.
 
 1. INTEROP — P/Invoke declarations only, no logic:
    BitBlt/CreateCompatibleDC/GetDC/SelectObject/DeleteObject, GetWindowRect/GetClientRect/
@@ -213,7 +213,7 @@ GamingTranslatorGlassHUD.Interop as compiling stubs. Implement them and ship a w
    must produce identical results on test-frames/.
 
 7. DpapiSecretStore — ProtectedData.Protect, DataProtectionScope.CurrentUser, into
-   %APPDATA%\GamingTranslatorGlassHUD\config.json. Wire PlatformServices to it under #if WINDOWS.
+   %APPDATA%\Glass HUD Translator\config.json. Wire PlatformServices to it under #if WINDOWS.
 
 8. FirstRunWindow — key entry, a "Set your region" step that launches the picker, the
    borderless-windowed check, and an explicit SmartScreen warning ("More info → Run anyway").

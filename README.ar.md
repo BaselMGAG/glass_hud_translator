@@ -1,6 +1,6 @@
 <div align="center">
 
-# GamingTranslatorGlassHUD
+# Glass HUD Translator
 
 **ترجمة عربية فوق الألعاب التي لا تدعم العربية.**
 
@@ -39,9 +39,26 @@
 <br>
 
 <div align="center">
-<img src="docs/images/settings.png" alt="نافذة الإعدادات وفيها محدّدات المناطق وخمسة اختصارات مسجّلة ولوحة تشخيص تعرض تحميل محرّك القراءة الضوئية والحصة وإحصاءات التخزين المؤقت" width="880">
+<img src="docs/images/on-desktop.jpeg" alt="صفحة يوتيوب تُترجَم إلى العربية، والطبقة تعرض النص العربي أسفل وصف الفيديو" width="880">
 <br>
-<sub>الإعدادات، ولوحة التشخيص التي تجيب عن «لماذا لا يعمل؟» دون فتح أي ملف سجلّ.</sub>
+<sub>ليس للألعاب وحدها. الطبقة نفسها وهي تقرأ متصفّحاً باستخدام الملف <code>general</code>.</sub>
+</div>
+
+<br>
+
+<div align="center">
+<img src="docs/images/settings-full.png" alt="الإعدادات وفيها حقول المفاتيح ومحدّد الملف ومحدّد اللهجة العربية وحجم الخط وشفافية اللوحة ومحدّدات المناطق" width="880">
+<br>
+<sub>الإعدادات: المفاتيح، وما الذي تترجمه، واللهجة، ومناطق الالتقاط.</sub>
+</div>
+
+<br>
+
+<div align="center">
+<img src="docs/images/diagnostics.png" alt="لوحة التشخيص وتعرض تحميل محرّك القراءة الضوئية والحصص وإحصاءات التخزين المؤقت وسجلّ الموجِّه" width="880">
+<br>
+<sub>لوحة التشخيص. هنا التقط سجلّ الموجِّه سحبَ جوجل لأحد النماذج أثناء الجلسة — فانتقل إلى التالي
+وواصل العمل، وهذا بالضبط سبب وجود قائمة النماذج المرتّبة.</sub>
 </div>
 
 <div dir="rtl" align="right">
@@ -215,7 +232,7 @@ dotnet run --project tools/Replay -- --provider gemini
 </div>
 
 ```bash
-dotnet run --project src/GamingTranslatorGlassHUD.App -f net10.0 -- --render-test
+dotnet run --project src/GlassHudTranslator.App -f net10.0 -- --render-test
 ```
 
 <div dir="rtl" align="right">

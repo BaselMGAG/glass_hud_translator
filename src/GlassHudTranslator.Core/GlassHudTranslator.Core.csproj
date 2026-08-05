@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>GlassHudTranslator.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Lets tests reach parsing helpers (TSV, SQL plumbing) that are not part of the public API. -->
+    <InternalsVisibleTo Include="GlassHudTranslator.Core.Tests" />
+  </ItemGroup>
+
+</Project>
