@@ -61,13 +61,21 @@ public sealed class ProviderRouter(
                 Stopwatch.GetElapsedTime(started), TranslationLogOutcomes.Stale);
         }
 
+        // Collected rather than logged per lane. An unconfigured lane is switched off, not broken,
+        // and saying so once per line would drown the log that reports the failures that do
+        // matter - but staying silent when EVERY lane is unconfigured left a first-run user with
+        // "all providers exhausted" and no hint that the cause was simply a missing key.
+        List<string>? unconfigured = null;
+
         foreach (var lane in _lanes)
         {
             if (ct.IsCancellationRequested) break;
 
-            // Deliberately silent. An unconfigured lane is switched off, not broken, and saying so
-            // once per line would drown the log that reports the failures that do matter.
-            if (!lane.Provider.IsConfigured) continue;
+            if (!lane.Provider.IsConfigured)
+            {
+                (unconfigured ??= []).Add(lane.Provider.Name);
+                continue;
+            }
 
             if (lane.CooldownUntil > _clock.GetUtcNow())
             {
@@ -93,7 +101,10 @@ public sealed class ProviderRouter(
                 false, Stopwatch.GetElapsedTime(started), TranslationLogOutcomes.Ok);
         }
 
-        _log("router: all providers exhausted, falling back to English");
+        _log(unconfigured is null
+            ? "router: all providers exhausted, falling back to English"
+            : "router: all providers exhausted, falling back to English. No API key for: " +
+              $"{string.Join(", ", unconfigured)} - enter one in Settings, Providers tab.");
         return new TranslationResult(request.Body, ProviderNames.Fallback, "-", false,
             Stopwatch.GetElapsedTime(started), TranslationLogOutcomes.FallbackEnglish);
     }

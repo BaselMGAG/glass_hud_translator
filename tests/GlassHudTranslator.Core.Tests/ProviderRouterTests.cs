@@ -211,6 +211,39 @@ public class ProviderRouterTests
     }
 
     [Fact]
+    public async Task WhenEveryLaneIsUnconfiguredTheLogSaysSoRatherThanJustGivingUp()
+    {
+        // The first-run case: nothing is set up yet, so every line falls back to English. Staying
+        // silent per lane is right during play, but here it left the user with "all providers
+        // exhausted" and no hint that the only problem was a missing key.
+        var log = new List<string>();
+        var gemini = new FakeProvider("gemini") { IsConfigured = false };
+        var anthropic = new FakeProvider("anthropic") { IsConfigured = false };
+
+        var router = new ProviderRouter([(gemini, 13), (anthropic, 40)], FastRetries, log: log.Add);
+        var result = await router.TranslateAsync(Request(), CancellationToken.None);
+
+        Assert.Equal(ProviderNames.Fallback, result.Provider);
+
+        var exhausted = Assert.Single(log, line => line.Contains("exhausted"));
+        Assert.Contains("No API key for: gemini, anthropic", exhausted);
+        Assert.Contains("Settings", exhausted);
+    }
+
+    [Fact]
+    public async Task AConfiguredLaneFailingDoesNotClaimAMissingKey()
+    {
+        var log = new List<string>();
+        var gemini = new FakeProvider("gemini").Fails(ProviderFailure.Fatal);
+
+        var router = new ProviderRouter([(gemini, 13)], FastRetries, log: log.Add);
+        await router.TranslateAsync(Request(), CancellationToken.None);
+
+        var exhausted = Assert.Single(log, line => line.Contains("exhausted"));
+        Assert.DoesNotContain("No API key", exhausted);
+    }
+
+    [Fact]
     public async Task APerAttemptTimeoutFallsThroughInsteadOfThrowing()
     {
         // A provider that simply awaits the token it was handed raises a bare
