@@ -1,7 +1,9 @@
 # Glass HUD Translator — project brief
 
-*Prepared as background material. Everything here is accurate as of 5 August 2026; the "What not
+*Prepared as background material. Everything here is accurate as of 6 August 2026; the "What not
 to claim" section near the end matters as much as the rest.*
+
+**Download:** https://github.com/basel2000de/non_arabic_supported_games_llm_hud_translator/releases
 
 **Repository:** https://github.com/basel2000de/non_arabic_supported_games_llm_hud_translator
 **Licence:** Apache 2.0 (open source, free to use and modify, commercially too)
@@ -77,6 +79,8 @@ reads a rectangle of the screen
 
 Practical features:
 
+- **The interface itself is in Arabic, if you want it.** English or Arabic, switchable in Settings,
+  with the whole window mirroring right-to-left. English is the default.
 - **Manual or automatic.** Press a key to translate the current line, or turn on auto-watch during
   a cutscene and let it follow along by itself.
 - **Five configurable hotkeys** — translate, auto-watch, show/hide the overlay, re-pick the region,
@@ -116,7 +120,9 @@ contribute to**, not a finished product.
 | | |
 |---|---|
 | Translation speed | ~1 second per new line; instant for anything seen before |
-| Running cost | Free — the supported providers' free tiers cover roughly 15,000 requests a day |
+| Running cost | Free — the two free-tier providers cover roughly 15,000 requests a day between them |
+| Providers supported | 4 — two free (Google Gemini, Groq), two paid and opt-in (OpenAI, Anthropic Claude) |
+| Interface languages | 2 — English and Arabic, English by default |
 | Credit card needed | No |
 | Automated tests | 169 |
 | Glossary | 86 Final Fantasy XIV proper nouns pinned so far |
@@ -163,6 +169,22 @@ translating without the user seeing anything. It was designed in advance for exa
 free AI model catalogues change without warning. Small, but it's a concrete example of the
 engineering being thought through rather than thrown together.
 
+**7. The blind spot, caught and fixed — a good story if an honest one is wanted.** The app exists so
+people don't have to read English. Its own interface was English-only. The person who most needed
+the tool was the one least able to set it up, and it took weeks to notice, because everyone building
+and testing it read English fine.
+
+The whole interface now switches to Arabic and mirrors right-to-left. The language control is
+labelled **Language · اللغة** in both scripts, because a language switch you can only find if you
+already read the current language is no use to anyone.
+
+Two things broke on the way, both worth mentioning if a technical audience is listening: the Arabic
+tab labels came out as empty boxes, because the app had been leaning on a system font that macOS
+has and a plain Windows install may not — the same build would have shown nothing but boxes to the
+actual users. And the first screenshots of the Arabic interface came out mirrored, letters and all,
+which turned out to be a quirk of how the screenshots were being generated rather than a bug in the
+app. Both were found by looking at the result instead of trusting that it worked.
+
 ---
 
 ## Images available
@@ -174,12 +196,18 @@ All in the repository under `docs/images/`:
 | `in-game.jpeg` | Final Fantasy XIV with Arabic drawn over the game's English dialogue box. **The best single image.** |
 | `on-desktop.jpeg` | A YouTube page being translated — proves it isn't only for games |
 | `settings-providers.png` | The Providers tab: a key field per provider, each labelled free or paid. **Good for the "free to run" angle.** |
+| `settings-providers-ar.png` | The same tab with the interface in Arabic, mirrored right-to-left. **Pairs with the one above as a before/after — the strongest image for the localisation angle.** |
 | `settings-translating.png` | The Translating tab: which game, which Arabic dialect, where the text sits |
+| `settings-translating-ar.png` | The same, in Arabic |
 | `diagnostics.png` | The diagnostics panel, including the moment it caught a model being retired |
 | `overlay.png` | The overlay's three states, cleanly rendered — good for a graphic |
 
 The in-game photo is a phone photo of a screen, so it's usable but not pristine. A clean screen
 capture would be worth taking if a polished asset is needed.
+
+The settings screenshots are generated from the running app by a build flag rather than taken by
+hand, so they never drift out of date with the interface. That is why there is an Arabic pair of
+each at no extra effort.
 
 ---
 
@@ -232,7 +260,14 @@ the screen the same way a screenshot does.
 
 **How much does it cost?**
 Nothing. It uses free tiers from AI providers that don't require a credit card. You'd need to play
-for more than a day straight to exhaust a daily allowance.
+for more than a day straight to exhaust a daily allowance. There are also paid options (OpenAI,
+Anthropic) for people who already pay for one and would rather use it — those are tried only after
+the free ones, and do nothing at all unless you deliberately enter a key.
+
+**Is the app itself in Arabic?**
+Yes, optionally. English or Arabic, switchable in Settings, with the whole window mirroring
+right-to-left. English is the default. This was a genuine oversight for the first few weeks — see
+point 7 above.
 
 **How good is the translation?**
 Good, and it's consistent about character and place names because those are pinned in a glossary.

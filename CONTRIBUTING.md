@@ -4,11 +4,16 @@ Thanks for looking. This is an early project and the most useful contributions a
 
 ## The three things I actually need
 
-**1. Review the Arabic.** The Final Fantasy XIV glossary in `profiles/ffxiv/glossary.json` is 86
-proper nouns, and I wrote it without being a native speaker. If a spelling is wrong, or a name
-would obviously be transliterated differently by anyone who reads Arabic properly, that is the
-single most valuable thing you can tell me. Open an issue or a PR — either is fine, and you do not
-need to justify it at length.
+**1. Review the Arabic.** Two places, and both were written without a native speaker:
+
+- **`profiles/ffxiv/glossary.json`** — 86 proper nouns. If a spelling is wrong, or a name would
+  obviously be transliterated differently by anyone who reads Arabic properly, that is the single
+  most valuable thing you can tell me.
+- **`src/GlassHudTranslator.Core/Config/UiText.cs`** — the app's own interface, now available in
+  Arabic. Stiff phrasing, a wrong term, or something that just reads like a translation rather than
+  like software: say so.
+
+Open an issue or a PR — either is fine, and you do not need to justify it at length.
 
 **2. Add a game profile.** No programming. A profile is a folder under `profiles/` with three
 files, and `profiles/_template/` is there to be copied:
@@ -57,6 +62,19 @@ dotnet run --project tools/Replay -- --no-cache
 - **Don't add a low-level keyboard hook** (`WH_KEYBOARD_LL`). Antivirus heuristics flag it.
 - **Nothing may touch the game process.** No injection, no memory reading, no modified files. That
   property is the reason the app is safe to use, and it is not negotiable for a feature.
+
+### Adding or changing a user-facing string
+
+Every string the user sees lives in `UiText`, in both languages. It is a class of `required`
+properties rather than a key/value dictionary on purpose: adding a string without translating it is
+a **compile error**, not a silent English leak in the Arabic interface.
+
+A test asserts the `{0}`-style placeholders match between the two languages. That one matters — a
+translation carrying a `{1}` the English doesn't have throws at runtime, and only ever for the
+people this project exists for.
+
+Platform error text (Win32 messages, "Global hotkeys are Windows-only") is deliberately left alone;
+it comes from the OS and is English there too.
 
 ### Adding a provider
 

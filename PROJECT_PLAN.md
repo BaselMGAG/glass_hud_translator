@@ -141,11 +141,12 @@ GlassHudTranslator.sln
 │   │   ├── Ocr/            IOcrEngine, TesseractCliEngine, OcrPreprocessor, StableOcrReader
 │   │   ├── Text/           TextNormalizer, DialogueParser, CacheKey
 │   │   ├── Glossary/       GlossaryStore, GlossaryMatcher, GlossaryTerm
-│   │   ├── Translation/    ITranslationProvider, OpenAiCompatibleProvider, StubProvider,
+│   │   ├── Translation/    ITranslationProvider, OpenAiCompatibleProvider, AnthropicProvider,
+│   │   │                   ProviderFactory, ProviderDiagnostics, StubProvider,
 │   │   │                   PromptBuilder, ProviderRouter, TokenBucket, QuotaLedger
 │   │   ├── Storage/        AppDatabase, TranslationCache, TranslationLog, ISecretStore
 │   │   ├── Regions/        RegionProfile, RegionProfileStore
-│   │   └── Config/         AppSettings, ModelsConfig
+│   │   └── Config/         AppSettings, ModelsConfig, UiText
 │   ├── GlassHudTranslator.Interop/        net10.0-windows          ← P/Invoke declarations only
 │   ├── GlassHudTranslator.Windows/        net10.0-windows          ← Win32 implementations
 │   │   ├── Win32FrameSource, GameWindowLocator, DisplayModeGuard
@@ -250,7 +251,9 @@ public sealed record TranslationResult(
 
 public interface ITranslationProvider {
     string Name { get; }
-    Task<string> TranslateAsync(TranslationRequest req, CancellationToken ct);
+    IReadOnlyList<string> Models { get; }               // ordered fallback list from models.json
+    bool IsConfigured => true;                          // false = no key yet, skip in silence
+    Task<string> TranslateAsync(TranslationRequest req, string model, CancellationToken ct);
 }
 public sealed class TokenBucket   { public TokenBucket(int perMinute); public bool TryTake(); }
 public sealed class QuotaLedger   {                     // persisted, Pacific-midnight boundary
@@ -258,7 +261,27 @@ public sealed class QuotaLedger   {                     // persisted, Pacific-mi
     public Task<IReadOnlyList<QuotaSnapshot>> SnapshotAsync(CancellationToken ct);
 }
 public readonly record struct QuotaSnapshot(string Provider, int Used, int Limit);
-public sealed class ProviderRouter : ITranslationProvider { /* ordered chain, §5 */ }
+public sealed class ProviderRouter { /* ordered chain, §5. Never throws. */ }
+
+// One models.json entry → one lane. Shared by the app and tools/Replay so the headless harness
+// exercises the same wiring the overlay does.
+public static class ProviderFactory {
+    public static ITranslationProvider Create(ProviderConfig c, HttpClient http, ISecretStore s);
+}
+
+// ── Interface language ─────────────────────────────────────────────────────
+public enum UiLanguage { English, Arabic }
+
+// Every user-facing string, in both languages. `required` properties rather than a key/value
+// dictionary: a missing translation is a compile error, not a silent English leak. English is
+// the default; Arabic mirrors the whole window and uses the bundled font.
+public sealed class UiText {
+    public required UiLanguage Language { get; init; }
+    public bool IsRightToLeft => Language == UiLanguage.Arabic;
+    public static UiText For(UiLanguage language);
+    public string HotkeyDescription(HotkeyAction action);
+    /* ~90 required string properties */
+}
 
 // ── Storage ────────────────────────────────────────────────────────────────
 public interface ITranslationCache {
@@ -287,18 +310,30 @@ The brief's requirements as one algorithm. Get this right and quota stops being 
 ```
 TranslateAsync(req):
   if now - req.RequestedAt > 6 s        → drop, return stale        (brief §5: never queue)
-  for provider in [gemini, groq]:
+  for provider in models.json order:                                (free lanes first = cost policy)
+      if !provider.IsConfigured        → collect name, continue     (no key: switched off, silent)
+      if provider in cooldown          → continue
       if !bucket[provider].TryTake()    → continue                  (fail over on RPM, not just RPD)
       for model in provider.models:                                 (models.json ordered list)
           try: return await call(provider, model, timeout: 4 s)
           catch 404/model_not_found     → log LOUDLY, next model
           catch 429                     → cooldown 60 s, break to next provider
-          catch 5xx/timeout             → retry ≤2, exp backoff + jitter, then next provider
+          catch 5xx/timeout/cancelled   → retry ≤2, exp backoff + jitter, then next provider
   return English + warning marker                                   (never blank, never crash)
+       + name any lane skipped for a missing key                    (else first run says nothing)
 ```
 
-Buckets: Gemini **13/min** (margin under the ~15 the docs no longer guarantee), Groq **28/min**.
-Every outcome increments `QuotaLedger`, which is what actually answers open questions #2 and #4.
+Buckets: Gemini **13/min** (margin under the ~15 the docs no longer guarantee), Groq **28/min**,
+the paid lanes **40/min**. Every outcome increments `QuotaLedger`.
+
+Two things this shape is load-bearing for, both learned the hard way:
+
+- **The per-attempt timeout must be caught here.** A provider that lets the 4 s cap surface as a
+  bare `OperationCanceledException` escapes the router entirely — the obvious cancellation catch is
+  guarded on the *outer* token, which is not the one a timeout cancels. `TryLaneAsync` therefore
+  catches `OperationCanceledException` alongside `ProviderException` and treats it as transient.
+- **Lane order is the cost policy.** Free lanes above paid ones, asserted by a test. A paid lane
+  above a free one spends money on lines the free tier would have answered for nothing.
 
 ---
 
@@ -309,21 +344,34 @@ Every outcome increments `QuotaLedger`, which is what actually answers open ques
 ```json
 {
   "providers": [
-    { "name": "gemini", "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+    { "name": "gemini", "displayName": "Google Gemini", "tier": "free",
+      "keyUrl": "https://aistudio.google.com/apikey",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
       "secret": "GeminiApiKey", "rpm": 13, "rpd": 1000,
-      "models": ["gemini-2.5-flash-lite", "gemini-2.5-flash"] },
-    { "name": "groq", "baseUrl": "https://api.groq.com/openai/v1",
-      "secret": "GroqApiKey", "rpm": 28, "rpd": 14400,
-      "models": ["qwen/qwen3-32b", "llama-3.3-70b-versatile"] },
-    { "name": "ollama", "baseUrl": "http://localhost:11434/v1",
-      "secret": null, "rpm": 120, "rpd": 1000000, "devOnly": true,
-      "models": ["qwen3:8b"] }
+      "models": ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-flash-lite"] },
+    { "name": "openai", "displayName": "OpenAI", "tier": "paid",
+      "keyUrl": "https://platform.openai.com/api-keys",
+      "baseUrl": "https://api.openai.com/v1",
+      "secret": "OpenAiApiKey", "rpm": 40, "rpd": 10000, "maxOutputTokens": 1200,
+      "models": ["gpt-5.6", "gpt-5.6-terra", "gpt-5.6-luna"] },
+    { "name": "anthropic", "displayName": "Anthropic Claude", "tier": "paid",
+      "kind": "anthropic", "keyUrl": "https://console.anthropic.com/settings/keys",
+      "baseUrl": "", "secret": "AnthropicApiKey",
+      "rpm": 40, "rpd": 10000, "maxOutputTokens": 2048,
+      "models": ["claude-opus-5", "claude-sonnet-5"] }
   ]
 }
 ```
 
-`devOnly: true` entries are skipped unless `--dev` — the shipped app must never wait on a
-localhost port that does not exist (brief §2.7).
+| Field | Why it exists |
+|---|---|
+| `kind` | `anthropic` selects the SDK-based lane; anything else (or absent) is the OpenAI shape. Kept as a raw string so a typo degrades one lane instead of failing the whole file to parse. |
+| `tier` | `free` / `paid` / `local`. Drives the label beside the key box, so the cost choice is explicit rather than buried in a paragraph. |
+| `displayName`, `keyUrl` | Settings generates its key fields from this file, so a new lane gets a labelled box and a "where to get one" line with no code change. |
+| `maxOutputTokens` | Was hardcoded at 300. Fine for one subtitle, truncates any model that spends output tokens reasoning before it answers. |
+| `devOnly` | Skipped unless `--dev` — the shipped app must never wait on a localhost port that does not exist (brief §2.7). |
+
+**Order is the cost policy**, not a preference: the router walks the list top to bottom.
 
 ### SQLite — one file, `%APPDATA%\Glass HUD Translator\glasshud.db`, WAL
 

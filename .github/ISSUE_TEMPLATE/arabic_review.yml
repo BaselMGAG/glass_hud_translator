@@ -1,14 +1,26 @@
 name: Arabic review
-description: A translation or a glossary spelling is wrong
+description: A translation, a glossary spelling, or the app's own Arabic is wrong
 labels: [arabic, help wanted]
 body:
   - type: markdown
     attributes:
       value: |
-        This is the most useful kind of issue on the project. The glossary was written by someone
-        who is not a native speaker, and a wrong name spelling repeats on every line it appears in.
+        This is the most useful kind of issue on the project. Both the glossary and the app's own
+        Arabic interface were written without a native speaker, and a wrong name spelling repeats
+        on every line it appears in.
 
         You do not need to explain at length or be polite about it. Wrong is wrong.
+
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - A translated game line
+        - A name or term in the glossary
+        - The app's own interface (menus, buttons, labels)
+    validations:
+      required: true
 
   - type: input
     id: wrong

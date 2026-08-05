@@ -14,6 +14,23 @@
 > against. Nothing in the approach is specific to it — anything that differs between games lives in
 > a profile folder (see `profiles/`). Read "FFXIV" below as "the game I had in front of me".
 
+## What has changed since I wrote this
+
+This document is deliberately not rewritten as the code moves — it records what I decided and why,
+before I knew whether any of it would work. The decisions below all held. Four things have since
+been *added* that it does not mention, so read it with these in mind:
+
+| | |
+|---|---|
+| **Four providers, not two.** | Gemini and Groq on their free tiers, then OpenAI and Anthropic for people who already pay for one. Lane order in `data/models.json` is the cost policy: free first, and a lane with no key is skipped in silence. §2.7's "API-only, no local model" is unchanged. |
+| **The interface is available in Arabic.** | The single largest omission in this document. It specifies Arabic *output* in detail and never once asks what language the app's own buttons are in — for an app whose entire premise is that its user does not read English comfortably. English remains the default. |
+| **Settings is tabbed.** | Providers / Translating / Overlay / Hotkeys / Diagnostics, rather than the one long panel implied here. |
+| **Five hotkeys, not four.** | Show/hide overlay was added after the first real play session. §2.6's table lists four. |
+
+Everything else below still describes the shipped app. Current contracts and schemas are in
+[PROJECT_PLAN.md](../PROJECT_PLAN.md); the rules that are easy to break are in
+[CLAUDE.md](../CLAUDE.md).
+
 ---
 
 ## 1. Problem statement

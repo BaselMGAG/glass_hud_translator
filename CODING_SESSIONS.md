@@ -5,6 +5,14 @@ Three coding sessions, plus one human-only prep session. Each coding prompt belo
 
 Read alongside [`PROJECT_PLAN.md`](PROJECT_PLAN.md) and [`docs/BRIEF.md`](docs/BRIEF.md).
 
+> **All three sessions are done.** This is kept as a record of how the work was actually broken up,
+> not as a to-do list. Sessions 1 and 2 landed as planned; Session 3's "quality from real data" is
+> the part still genuinely outstanding, because it needs the borrowed Windows laptop and a real
+> frame corpus rather than the synthetic one in `test-frames/`.
+>
+> Work since then — the paid provider lanes, the tabbed settings screen, the Arabic interface, the
+> release pipeline — is recorded in [`CHANGELOG.md`](CHANGELOG.md) instead.
+
 ```
 Session 0   human, ~45 min    prereqs + frame corpus        no code
 Session 1   Mac,   ~3–4 h     Core + UI + tests + CI        ~85% of the app
