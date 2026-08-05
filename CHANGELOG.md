@@ -7,6 +7,12 @@ is "the thing being described in the README".
 
 ### Added
 
+- **The interface itself is available in Arabic.** The app translates games for people who read
+  Arabic more comfortably than English, and until now its own interface was English-only — so the
+  person who most needs it was the one least able to set it up. Settings → Providers →
+  **Language · اللغة**, labelled in both scripts so it is findable either way. The whole window
+  mirrors right-to-left and uses the bundled Arabic font rather than assuming Windows has one.
+  English remains the default.
 - **OpenAI and Anthropic as provider options.** Four lanes now ship: Gemini and Groq on their free
   tiers, then OpenAI and Anthropic for people who already pay for one of them. Lane order is the
   cost policy — the router walks `data/models.json` top to bottom, so the free tiers answer first

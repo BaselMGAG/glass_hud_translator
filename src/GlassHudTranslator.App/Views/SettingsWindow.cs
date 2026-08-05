@@ -23,6 +23,12 @@ namespace GlassHudTranslator.App.Views;
 /// quota readout was the reason the readout went unnoticed (brief 12). The status line is docked
 /// outside the tabs so that whichever tab is open, the answer to "did that work?" is on screen.
 /// </para>
+///
+/// <para>
+/// Every control here is built rather than declared, so switching the interface language rebuilds
+/// the whole tree. That is also why nothing is created in a field initialiser: Avalonia will not
+/// re-parent a control that already belongs to a discarded tree, so the second build would throw.
+/// </para>
 /// </summary>
 public sealed class SettingsWindow : Window
 {
@@ -30,37 +36,27 @@ public sealed class SettingsWindow : Window
     private readonly OverlayWindow _overlay;
     private readonly AppSettings _settings;
     private readonly TranslationSession _session;
+
+    private UiText _text;
+
     private readonly Dictionary<HotkeyAction, TextBox> _hotkeyBoxes = [];
 
     /// <summary>Key box per secret name. Built from models.json, never hardcoded.</summary>
     private readonly Dictionary<string, TextBox> _keyBoxes = [];
 
-    private readonly TextBlock _hotkeyStatus = Readout();
-    private readonly TextBlock _laneSummary = Readout();
-    private TextBlock _profileNote = Readout();
-    private readonly TextBox _correction = new() { Watermark = "corrected Arabic", Width = 380 };
-
-    private readonly ComboBox _register = new()
-    {
-        ItemsSource = new[] { "Modern Standard Arabic", "Egyptian Arabic" },
-        SelectedIndex = 0,
-        Width = 240,
-    };
-
-    private readonly Slider _fontSize = new() { Minimum = 16, Maximum = 48, Value = 26, Width = 240 };
-    private readonly Slider _opacity = new() { Minimum = 0.3, Maximum = 1.0, Value = 0.82, Width = 240 };
-    private readonly TextBlock _quota = Readout();
-    private readonly TextBlock _cache = Readout();
-    private readonly TextBlock _status = Readout();
-    private readonly TextBox _routerLog = new()
-    {
-        IsReadOnly = true,
-        AcceptsReturn = true,
-        Height = 160,
-        FontFamily = new FontFamily("monospace"),
-        FontSize = 11,
-        TextWrapping = TextWrapping.NoWrap,
-    };
+    private TextBlock _hotkeyStatus = null!;
+    private TextBlock _laneSummary = null!;
+    private TextBlock _profileNote = null!;
+    private TextBox _correction = null!;
+    private ComboBox _register = null!;
+    private Slider _fontSize = null!;
+    private Slider _opacity = null!;
+    private TextBlock _quota = null!;
+    private TextBlock _cache = null!;
+    private TextBlock _status = null!;
+    private TextBox _routerLog = null!;
+    private TabControl? _tabs;
+    private Control? _shellRoot;
 
     public SettingsWindow(AppServices services, OverlayWindow overlay, AppSettings settings,
         TranslationSession session)
@@ -69,66 +65,76 @@ public sealed class SettingsWindow : Window
         _overlay = overlay;
         _settings = settings;
         _session = session;
+        _text = UiText.For(settings.Language);
 
-        _register.SelectedIndex = settings.Register == ArabicRegister.Egyptian ? 1 : 0;
-        _fontSize.Value = settings.OverlayFontSize;
-        _opacity.Value = settings.OverlayOpacity;
-
-        Title = "Glass HUD Translator";
         Width = 760;
         Height = 700;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
-        Content = BuildShell();
-
-        _fontSize.PropertyChanged += (_, e) =>
-        {
-            if (e.Property != RangeBase_ValueProperty) return;
-            _overlay.BodyFontSize = _fontSize.Value;
-            _settings.OverlayFontSize = _fontSize.Value;
-            _settings.Save();
-        };
-        _opacity.PropertyChanged += (_, e) =>
-        {
-            if (e.Property != RangeBase_ValueProperty) return;
-            _overlay.PanelOpacity = _opacity.Value;
-            _settings.OverlayOpacity = _opacity.Value;
-            _settings.Save();
-        };
-
-        _register.SelectionChanged += (_, _) =>
-        {
-            _settings.Register = _register.SelectedIndex == 1
-                ? ArabicRegister.Egyptian
-                : ArabicRegister.ModernStandard;
-            _settings.Save();
-            _services.Pipeline.Register = _settings.Register;
-            _status.Text = $"Register set to {(_settings.Register == ArabicRegister.Egyptian ? "Egyptian" : "Modern Standard")} Arabic.";
-        };
+        Build();
 
         LoadSecrets();
         UpdateLaneSummary();
         _ = RefreshAsync();
     }
 
+    /// <summary>Tab headers, in order. Used by the documentation screenshot pass.</summary>
+    public IReadOnlyList<string> TabNames { get; private set; } = [];
+
     private static AvaloniaProperty RangeBase_ValueProperty => Slider.ValueProperty;
 
     // ── shell ─────────────────────────────────────────────────────────────────────────────
 
-    private TabControl? _tabs;
-    private Control? _shellRoot;
+    private void Build(int selectedTab = 0)
+    {
+        Title = _text.WindowTitle;
 
-    /// <summary>Tab headers, in order. Used by the documentation screenshot pass.</summary>
-    public IReadOnlyList<string> TabNames { get; private set; } = [];
+        // The whole interface mirrors, not only the text inside it: a right-to-left reader expects
+        // the label before its field and the tab strip to start on the right.
+        FlowDirection = _text.IsRightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
+
+        // The bundled font, for the same reason the overlay uses it: a Windows machine with no
+        // Arabic font installed draws every Arabic string as empty boxes. Set at the window so it
+        // inherits into tab headers and button captions, which is where it was first noticed
+        // missing - the body text was falling back to a system font that Windows may not have.
+        FontFamily = _text.IsRightToLeft ? Fonts.Arabic : FontFamily.Default;
+
+        _hotkeyBoxes.Clear();
+        _keyBoxes.Clear();
+
+        _hotkeyStatus = Readout();
+        _laneSummary = Readout();
+        _profileNote = Note("");
+        _status = Readout();
+        _quota = Readout();
+        _cache = Readout();
+        _correction = new TextBox { Watermark = _text.CorrectedArabic, Width = 380 };
+        _routerLog = new TextBox
+        {
+            IsReadOnly = true,
+            AcceptsReturn = true,
+            Height = 160,
+            FontFamily = new FontFamily("monospace"),
+            FontSize = 11,
+            TextWrapping = TextWrapping.NoWrap,
+
+            // The log is machine output - provider names, model ids, HTTP codes - and stays
+            // left-to-right even when the interface around it is mirrored.
+            FlowDirection = FlowDirection.LeftToRight,
+        };
+
+        Content = BuildShell();
+        if (_tabs is not null && selectedTab < _tabs.ItemCount) _tabs.SelectedIndex = selectedTab;
+    }
 
     private Control BuildShell()
     {
         var tabs = _tabs = new TabControl { Margin = new Thickness(8, 8, 8, 0) };
-        tabs.Items.Add(Tab("Providers", BuildProvidersTab()));
-        tabs.Items.Add(Tab("Translating", BuildTranslatingTab()));
-        tabs.Items.Add(Tab("Overlay", BuildOverlayTab()));
-        tabs.Items.Add(Tab("Hotkeys", BuildHotkeysTab()));
-        tabs.Items.Add(Tab("Diagnostics", BuildDiagnosticsTab()));
+        tabs.Items.Add(Tab(_text.TabProviders, BuildProvidersTab()));
+        tabs.Items.Add(Tab(_text.TabTranslating, BuildTranslatingTab()));
+        tabs.Items.Add(Tab(_text.TabOverlay, BuildOverlayTab()));
+        tabs.Items.Add(Tab(_text.TabHotkeys, BuildHotkeysTab()));
+        tabs.Items.Add(Tab(_text.TabDiagnostics, BuildDiagnosticsTab()));
         TabNames = tabs.Items.OfType<TabItem>().Select(t => (string)t.Header!).ToList();
 
         // Docked, not scrolled with the tab body: every action on every tab reports here, and a
@@ -149,11 +155,22 @@ public sealed class SettingsWindow : Window
         {
             LastChildFill = true,
             Background = new SolidColorBrush(Color.Parse("#1e1e1e")),
+            FlowDirection = _text.IsRightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight,
         };
         root.Children.Add(statusBar);
         root.Children.Add(tabs);
         return _shellRoot = root;
     }
+
+    private static TabItem Tab(string header, Control body) => new()
+    {
+        Header = header,
+        Content = new ScrollViewer
+        {
+            Content = new StackPanel { Spacing = 12, Margin = new Thickness(20, 16) }
+                .With(panel => panel.Children.Add(body)),
+        },
+    };
 
     /// <summary>
     /// Renders one tab to a PNG. Drives the screenshots in the README, so that what is documented
@@ -173,18 +190,34 @@ public sealed class SettingsWindow : Window
         var size = new PixelSize((int)Width, (int)Height);
         using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(size, new Vector(96, 96));
         bitmap.Render(_shellRoot);
-        bitmap.Save(path);
-    }
 
-    private static TabItem Tab(string header, Control body) => new()
-    {
-        Header = header,
-        Content = new ScrollViewer
+        if (!_text.IsRightToLeft)
         {
-            Content = new StackPanel { Spacing = 12, Margin = new Thickness(20, 16) }
-                .With(panel => panel.Children.Add(body)),
-        },
-    };
+            bitmap.Save(path);
+            return;
+        }
+
+        // Rendering a right-to-left subtree on its own loses the compensating transform the window
+        // applies around it, so the bitmap comes out mirrored - letters and all - even though the
+        // window on screen is correct. Flipping it back is exact, because what was applied was a
+        // single flip of the whole surface. Documentation-only: nothing here affects the live UI.
+        using var buffer = new MemoryStream();
+        bitmap.Save(buffer);
+        buffer.Position = 0;
+
+        using var rendered = SkiaSharp.SKBitmap.Decode(buffer);
+        using var flipped = new SkiaSharp.SKBitmap(rendered.Width, rendered.Height);
+        using (var canvas = new SkiaSharp.SKCanvas(flipped))
+        {
+            canvas.Scale(-1, 1, rendered.Width / 2f, 0);
+            canvas.DrawBitmap(rendered, 0, 0);
+        }
+
+        using var image = SkiaSharp.SKImage.FromBitmap(flipped);
+        using var encoded = image.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+        using var file = File.Create(path);
+        encoded.SaveTo(file);
+    }
 
     // ── tabs ──────────────────────────────────────────────────────────────────────────────
 
@@ -196,21 +229,40 @@ public sealed class SettingsWindow : Window
     {
         var stack = new StackPanel { Spacing = 12 };
 
+        // First control on the first tab, and the only label written in both languages at once:
+        // someone who cannot read the interface has to be able to find the switch that fixes it.
+        var language = new ComboBox
+        {
+            ItemsSource = UiText.Choices.Select(c => c.Name).ToList(),
+            SelectedIndex = UiText.Choices.ToList().FindIndex(c => c.Language == _text.Language),
+            Width = 240,
+        };
+        language.SelectionChanged += (_, _) =>
+        {
+            if (language.SelectedIndex < 0) return;
+            var chosen = UiText.Choices[language.SelectedIndex].Language;
+            if (chosen == _settings.Language) return;
+
+            _settings.Language = chosen;
+            _settings.Save();
+            _text = UiText.For(chosen);
+
+            Build();
+            LoadSecrets();
+            UpdateLaneSummary();
+            _status.Text = _text.LanguageChanged;
+            _ = RefreshAsync();
+        };
+        stack.Children.Add(Row("Language · اللغة", language, labelWidth: 130));
+
         // Suppressed while generating documentation screenshots. The banner is true of the machine
         // the shots are rendered on and false of every machine that runs the app: leaving a
         // "keys are stored in PLAINTEXT" warning in the README would tell Windows users something
         // alarming and wrong about their own install.
         if (!PlatformServices.IsWindows && !Program.HasFlag("--ui-shots"))
-        {
-            stack.Children.Add(Warning(
-                "Development build. Capture replays recorded frames, hotkeys are inactive, and API "
-                + "keys are stored in PLAINTEXT. Windows uses BitBlt, RegisterHotKey and DPAPI."));
-        }
+            stack.Children.Add(Warning(_text.DevBuildWarning));
 
-        stack.Children.Add(Note(
-            "Bring your own key. Nothing is embedded in this app, and lanes are tried top to "
-            + "bottom - so the free tiers answer first and a paid provider only sees the lines they "
-            + "could not. A lane with no key is switched off and costs nothing."));
+        stack.Children.Add(Note(_text.ProvidersIntro));
 
         foreach (var problem in _services.Models.Problems())
             stack.Children.Add(Warning($"models.json: {problem}"));
@@ -221,16 +273,11 @@ public sealed class SettingsWindow : Window
             stack.Children.Add(KeyRow(provider));
         }
 
-        var free = _services.Models.Providers.Any(p => !p.IsPaid && p.Secret is not null);
-        if (free)
-        {
-            stack.Children.Add(Note(
-                "Gemini and Groq both issue a key without a credit card, and between them cover "
-                + "roughly 15,000 lines a day - more than a full day of play."));
-        }
+        if (_services.Models.Providers.Any(p => !p.IsPaid && p.Secret is not null))
+            stack.Children.Add(Note(_text.FreeProvidersNote));
 
-        stack.Children.Add(Button("Save keys", SaveSecrets));
-        stack.Children.Add(Section("Active lanes"));
+        stack.Children.Add(Button(_text.SaveKeys, SaveSecrets));
+        stack.Children.Add(Section(_text.ActiveLanes));
         stack.Children.Add(_laneSummary);
 
         return stack;
@@ -238,20 +285,20 @@ public sealed class SettingsWindow : Window
 
     private Control KeyRow(ProviderConfig provider)
     {
-        var box = KeyBox();
+        var box = KeyBox(_text.NotSet);
         _keyBoxes[provider.Secret!] = box;
 
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
         row.Children.Add(box);
-        row.Children.Add(TierBadge(provider));
+        row.Children.Add(TierBadge(provider, _text));
 
         var stack = new StackPanel { Spacing = 4 };
         stack.Children.Add(row);
 
         if (!string.IsNullOrWhiteSpace(provider.KeyUrl))
-            stack.Children.Add(Note($"Key from {provider.KeyUrl}"));
+            stack.Children.Add(Note($"{_text.KeyFrom} {provider.KeyUrl}"));
 
-        stack.Children.Add(Note($"Models tried in order: {string.Join(" → ", provider.Models)}"));
+        stack.Children.Add(Note($"{_text.ModelsInOrder} {string.Join(" → ", provider.Models)}"));
         return stack;
     }
 
@@ -259,18 +306,18 @@ public sealed class SettingsWindow : Window
     /// The free/paid distinction is the whole reason the paid lanes are worth adding, so it is
     /// stated next to the box rather than buried in a paragraph someone has to read first.
     /// </summary>
-    private static Control TierBadge(ProviderConfig provider)
+    private static Control TierBadge(ProviderConfig provider, UiText text)
     {
-        var (text, colour) = provider.Tier.ToLowerInvariant() switch
+        var (label, colour) = provider.Tier.ToLowerInvariant() switch
         {
-            ProviderTiers.Paid => ("PAID — billed per line", "#fdd663"),
-            ProviderTiers.Local => ("LOCAL", "#9aa0a6"),
-            _ => ("FREE TIER", "#81c995"),
+            ProviderTiers.Paid => (text.TierPaid, "#fdd663"),
+            ProviderTiers.Local => (text.TierLocal, "#9aa0a6"),
+            _ => (text.TierFree, "#81c995"),
         };
 
         return new TextBlock
         {
-            Text = text,
+            Text = label,
             FontSize = 11,
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = new SolidColorBrush(Color.Parse(colour)),
@@ -281,7 +328,7 @@ public sealed class SettingsWindow : Window
     {
         var stack = new StackPanel { Spacing = 12 };
 
-        stack.Children.Add(Section("What are you translating?"));
+        stack.Children.Add(Section(_text.WhatAreYouTranslating));
         var profiles = new ComboBox
         {
             ItemsSource = _services.AvailableProfiles,
@@ -302,39 +349,49 @@ public sealed class SettingsWindow : Window
                 var picked = await _services.Regions.HasAsync(
                     id, _settings.LastRegionProfile, CancellationToken.None);
 
-                _status.Text = picked
-                    ? $"Switched to '{_services.Profile.DisplayName}'. Its saved capture region is back."
-                    : $"Switched to '{_services.Profile.DisplayName}'. No region picked for it yet — "
-                      + "press Ctrl+Shift+R.";
+                _status.Text = string.Format(
+                    picked ? _text.ProfileSwitchedRegionRestored : _text.ProfileSwitchedNoRegion,
+                    _services.Profile.DisplayName);
             });
         };
-        stack.Children.Add(Row("Profile", profiles));
-        _profileNote = Note("");
+        stack.Children.Add(Row(_text.Profile, profiles));
         UpdateProfileNote();
         stack.Children.Add(_profileNote);
 
-        stack.Children.Add(Section("Arabic"));
-        stack.Children.Add(Row("Register", _register));
-        stack.Children.Add(Note(
-            "Modern Standard suits FFXIV's archaic narrative voice. Egyptian lands well for "
-            + "merchants and comic relief, and reads as comedy for Elezen nobility."));
+        stack.Children.Add(Section(_text.Arabic));
+        _register = new ComboBox
+        {
+            ItemsSource = new[] { _text.RegisterMsa, _text.RegisterEgyptian },
+            SelectedIndex = _settings.Register == ArabicRegister.Egyptian ? 1 : 0,
+            Width = 240,
+        };
+        _register.SelectionChanged += (_, _) =>
+        {
+            _settings.Register = _register.SelectedIndex == 1
+                ? ArabicRegister.Egyptian
+                : ArabicRegister.ModernStandard;
+            _settings.Save();
+            _services.Pipeline.Register = _settings.Register;
+            _status.Text = string.Format(_text.RegisterSetTo,
+                _settings.Register == ArabicRegister.Egyptian
+                    ? _text.RegisterEgyptian
+                    : _text.RegisterMsa);
+        };
+        stack.Children.Add(Row(_text.Register, _register));
+        stack.Children.Add(Note(_text.RegisterNote));
 
-        stack.Children.Add(Section("Capture regions"));
-        stack.Children.Add(Note(
-            "Games often draw narrative text in more than one place — a dialogue box, a subtitle bar, "
-            + "a quest window — so each gets its own rectangle. Each profile keeps its own set, so "
-            + "switching between a game and the desktop does not lose either."));
+        stack.Children.Add(Section(_text.CaptureRegions));
+        stack.Children.Add(Note(_text.RegionsNote));
         var regionButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         foreach (var name in RegionProfile.Names.All)
-            regionButtons.Children.Add(Button($"Pick {name}", () => _ = PickRegionAsync(name)));
+            regionButtons.Children.Add(Button($"{_text.Pick} {name}", () => _ = PickRegionAsync(name)));
         stack.Children.Add(regionButtons);
 
-        stack.Children.Add(Section("Corrections"));
-        stack.Children.Add(Note("Correct the line currently on the overlay. The correction is pinned "
-                              + "and always wins over the model in future."));
+        stack.Children.Add(Section(_text.Corrections));
+        stack.Children.Add(Note(_text.CorrectionsNote));
         var correctRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         correctRow.Children.Add(_correction);
-        correctRow.Children.Add(Button("Pin correction", () => _ = CorrectCurrentAsync()));
+        correctRow.Children.Add(Button(_text.PinCorrection, () => _ = CorrectCurrentAsync()));
         stack.Children.Add(correctRow);
 
         return stack;
@@ -344,17 +401,39 @@ public sealed class SettingsWindow : Window
     {
         var stack = new StackPanel { Spacing = 12 };
 
-        stack.Children.Add(Row("Font size", _fontSize));
-        stack.Children.Add(Row("Panel opacity", _opacity));
-        stack.Children.Add(Note(
-            "Both apply live. Never set a fixed line height on the overlay: too tight and the marks "
-            + "that hang below the baseline are clipped, which turns ي into ى — a different letter."));
+        _fontSize = new Slider
+        {
+            Minimum = 16, Maximum = 48, Value = _settings.OverlayFontSize, Width = 240,
+        };
+        _opacity = new Slider
+        {
+            Minimum = 0.3, Maximum = 1.0, Value = _settings.OverlayOpacity, Width = 240,
+        };
+
+        _fontSize.PropertyChanged += (_, e) =>
+        {
+            if (e.Property != RangeBase_ValueProperty) return;
+            _overlay.BodyFontSize = _fontSize.Value;
+            _settings.OverlayFontSize = _fontSize.Value;
+            _settings.Save();
+        };
+        _opacity.PropertyChanged += (_, e) =>
+        {
+            if (e.Property != RangeBase_ValueProperty) return;
+            _overlay.PanelOpacity = _opacity.Value;
+            _settings.OverlayOpacity = _opacity.Value;
+            _settings.Save();
+        };
+
+        stack.Children.Add(Row(_text.FontSize, _fontSize));
+        stack.Children.Add(Row(_text.PanelOpacity, _opacity));
+        stack.Children.Add(Note(_text.OverlayNote));
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        buttons.Children.Add(Button("Preview overlay", () =>
+        buttons.Children.Add(Button(_text.PreviewOverlay, () =>
             _overlay.ShowTranslation("Y'shtola", "تعال، فالأثير هنا يزداد اضطراباً.")));
-        buttons.Children.Add(Button("Show / hide overlay", () => _status.Text = _overlay.ToggleHidden()
-            ? "Overlay shown." : "Overlay hidden. Translation carries on in the background."));
+        buttons.Children.Add(Button(_text.ShowHideOverlay, () => _status.Text = _overlay.ToggleHidden()
+            ? _text.OverlayShown : _text.OverlayHidden));
         stack.Children.Add(buttons);
 
         return stack;
@@ -365,29 +444,32 @@ public sealed class SettingsWindow : Window
         var stack = new StackPanel { Spacing = 12 };
 
         stack.Children.Add(Note(PlatformServices.IsWindows
-            ? "Type a combination such as Ctrl+Shift+T. Modifiers: Ctrl, Shift, Alt, Win. Keys include "
-              + "A-Z, 0-9, F1-F24, arrows, Insert/Delete/Home/End, numpad (Num0-Num9) and punctuation. "
-              + "F13-F24 are the safest choices - games almost never bind them."
-            : "Global hotkeys are Windows-only. On macOS use the manual buttons below instead."));
+            ? _text.HotkeysNoteWindows
+            : _text.HotkeysNoteOther));
 
         foreach (var action in Enum.GetValues<HotkeyAction>())
         {
-            var box = new TextBox { Text = _settings.HotkeyFor(action).ToString(), Width = 200 };
+            var box = new TextBox
+            {
+                Text = _settings.HotkeyFor(action).ToString(),
+                Width = 200,
+                FlowDirection = FlowDirection.LeftToRight,
+            };
             _hotkeyBoxes[action] = box;
-            stack.Children.Add(Row(DefaultHotkeys.Describe(action), box, labelWidth: 150));
+            stack.Children.Add(Row(_text.HotkeyDescription(action), box, labelWidth: 190));
         }
 
         var hotkeyButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        hotkeyButtons.Children.Add(Button("Apply hotkeys", ApplyHotkeys));
-        hotkeyButtons.Children.Add(Button("Reset to defaults", ResetHotkeys));
+        hotkeyButtons.Children.Add(Button(_text.ApplyHotkeys, ApplyHotkeys));
+        hotkeyButtons.Children.Add(Button(_text.ResetToDefaults, ResetHotkeys));
         stack.Children.Add(hotkeyButtons);
         stack.Children.Add(_hotkeyStatus);
 
-        stack.Children.Add(Section("Manual controls"));
-        stack.Children.Add(Note("The same five actions, for when a hotkey is unavailable or clashes."));
+        stack.Children.Add(Section(_text.ManualControls));
+        stack.Children.Add(Note(_text.ManualControlsNote));
         var manual = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        manual.Children.Add(Button("Translate now", () => _ = _session.TranslateNowAsync()));
-        manual.Children.Add(Button("Toggle auto-watch", _session.ToggleAutoWatch));
+        manual.Children.Add(Button(_text.TranslateNow, () => _ = _session.TranslateNowAsync()));
+        manual.Children.Add(Button(_text.ToggleAutoWatch, _session.ToggleAutoWatch));
         stack.Children.Add(manual);
 
         return stack;
@@ -398,18 +480,17 @@ public sealed class SettingsWindow : Window
         var stack = new StackPanel { Spacing = 12 };
 
         stack.Children.Add(Note(PlatformServices.Description));
-        stack.Children.Add(Note($"OCR: {_services.Ocr.Name} — {_services.Ocr.Diagnostics ?? "no detail"}"));
+        stack.Children.Add(Note($"OCR: {_services.Ocr.Name} — {_services.Ocr.Diagnostics ?? "-"}"));
         stack.Children.Add(_quota);
         stack.Children.Add(_cache);
 
-        stack.Children.Add(Section("Router log"));
-        stack.Children.Add(Note("A model disappearing upstream shows up here, by name. So does a "
-                              + "provider being rate limited, and a line that fell back to English."));
+        stack.Children.Add(Section(_text.RouterLog));
+        stack.Children.Add(Note(_text.RouterLogNote));
         stack.Children.Add(_routerLog);
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        actions.Children.Add(Button("Test translation", () => _ = TestTranslationAsync()));
-        actions.Children.Add(Button("Refresh", () => _ = RefreshAsync()));
+        actions.Children.Add(Button(_text.TestTranslation, () => _ = TestTranslationAsync()));
+        actions.Children.Add(Button(_text.Refresh, () => _ = RefreshAsync()));
         stack.Children.Add(actions);
 
         return stack;
@@ -423,12 +504,8 @@ public sealed class SettingsWindow : Window
     {
         var profile = _services.Profile;
         _profileNote.Text = profile.WindowTitles.Length > 0
-            ? $"Active: {profile.DisplayName}. Carries its own glossary ({profile.Glossary.Count} "
-              + "terms) and measures the capture region against that application's window, so the "
-              + "region survives the window being moved."
-            : $"Active: {profile.DisplayName}. No window of its own — the capture region is measured "
-              + "against the whole screen. This is what you want for a browser, a PDF or a video "
-              + "player. Move the window and you will need to pick the region again.";
+            ? string.Format(_text.ProfileNoteWindowed, profile.DisplayName, profile.Glossary.Count)
+            : string.Format(_text.ProfileNoteScreen, profile.DisplayName);
     }
 
     /// <summary>
@@ -441,13 +518,13 @@ public sealed class SettingsWindow : Window
             .Select(p =>
             {
                 var live = p.Secret is null || _services.Secrets.Has(p.Secret);
-                var tier = p.IsPaid ? " (paid)" : "";
-                return live ? $"{p.Label}{tier}" : $"{p.Label} — no key, skipped";
+                var tier = p.IsPaid ? $" ({_text.TierPaid})" : "";
+                return live ? $"{p.Label}{tier}" : $"{p.Label} — {_text.NoKeySkipped}";
             })
             .ToList();
 
         _laneSummary.Text = lanes.Count == 0
-            ? "No lanes configured. Translation will fall back to showing the English."
+            ? _text.NoLanes
             : string.Join("\n", lanes.Select((lane, i) => $"{i + 1}.  {lane}"));
     }
 
@@ -474,9 +551,7 @@ public sealed class SettingsWindow : Window
         }
 
         UpdateLaneSummary();
-        _status.Text = saved == 0
-            ? "All keys cleared. Nothing will be translated until one is entered."
-            : $"{saved} key{(saved == 1 ? "" : "s")} saved. Lanes without one are skipped.";
+        _status.Text = saved == 0 ? _text.KeysCleared : string.Format(_text.KeysSaved, saved);
     }
 
     public async Task PickRegionAsync(string profileName)
@@ -487,12 +562,12 @@ public sealed class SettingsWindow : Window
         await Task.Delay(120);
         var screenshot = PlatformServices.CaptureFullScreen();
 
-        var picker = new RegionPickerWindow(profileName, screenshot, TestRegionAsync);
+        var picker = new RegionPickerWindow(profileName, screenshot, TestRegionAsync, _text);
         await picker.ShowDialog(this);
 
         if (picker.Result is not { } region)
         {
-            _status.Text = $"Region '{profileName}' unchanged.";
+            _status.Text = string.Format(_text.RegionUnchanged, profileName);
             return;
         }
 
@@ -512,8 +587,8 @@ public sealed class SettingsWindow : Window
         _settings.LastRegionProfile = profileName;
         _settings.Save();
 
-        _status.Text = $"Saved '{profileName}' as {profile.RelWidth:P0} x {profile.RelHeight:P0} " +
-                       $"of the client rect.";
+        _status.Text = string.Format(_text.RegionSaved, profileName,
+            profile.RelWidth.ToString("P0"), profile.RelHeight.ToString("P0"));
     }
 
     /// <summary>
@@ -523,9 +598,9 @@ public sealed class SettingsWindow : Window
     private async Task<string> TestRegionAsync(CaptureRegion region)
     {
         var screenshot = PlatformServices.CaptureFullScreen();
-        if (screenshot is null) return "(screen capture is Windows-only)";
+        if (screenshot is null) return _text.CaptureWindowsOnly;
 
-        if (!region.FitsWithin(screenshot.Width, screenshot.Height)) return "(selection is off-screen)";
+        if (!region.FitsWithin(screenshot.Width, screenshot.Height)) return _text.SelectionOffScreen;
 
         var result = await _services.Ocr.RecognizeAsync(screenshot.Crop(region), CancellationToken.None);
         return result.RawText;
@@ -539,7 +614,7 @@ public sealed class SettingsWindow : Window
     {
         if (_session.Current is not { } current)
         {
-            _status.Text = "Nothing on the overlay to correct yet.";
+            _status.Text = _text.NothingToCorrect;
             return;
         }
 
@@ -547,7 +622,7 @@ public sealed class SettingsWindow : Window
         if (string.IsNullOrWhiteSpace(corrected))
         {
             _correction.Text = current.Arabic;
-            _status.Text = "Edit the text above, then press Pin correction.";
+            _status.Text = _text.EditThenPin;
             return;
         }
 
@@ -556,7 +631,7 @@ public sealed class SettingsWindow : Window
 
         _overlay.ShowTranslation(null, corrected);
         _correction.Text = "";
-        _status.Text = "Correction pinned. It will be used for this line from now on.";
+        _status.Text = _text.CorrectionPinned;
         await RefreshAsync();
     }
 
@@ -567,8 +642,8 @@ public sealed class SettingsWindow : Window
             var parsed = Hotkey.TryParse(box.Text);
             if (parsed is null || !parsed.IsValid)
             {
-                _hotkeyStatus.Text = $"'{box.Text}' is not a usable combination for " +
-                                     $"{DefaultHotkeys.Describe(action)}. It needs at least one modifier and a known key.";
+                _hotkeyStatus.Text = string.Format(
+                    _text.HotkeyInvalid, box.Text, _text.HotkeyDescription(action));
                 return;
             }
 
@@ -578,9 +653,8 @@ public sealed class SettingsWindow : Window
         var conflicts = _settings.FindConflicts();
         if (conflicts.Count > 0)
         {
-            _hotkeyStatus.Text = "Two actions share a combination: " +
-                                 string.Join(", ", conflicts.Select(DefaultHotkeys.Describe)) +
-                                 ". One of them would never fire.";
+            _hotkeyStatus.Text = string.Format(_text.HotkeyConflict,
+                string.Join(", ", conflicts.Select(_text.HotkeyDescription)));
             return;
         }
 
@@ -605,8 +679,9 @@ public sealed class SettingsWindow : Window
     {
         var failed = results.Where(r => !r.Succeeded).ToList();
         _hotkeyStatus.Text = failed.Count == 0
-            ? $"All {results.Count} hotkeys registered."
-            : string.Join("  ·  ", failed.Select(f => $"{DefaultHotkeys.Describe(f.Action)}: {f.Error}"));
+            ? string.Format(_text.AllHotkeysRegistered, results.Count)
+            : string.Join("  ·  ",
+                failed.Select(f => $"{_text.HotkeyDescription(f.Action)}: {f.Error}"));
     }
 
     public void ReportStatus(string message)
@@ -622,7 +697,7 @@ public sealed class SettingsWindow : Window
     private async Task TestTranslationAsync()
     {
         _overlay.ShowLoading("Y'shtola");
-        _status.Text = "Translating...";
+        _status.Text = _text.Translating;
 
         try
         {
@@ -636,12 +711,13 @@ public sealed class SettingsWindow : Window
             else
                 _overlay.ShowTranslation(outcome.Speaker, outcome.Result.Text);
 
-            _status.Text = $"OCR \"{outcome.Body}\" -> {outcome.Result.Provider}/{outcome.Result.Model} " +
-                           $"in {outcome.Total.TotalMilliseconds:F0} ms ({outcome.Result.Outcome})";
+            _status.Text = string.Format(_text.TestResult,
+                outcome.Result.Provider, outcome.Result.Model,
+                outcome.Total.TotalMilliseconds.ToString("F0"), outcome.Result.Outcome);
         }
         catch (Exception e)
         {
-            _status.Text = $"Test failed: {e.Message}";
+            _status.Text = $"{_text.TestFailed} {e.Message}";
         }
 
         await RefreshAsync();
@@ -658,21 +734,27 @@ public sealed class SettingsWindow : Window
 
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                _quota.Text = "Quota today:  " + string.Join("   ·   ", quota.Select(q => q.ToString()));
-                _cache.Text = $"Cache:  {stats.Entries} entries ({stats.Overrides} corrected)   ·   " +
-                              $"{stats.Hits}/{stats.Lookups} hits ({stats.HitRate:P0})";
+                _quota.Text = $"{_text.QuotaToday}  " +
+                              string.Join("   ·   ", quota.Select(q => q.ToString()));
+                _cache.Text = $"{_text.Cache}  {stats.Entries} {_text.Entries} " +
+                              $"({stats.Overrides} {_text.Corrected})   ·   " +
+                              $"{stats.Hits}/{stats.Lookups} {_text.Hits} ({stats.HitRate:P0})";
                 _routerLog.Text = string.Join('\n', _services.RouterLog.TakeLast(40));
             });
         }
         catch (Exception e)
         {
-            _status.Text = $"Could not read diagnostics: {e.Message}";
+            _status.Text = $"{_text.DiagnosticsFailed} {e.Message}";
         }
     }
 
     // ── small helpers, kept local so the layout above reads as a list of rows ──────────────
 
-    private static TextBox KeyBox() => new() { PasswordChar = '•', Width = 380, Watermark = "not set" };
+    private static TextBox KeyBox(string watermark) => new()
+    {
+        PasswordChar = '•', Width = 380, Watermark = watermark,
+        FlowDirection = FlowDirection.LeftToRight,
+    };
 
     private static TextBlock Section(string text) => new()
     {

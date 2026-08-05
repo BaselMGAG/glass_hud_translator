@@ -18,6 +18,13 @@ public sealed record AppSettings
 {
     [JsonPropertyName("profile")] public string? ProfileId { get; set; }
 
+    /// <summary>
+    /// Language of the interface itself, not of the translation. Defaults to English because that
+    /// is what the documentation and screenshots show, but the point of switching it is that
+    /// someone who needs Arabic subtitles should not have to read English to turn them on.
+    /// </summary>
+    [JsonPropertyName("language")] public UiLanguage Language { get; set; } = UiLanguage.English;
+
     [JsonPropertyName("register")] public ArabicRegister Register { get; set; } = ArabicRegister.ModernStandard;
 
     [JsonPropertyName("overlayFontSize")] public double OverlayFontSize { get; set; } = 26;

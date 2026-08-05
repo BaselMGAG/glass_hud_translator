@@ -1,4 +1,5 @@
 using GlassHudTranslator.Core.Capture;
+using GlassHudTranslator.Core.Config;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
@@ -29,17 +30,19 @@ public sealed class RegionPickerWindow : Window
     private readonly TextBlock _readout;
     private readonly TextBlock _ocrPreview;
     private readonly Canvas _canvas = new();
+    private readonly UiText _text;
 
     private Point _origin;
     private bool _dragging;
 
     public RegionPickerWindow(string profileName, Frame? screenshot = null,
-        Func<CaptureRegion, Task<string>>? testOcr = null)
+        Func<CaptureRegion, Task<string>>? testOcr = null, UiText? text = null)
     {
         _screenshot = screenshot;
         _testOcr = testOcr;
+        _text = text ?? UiText.En;
 
-        Title = $"Select the {profileName} region";
+        Title = string.Format(_text.SelectRegionTitle, profileName);
         SystemDecorations = SystemDecorations.None;
         WindowState = WindowState.FullScreen;
         Topmost = true;
@@ -83,10 +86,9 @@ public sealed class RegionPickerWindow : Window
                 {
                     new TextBlock
                     {
-                        Text = screenshot is null
-                            ? $"Drag a box over the {profileName} area.    Enter saves  ·  Esc cancels"
-                            : $"Drag a box over the {profileName} text. This is a frozen screenshot, so "
-                              + "nothing will move while you aim.    Space tests the OCR  ·  Enter saves  ·  Esc cancels",
+                        Text = string.Format(
+                            screenshot is null ? _text.PickerHintPlain : _text.PickerHintFrozen,
+                            profileName),
                         FontSize = 15,
                         Foreground = Brushes.White,
                         TextWrapping = TextWrapping.Wrap,
@@ -131,7 +133,7 @@ public sealed class RegionPickerWindow : Window
         // A stray click should not wipe a working profile with a 2x2 region.
         if (rect.Width < 40 || rect.Height < 20)
         {
-            _readout.Text = "Too small - drag across the whole text box.";
+            _readout.Text = _text.PickerTooSmall;
             _selection.IsVisible = false;
             return;
         }
@@ -167,17 +169,17 @@ public sealed class RegionPickerWindow : Window
                 break;
 
             case Key.Space when _selection.IsVisible && _testOcr is not null:
-                _ocrPreview.Text = "Reading...";
+                _ocrPreview.Text = _text.OcrReading;
                 try
                 {
                     var text = await _testOcr(ToScreenPixels(CurrentRect()));
                     _ocrPreview.Text = string.IsNullOrWhiteSpace(text)
-                        ? "OCR read nothing here. Try covering more of the text, or less of the border."
-                        : $"OCR reads:   {text.Replace("\n", "   ⏎   ")}";
+                        ? _text.OcrReadNothing
+                        : $"{_text.OcrReads}   {text.Replace("\n", "   ⏎   ")}";
                 }
                 catch (Exception ex)
                 {
-                    _ocrPreview.Text = $"OCR failed: {ex.Message}";
+                    _ocrPreview.Text = $"{_text.OcrFailed} {ex.Message}";
                 }
 
                 break;

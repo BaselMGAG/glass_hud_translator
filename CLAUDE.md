@@ -34,7 +34,7 @@ solution level it tries to force `net10.0` onto the Windows-only projects and fa
 dotnet test
 ```
 
-159 tests, all runnable on macOS and Linux.
+169 tests, all runnable on macOS and Linux.
 
 ```bash
 dotnet run --project tools/Replay -- --no-cache
@@ -126,6 +126,20 @@ automatically, because that screen is generated from the file. Only a provider w
 protocol needs code — `AnthropicProvider` is the one example, and it exists as a separate class
 precisely so that `OpenAiCompatibleProvider`, whose whole justification is having no
 provider-specific branches, keeps having none.
+
+**Every user-facing string goes in `UiText`, in both languages.** It is a class of `required`
+properties rather than a key/value dictionary precisely so that adding a string without translating
+it is a compile error, not a silent English leak in the Arabic interface. There is a test asserting
+the `{0}`-style placeholders match between the two — a translation carrying a `{1}` the English
+does not have throws `FormatException` at runtime, and only ever for the users this project exists
+for. Platform error text (Win32 messages, "Global hotkeys are Windows-only") is deliberately left
+untranslated; it comes from the OS.
+
+**Set the bundled font whenever Arabic is on screen.** `Fonts.Arabic` is bundled for the reason
+`NOTICE` gives: a Windows machine with no Arabic font installed renders every Arabic string as
+empty boxes. Relying on OS fallback works on macOS and hides the problem — the Arabic tab headers
+were tofu the first time the interface was switched, and that was on a Mac that *does* have Arabic
+fonts.
 
 ## Things deliberately not done
 

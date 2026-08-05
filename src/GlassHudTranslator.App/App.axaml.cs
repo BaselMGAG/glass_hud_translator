@@ -52,6 +52,15 @@ public partial class App : Application
         PlatformServices.InitialiseDpiAwareness();
 
         var settings = AppSettings.Load();
+
+        // Lets the documentation pass render the same window in both languages without the
+        // developer's own saved preference leaking into the screenshots.
+        if (Program.Option("--ui-shots-lang") is { } shotLanguage)
+        {
+            settings.Language = shotLanguage.Equals("ar", StringComparison.OrdinalIgnoreCase)
+                ? UiLanguage.Arabic
+                : UiLanguage.English;
+        }
         var overlay = _overlay = new OverlayWindow
         {
             BodyFontSize = settings.OverlayFontSize,
@@ -141,11 +150,20 @@ public partial class App : Application
         var directory = Program.Option("--ui-shots-out") ?? Path.GetTempPath();
         Directory.CreateDirectory(directory);
 
+        // Tab headers are themselves translated, so the Arabic run would otherwise write files
+        // named after Arabic words. The suffix keeps both sets side by side with stable names.
+        var suffix = Program.Option("--ui-shots-lang") is { } lang &&
+                     lang.Equals("ar", StringComparison.OrdinalIgnoreCase)
+            ? "-ar"
+            : "";
+
+        var slugs = new[] { "providers", "translating", "overlay", "hotkeys", "diagnostics" };
+
         window.Opened += async (_, _) =>
         {
             for (var i = 0; i < window.TabNames.Count; i++)
             {
-                var name = window.TabNames[i].ToLowerInvariant();
+                var name = (i < slugs.Length ? slugs[i] : $"tab{i}") + suffix;
                 window.SelectTab(i);
 
                 // Let layout and the first render pass settle before capturing.

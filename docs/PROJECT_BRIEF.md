@@ -118,7 +118,7 @@ contribute to**, not a finished product.
 | Translation speed | ~1 second per new line; instant for anything seen before |
 | Running cost | Free — the supported providers' free tiers cover roughly 15,000 requests a day |
 | Credit card needed | No |
-| Automated tests | 159 |
+| Automated tests | 169 |
 | Glossary | 86 Final Fantasy XIV proper nouns pinned so far |
 | Configurable hotkeys | 5 |
 | Licence | Apache 2.0 |

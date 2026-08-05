@@ -58,6 +58,10 @@ overlay draw over it.
 Windows account. Each provider shows whether it's free or billed per line, and where to get a key.
 Any provider you leave blank is switched off.
 
+The first control on that tab is the interface language, labelled **Language · اللغة** in both
+scripts so it's findable either way. The whole interface is available in Arabic, right-to-left —
+see [below](#the-interface-speaks-arabic-too).
+
 <div align="center">
 <img src="docs/images/settings-providers.png" alt="The Providers tab in Settings, showing a key field for each of Google Gemini, Groq, OpenAI and Anthropic Claude, each labelled free tier or paid, with the models each one will try in order" width="820">
 </div>
@@ -117,6 +121,21 @@ which OCR engine loaded, and a router log naming any provider or model that fail
 **Stuck overlay?** Run `0-force-stop.bat`. The overlay has no Alt-Tab entry and clicks pass through
 it, so there is no window to close — the process has to be ended.
 
+## The interface speaks Arabic too
+
+The app exists for people who read Arabic more comfortably than English, so an English-only
+interface was the wrong way round: the person who most needs it was the one least able to set it
+up. Switch it in Settings → Providers → **Language · اللغة**. The whole window mirrors — tabs,
+labels, layout — and it uses the bundled Arabic font rather than hoping Windows has one.
+
+English stays the default, since that's what this documentation shows.
+
+<div align="center">
+<img src="docs/images/settings-providers-ar.png" alt="The same Providers tab with the interface language set to Arabic: tab names, labels and notes are in Arabic and the whole layout is mirrored right-to-left, while API keys, URLs and model names stay left-to-right" width="820">
+<br>
+<sub>The same tab in Arabic. Keys, URLs and model names stay left-to-right, because they are not words.</sub>
+</div>
+
 ## What you're configuring
 
 <div align="center">
@@ -148,7 +167,7 @@ Early, but working.
 
 | | |
 |---|---|
-| Translation pipeline (OCR → normalise → cache → LLM → render) | working, 159 tests |
+| Translation pipeline (OCR → normalise → cache → LLM → render) | working, 169 tests |
 | Arabic rendering, shaping, bidi, diacritics | working and verified |
 | Game profiles, glossary, OCR corrections | working |
 | Provider failover, quota tracking, caching | working |
