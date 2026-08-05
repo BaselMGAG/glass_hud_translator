@@ -1,0 +1,10 @@
+{
+  "_comment_1": "Fixes for characters the OCR reliably gets wrong in THIS game's font.",
+  "_comment_2": "Applied before the cache key is computed, so a line misread one way and read correctly",
+  "_comment_3": "another way still counts as the same line and is only paid for once.",
+  "_comment_4": "Build this from real logs rather than guesswork - the app records every raw OCR result",
+  "_comment_5": "in translation_log, and the misreads that actually matter will be obvious there.",
+  "_comment_6": "Keys are matched case-insensitively, longest first, in one left-to-right pass.",
+
+  "Charcter Nam": "Character Name"
+}

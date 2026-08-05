@@ -1,0 +1,37 @@
+{
+  "_comment": [
+    "Ordered provider lanes, and within each an ordered model fallback list.",
+    "Model names live here and NEVER in code: free catalogues churn, and providers have been",
+    "observed silently deleting free models. A 404 falls through to the next entry and logs loudly.",
+    "rpm sits deliberately under the published ceiling - those numbers are not guaranteed and are",
+    "no longer documented per model. Session 3 replaces these with numbers measured from the quota",
+    "table during real play."
+  ],
+  "providers": [
+    {
+      "name": "gemini",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "secret": "GeminiApiKey",
+      "rpm": 13,
+      "rpd": 1000,
+      "models": ["gemini-2.5-flash-lite", "gemini-2.5-flash"]
+    },
+    {
+      "name": "groq",
+      "baseUrl": "https://api.groq.com/openai/v1",
+      "secret": "GroqApiKey",
+      "rpm": 28,
+      "rpd": 14400,
+      "models": ["qwen/qwen3-32b", "llama-3.3-70b-versatile"]
+    },
+    {
+      "name": "ollama",
+      "baseUrl": "http://localhost:11434/v1",
+      "secret": null,
+      "rpm": 120,
+      "rpd": 1000000,
+      "devOnly": true,
+      "models": ["qwen3:8b"]
+    }
+  ]
+}

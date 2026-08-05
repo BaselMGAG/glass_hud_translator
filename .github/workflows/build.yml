@@ -1,0 +1,63 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # Runs on ubuntu because it is 1x billing, where windows-latest is 2x. Nothing in Core or the
+  # tests needs Windows - that is the whole point of the platform seam.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install tesseract
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
+
+      - run: dotnet restore
+      - run: dotnet build --no-restore -c Release
+      - run: dotnet test tests/GamingTranslatorGlassHUD.Core.Tests --no-build -c Release --logger "console;verbosity=normal"
+
+      # Proves the whole pipeline still runs end to end - capture, OCR, normalisation, cache,
+      # glossary, routing - without a game, a key, or a network call.
+      - name: Replay the synthetic corpus
+        run: dotnet run --project tools/Replay -c Release --no-build -- --no-cache
+
+  # The compile safety net. The Windows test machine belongs to someone else and is rarely
+  # available, so every push must prove the Windows TFM still builds and must leave behind a
+  # runnable .exe - "testing" then costs a download rather than a build environment (brief 9).
+  publish-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish self-contained single file
+        # IncludeNativeLibrariesForSelfExtract is required: Skia's and Tesseract's native
+        # libraries do not survive single-file bundling without it.
+        run: >
+          dotnet publish src/GamingTranslatorGlassHUD.App/GamingTranslatorGlassHUD.App.csproj
+          -f net10.0-windows -c Release -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -o out
+
+      - name: Ship the data files alongside the exe
+        run: |
+          Copy-Item -Recurse data out/data
+          Copy-Item -Recurse profiles out/profiles
+        shell: pwsh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GamingTranslatorGlassHUD-win-x64
+          path: out
+          if-no-files-found: error

@@ -1,0 +1,23 @@
+{
+  "_comment_1": "Known OCR failure modes. Applied before cache hashing AND before translation.",
+  "_comment_2": "SEED ONLY. Session 3 populates this from the real translation_log, not from guesses -",
+  "_comment_3": "the entries below are the examples named in the brief plus the apostrophe names most",
+  "_comment_4": "likely to break, and every one of them should be confirmed against real frames.",
+  "_comment_5": "Keys are matched case-insensitively, longest first, in a single left-to-right pass.",
+
+  "Y shtola": "Y'shtola",
+  "Y'shtoIa": "Y'shtola",
+  "Yshtola": "Y'shtola",
+  "Y mhitra": "Y'mhitra",
+  "G raha Tia": "G'raha Tia",
+  "G'raha Tla": "G'raha Tia",
+
+  "Scions ot the Seventh Dawn": "Scions of the Seventh Dawn",
+  "Scions of the Seventh Dawn.": "Scions of the Seventh Dawn",
+
+  "Limsa Lominsa.": "Limsa Lominsa",
+  "Lirnsa Lominsa": "Limsa Lominsa",
+  "UI'dah": "Ul'dah",
+  "Ul dah": "Ul'dah",
+  "Eorzea.": "Eorzea"
+}

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Headless pipeline harness. The main dev loop on macOS - must never need Windows. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>GamingTranslatorGlassHUD.Replay</RootNamespace>
+    <AssemblyName>replay</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\GamingTranslatorGlassHUD.Core\GamingTranslatorGlassHUD.Core.csproj" />
+  </ItemGroup>
+
+</Project>

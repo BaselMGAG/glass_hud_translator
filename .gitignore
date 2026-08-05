@@ -1,0 +1,22 @@
+bin/
+obj/
+out/
+*.user
+.DS_Store
+.vs/
+.idea/
+
+# Secrets - DevPlainFileSecretStore writes here. Never commit.
+secrets.dev.json
+**/secrets.dev.json
+
+# Local runtime state
+*.db
+*.db-wal
+*.db-shm
+scratch/
+
+# Generated sample frames. `dotnet run --project tools/Replay` recreates them on demand,
+# and they are synthetic - real captures from your own game belong here instead.
+test-frames/*.png
+test-frames/expected.json

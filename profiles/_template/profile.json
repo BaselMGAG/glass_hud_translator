@@ -1,0 +1,18 @@
+{
+  "id": "_template",
+  "displayName": "Your game here",
+
+  "windowTitles": ["Part of the window title, case-insensitive"],
+
+  "sourceLanguage": "eng",
+
+  "styleHint": "One or two sentences on how the writing should sound. This goes straight into the system prompt, so be concrete: 'terse military radio chatter', 'wry and modern, lots of sarcasm', 'formal medieval court speech'. Leaving it out gives you flat, neutral prose regardless of the game.",
+
+  "hasSpeakerNames": true,
+
+  "notes": "Copy this folder, rename it to your game's id, and fill in the three files. Nothing here needs a code change - the app discovers profiles by scanning this directory.",
+
+  "regions": {
+    "dialogue": { "x": 0.22, "y": 0.70, "w": 0.56, "h": 0.20 }
+  }
+}

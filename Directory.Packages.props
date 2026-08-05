@@ -1,0 +1,48 @@
+<Project>
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup Label="UI">
+    <!--
+      Avalonia 11.3.x rather than 12.x: deliberate. 11.x is the API surface this codebase was
+      written against. Revisit once the UI is stable - see CLAUDE.md.
+      SkiaSharp is pinned to 2.88.9 because that is what Avalonia.Skia 11.3.18 depends on;
+      bumping it independently causes a diamond conflict.
+    -->
+    <PackageVersion Include="Avalonia" Version="11.3.18" />
+    <PackageVersion Include="Avalonia.Desktop" Version="11.3.18" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="11.3.18" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="11.3.18" />
+    <PackageVersion Include="Avalonia.Diagnostics" Version="11.3.18" />
+  </ItemGroup>
+
+  <ItemGroup Label="Graphics">
+    <PackageVersion Include="SkiaSharp" Version="2.88.9" />
+    <PackageVersion Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="2.88.9" />
+    <PackageVersion Include="HarfBuzzSharp" Version="8.3.1.1" />
+  </ItemGroup>
+
+  <ItemGroup Label="Storage">
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.5" />
+    <!--
+      Transitive pin. Microsoft.Data.Sqlite 10.0.5 pulls lib.e_sqlite3 2.1.11, which carries
+      GHSA-2m69-gcr7-jv3q (vulnerable SQLite, <= 2.1.11). 2.1.12 is a native-only bump - the
+      managed core stays 2.1.11, so nothing Microsoft.Data.Sqlite binds against moves.
+      Recheck when Microsoft.Data.Sqlite advances past 10.0.5, and drop this if it resolves itself.
+    -->
+    <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
+  </ItemGroup>
+
+  <ItemGroup Label="Testing">
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <!-- FakeTimeProvider: lets the router's cooldowns, staleness window and token buckets be
+         tested deterministically instead of with Thread.Sleep. -->
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.8.0" />
+  </ItemGroup>
+
+</Project>

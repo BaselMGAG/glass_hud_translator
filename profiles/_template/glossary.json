@@ -1,0 +1,8 @@
+[
+  { "en": "_README", "ar": "_", "type": "_comment",
+    "_note": "Pinned proper nouns. This is the single biggest quality lever you have: without it the model invents a different Arabic spelling of the same character's name every few lines, and inconsistent names are more disorienting to read than a slightly clumsy sentence. Only the terms that appear in the current line are sent, so a long glossary costs nothing per request. Entries typed '_comment' are ignored." },
+
+  { "en": "Character Name", "ar": "اسم الشخصية", "type": "person", "aliases": ["Nickname"] },
+  { "en": "Place Name", "ar": "اسم المكان", "type": "place" },
+  { "en": "some in-world term", "ar": "مصطلح", "type": "concept" }
+]

@@ -1,0 +1,21 @@
+<Project>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningsAsErrors>CA1416</WarningsAsErrors>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <AccelerateBuildsInVisualStudio>true</AccelerateBuildsInVisualStudio>
+
+    <!--
+      Lets net10.0-windows projects build on macOS/Linux. The TFM only applies
+      [SupportedOSPlatform("windows")], which is an analyzer contract - it is UseWPF /
+      UseWindowsForms that would make a Windows host mandatory, and we use neither.
+      See PROJECT_PLAN.md 1.2.
+    -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+</Project>

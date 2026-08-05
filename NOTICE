@@ -1,0 +1,30 @@
+GamingTranslatorGlassHUD
+Copyright 2026 Basel (https://github.com/basel2000de)
+
+This product includes software developed by Basel.
+
+Licensed under the Apache License, Version 2.0. See the LICENSE file.
+
+
+--------------------------------------------------------------------------------
+Bundled third-party assets
+--------------------------------------------------------------------------------
+
+Noto Sans Arabic
+  src/GamingTranslatorGlassHUD.App/Assets/Fonts/NotoSansArabic-Regular.ttf
+  Copyright 2022 The Noto Project Authors (https://github.com/notofonts/arabic)
+  Licensed under the SIL Open Font License, Version 1.1.
+  Full licence text: src/GamingTranslatorGlassHUD.App/Assets/Fonts/NotoSansArabic-OFL.txt
+
+  The font is bundled rather than assumed present, because a machine with no Arabic
+  font installed renders the entire overlay as empty boxes.
+
+
+--------------------------------------------------------------------------------
+Runtime dependencies (not redistributed here)
+--------------------------------------------------------------------------------
+
+Tesseract OCR          Apache-2.0     https://github.com/tesseract-ocr/tesseract
+Avalonia UI            MIT            https://github.com/AvaloniaUI/Avalonia
+SkiaSharp              MIT            https://github.com/mono/SkiaSharp
+Microsoft.Data.Sqlite  MIT            https://github.com/dotnet/efcore

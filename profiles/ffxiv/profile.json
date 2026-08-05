@@ -1,0 +1,18 @@
+{
+  "id": "ffxiv",
+  "displayName": "Final Fantasy XIV",
+  "windowTitles": ["FINAL FANTASY XIV"],
+  "sourceLanguage": "eng",
+
+  "styleHint": "Deliberately archaic high fantasy. Formal, weighty, occasionally Middle-English-flavoured ('mine own counsel doth suggest'). Keep that weight; do not modernise it into casual speech.",
+
+  "hasSpeakerNames": true,
+
+  "notes": "The reference profile. This is the game the whole tool was designed and tested against, so it is the most complete example of what a profile should contain. Regions below are starting points for a 16:9 client at default UI scale - drag your own with Ctrl+Shift+R, which stores them per resolution and UI scale.",
+
+  "regions": {
+    "dialogue": { "x": 0.22, "y": 0.70, "w": 0.56, "h": 0.20 },
+    "subtitle": { "x": 0.20, "y": 0.78, "w": 0.60, "h": 0.12 },
+    "quest":    { "x": 0.30, "y": 0.25, "w": 0.40, "h": 0.40 }
+  }
+}

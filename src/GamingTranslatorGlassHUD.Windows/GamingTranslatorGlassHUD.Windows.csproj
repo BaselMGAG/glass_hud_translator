@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Win32 implementations of the Core seams. Compiles on macOS; runs only on Windows. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>GamingTranslatorGlassHUD.Windows</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\GamingTranslatorGlassHUD.Core\GamingTranslatorGlassHUD.Core.csproj" />
+    <ProjectReference Include="..\GamingTranslatorGlassHUD.Interop\GamingTranslatorGlassHUD.Interop.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" />
+  </ItemGroup>
+
+</Project>
