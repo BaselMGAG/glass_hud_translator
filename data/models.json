@@ -17,9 +17,10 @@
     "is exactly the churn this ordered list exists for - the router fell through and kept working.",
     "It stays last in the list because existing keys can still use it.",
     "",
-    "The two paid lanes' model names are the ones current when they were added. Check them against",
-    "the provider's own model list before assuming a failure is a bug - and if one has been retired,",
-    "the router says so by name in the Diagnostics log."
+    "The two paid lanes' model names were checked against each provider's own model list in",
+    "August 2026. 'gpt-5.6' is deliberately the alias rather than 'gpt-5.6-sol' it points at, so a",
+    "point release does not strand this file; terra and luna are the cheaper variants behind it.",
+    "If one is ever retired the router says so by name in the Diagnostics log and falls through."
   ],
   "providers": [
     {
@@ -54,7 +55,7 @@
       "rpm": 40,
       "rpd": 10000,
       "maxOutputTokens": 1200,
-      "models": ["gpt-5", "gpt-4.1-mini", "gpt-4o-mini"]
+      "models": ["gpt-5.6", "gpt-5.6-terra", "gpt-5.6-luna"]
     },
     {
       "name": "anthropic",

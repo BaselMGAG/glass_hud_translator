@@ -125,7 +125,7 @@ Updating brief §15.
 | 4 | Actual Gemini limits | Same as #2 — the counter measures it. Set the bucket to 13 RPM and observe |
 | 5 | Tesseract accuracy on real frames | Measured in Session 3 against the Session 0 frame corpus. `tools/Replay` prints raw OCR next to expected text |
 | 6 | BitBlt sufficient? | Ship BitBlt. It is 1–3 ms for one small rect. Escalate only if measured latency fails the <50 ms gate |
-| 7 | MSA vs Egyptian | **Ask the brother before Session 3.** Default MSA, register selectable in settings — it's one line of the system prompt, so being wrong is cheap |
+| 7 | MSA vs Egyptian | **Ask the primary user before Session 3.** Default MSA, register selectable in settings — it's one line of the system prompt, so being wrong is cheap |
 
 Only #1 and #7 need a human. #1 is a 15-minute test; #7 is a text message.
 

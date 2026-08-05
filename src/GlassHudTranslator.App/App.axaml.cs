@@ -33,6 +33,9 @@ public partial class App : Application
                     ? BuildOverlaySnapshot(desktop)
                     : BuildMainWindow();
 
+            if (Program.HasFlag("--ui-shots") && desktop.MainWindow is SettingsWindow shotTarget)
+                CaptureSettingsShots(shotTarget, desktop);
+
             desktop.ShutdownRequested += async (_, _) =>
             {
                 _overlay?.Close();
@@ -123,6 +126,48 @@ public partial class App : Application
         });
 
         settingsWindow.ReportHotkeyRegistrations(_services.Hotkeys.Register(settings.ResolvedHotkeys()));
+    }
+
+    /// <summary>
+    /// Writes one PNG per settings tab and exits. Documentation screenshots are generated from the
+    /// running UI rather than taken by hand, because a hand-taken one is stale the next time the
+    /// layout moves - which is exactly what happened to the old settings screenshot.
+    ///
+    /// <para>Run with --stub so it needs no API key and makes no network call.</para>
+    /// </summary>
+    private static void CaptureSettingsShots(
+        SettingsWindow window, IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var directory = Program.Option("--ui-shots-out") ?? Path.GetTempPath();
+        Directory.CreateDirectory(directory);
+
+        window.Opened += async (_, _) =>
+        {
+            for (var i = 0; i < window.TabNames.Count; i++)
+            {
+                var name = window.TabNames[i].ToLowerInvariant();
+                window.SelectTab(i);
+
+                // Let layout and the first render pass settle before capturing.
+                await Task.Delay(400);
+
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    var path = Path.Combine(directory, $"settings-{name}.png");
+                    try
+                    {
+                        window.SaveSnapshot(path);
+                        Console.WriteLine($"ui-shots: wrote {path}");
+                    }
+                    catch (Exception e)
+                    {
+                        Console.Error.WriteLine($"ui-shots: FAILED {name} - {e.Message}");
+                    }
+                });
+            }
+
+            desktop.Shutdown();
+        };
     }
 
     private static Avalonia.Controls.Window BuildOverlaySnapshot(IClassicDesktopStyleApplicationLifetime desktop)

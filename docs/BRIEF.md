@@ -2,7 +2,7 @@
 
 **Purpose:** Real-time Arabic translation overlay for games that ship without Arabic support (Windows)
 **Reference game:** Final Fantasy XIV — what everything was designed and tested against
-**Primary user:** My brother. Windows, modest hardware, reads Arabic more comfortably than English
+**Primary user:** One person I built this for. Windows, modest hardware, reads Arabic more comfortably than English
 **Author:** Basel — Frankfurt, Germany. Develops on macOS, Apple Silicon, C#/.NET
 **Status:** Architectural decisions below are settled unless marked OPEN.
 
@@ -18,7 +18,7 @@
 
 ## 1. Problem statement
 
-Most games ship without Arabic, and the ones that do rarely translate their narrative text. FFXIV is English-only for story content, and my brother reads Arabic far more comfortably — he was losing the plot entirely.
+Most games ship without Arabic, and the ones that do rarely translate their narrative text. FFXIV is English-only for story content, and the person I built this for reads Arabic far more comfortably — they were losing the plot entirely.
 
 Even if a game exposed its text, its own renderer almost certainly cannot draw Arabic correctly: no contextual letter shaping, no bidirectional layout. That blocks any in-game solution at the rendering layer regardless of how good the translation is. So the answer has to live outside the game.
 
@@ -317,7 +317,7 @@ Use both.
 
 ## 9. Development environment
 
-**Constraint:** I code on macOS; testing happens on my brother's Windows laptop, which is not always accessible.
+**Constraint:** I code on macOS; testing happens on a borrowed Windows laptop, which is not always accessible.
 
 ### Project structure
 
@@ -394,7 +394,7 @@ A Windows ARM VM (Parallels/UTM) is useful for WPF/interop testing against stati
 
 ### CI as a compile safety net
 
-GitHub Actions on `windows-latest` on every push. Two payoffs: compile errors surface in ~2 minutes without touching the laptop, and every push produces a downloadable `.exe` artifact — so "testing" becomes my brother downloading a file rather than a build environment setup.
+GitHub Actions on `windows-latest` on every push. Two payoffs: compile errors surface in ~2 minutes without touching the laptop, and every push produces a downloadable `.exe` artifact — so "testing" becomes downloading a file rather than setting up a build environment.
 
 ```yaml
 on: [push]

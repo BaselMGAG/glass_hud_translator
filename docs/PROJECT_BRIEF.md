@@ -26,9 +26,9 @@ account. It also works on anything else on screen: a browser, a PDF, a video pla
 
 ## Why it exists
 
-Basel's brother reads Arabic far more comfortably than English. He plays Final Fantasy XIV, a game
-with an enormous amount of story — and he was following maybe half of it. Not the mechanics, the
-*story*: the reason to play that kind of game at all.
+Basel built it for someone who reads Arabic far more comfortably than English and plays Final
+Fantasy XIV, a game with an enormous amount of story — and who was following maybe half of it. Not
+the mechanics, the *story*: the reason to play that kind of game at all.
 
 The obvious fixes don't work:
 
@@ -85,8 +85,10 @@ Practical features:
   button that shows exactly what the text recognition reads from your selection before you commit.
 - **Corrections stick.** Fix a character's name once and that correction is used from then on.
 - **Works on anything on screen**, not only games — a browser, a PDF, a video player.
-- **Bring your own API key.** No key is embedded, and both supported providers have free tiers that
-  need no credit card.
+- **Bring your own API key.** No key is embedded. Four providers are supported: two with free tiers
+  that need no credit card (Google Gemini, Groq), and two paid ones for people who already have a
+  key (OpenAI, Anthropic Claude). The free ones are always tried first, so the paid options cost
+  nothing unless someone deliberately opts in.
 
 ---
 
@@ -116,7 +118,7 @@ contribute to**, not a finished product.
 | Translation speed | ~1 second per new line; instant for anything seen before |
 | Running cost | Free — the supported providers' free tiers cover roughly 15,000 requests a day |
 | Credit card needed | No |
-| Automated tests | 139 |
+| Automated tests | 159 |
 | Glossary | 86 Final Fantasy XIV proper nouns pinned so far |
 | Configurable hotkeys | 5 |
 | Licence | Apache 2.0 |
@@ -171,7 +173,8 @@ All in the repository under `docs/images/`:
 |---|---|
 | `in-game.jpeg` | Final Fantasy XIV with Arabic drawn over the game's English dialogue box. **The best single image.** |
 | `on-desktop.jpeg` | A YouTube page being translated — proves it isn't only for games |
-| `settings-full.png` | The settings window: API keys, profile, dialect, regions |
+| `settings-providers.png` | The Providers tab: a key field per provider, each labelled free or paid. **Good for the "free to run" angle.** |
+| `settings-translating.png` | The Translating tab: which game, which Arabic dialect, where the text sits |
 | `diagnostics.png` | The diagnostics panel, including the moment it caught a model being retired |
 | `overlay.png` | The overlay's three states, cleanly rendered — good for a graphic |
 

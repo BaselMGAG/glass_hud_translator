@@ -115,14 +115,21 @@ public sealed class SettingsWindow : Window
 
     // ── shell ─────────────────────────────────────────────────────────────────────────────
 
+    private TabControl? _tabs;
+    private Control? _shellRoot;
+
+    /// <summary>Tab headers, in order. Used by the documentation screenshot pass.</summary>
+    public IReadOnlyList<string> TabNames { get; private set; } = [];
+
     private Control BuildShell()
     {
-        var tabs = new TabControl { Margin = new Thickness(8, 8, 8, 0) };
+        var tabs = _tabs = new TabControl { Margin = new Thickness(8, 8, 8, 0) };
         tabs.Items.Add(Tab("Providers", BuildProvidersTab()));
         tabs.Items.Add(Tab("Translating", BuildTranslatingTab()));
         tabs.Items.Add(Tab("Overlay", BuildOverlayTab()));
         tabs.Items.Add(Tab("Hotkeys", BuildHotkeysTab()));
         tabs.Items.Add(Tab("Diagnostics", BuildDiagnosticsTab()));
+        TabNames = tabs.Items.OfType<TabItem>().Select(t => (string)t.Header!).ToList();
 
         // Docked, not scrolled with the tab body: every action on every tab reports here, and a
         // confirmation you have to scroll to find is a confirmation nobody reads.
@@ -134,10 +141,39 @@ public sealed class SettingsWindow : Window
         };
         DockPanel.SetDock(statusBar, Dock.Bottom);
 
-        var root = new DockPanel { LastChildFill = true };
+        // Explicit rather than inherited from the window. Without it the root paints nothing, and
+        // rendering it to a bitmap for the documentation screenshots produces a transparent
+        // background - on which every default-coloured control label, which under the dark theme
+        // is white, is invisible. Same colour the Fluent dark theme uses, so nothing looks different.
+        var root = new DockPanel
+        {
+            LastChildFill = true,
+            Background = new SolidColorBrush(Color.Parse("#1e1e1e")),
+        };
         root.Children.Add(statusBar);
         root.Children.Add(tabs);
-        return root;
+        return _shellRoot = root;
+    }
+
+    /// <summary>
+    /// Renders one tab to a PNG. Drives the screenshots in the README, so that what is documented
+    /// is the window as it actually renders rather than a photo of an older build - the settings
+    /// screenshot went stale within a day of the tabs landing, which is the whole argument for
+    /// generating it.
+    /// </summary>
+    public void SelectTab(int index)
+    {
+        if (_tabs is not null && index >= 0 && index < _tabs.ItemCount) _tabs.SelectedIndex = index;
+    }
+
+    public void SaveSnapshot(string path)
+    {
+        if (_shellRoot is null) return;
+
+        var size = new PixelSize((int)Width, (int)Height);
+        using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(size, new Vector(96, 96));
+        bitmap.Render(_shellRoot);
+        bitmap.Save(path);
     }
 
     private static TabItem Tab(string header, Control body) => new()
@@ -160,7 +196,11 @@ public sealed class SettingsWindow : Window
     {
         var stack = new StackPanel { Spacing = 12 };
 
-        if (!PlatformServices.IsWindows)
+        // Suppressed while generating documentation screenshots. The banner is true of the machine
+        // the shots are rendered on and false of every machine that runs the app: leaving a
+        // "keys are stored in PLAINTEXT" warning in the README would tell Windows users something
+        // alarming and wrong about their own install.
+        if (!PlatformServices.IsWindows && !Program.HasFlag("--ui-shots"))
         {
             stack.Children.Add(Warning(
                 "Development build. Capture replays recorded frames, hotkeys are inactive, and API "
