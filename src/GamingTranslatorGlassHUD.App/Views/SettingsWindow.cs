@@ -1,5 +1,7 @@
 using GamingTranslatorGlassHUD.Core.Capture;
+using GamingTranslatorGlassHUD.Core.Config;
 using GamingTranslatorGlassHUD.Core.Platform;
+using GamingTranslatorGlassHUD.Core.Text;
 using GamingTranslatorGlassHUD.Core.Regions;
 using GamingTranslatorGlassHUD.Core.Storage;
 using GamingTranslatorGlassHUD.Core.Translation;
@@ -21,6 +23,11 @@ public sealed class SettingsWindow : Window
 {
     private readonly AppServices _services;
     private readonly OverlayWindow _overlay;
+    private readonly AppSettings _settings;
+    private readonly TranslationSession _session;
+    private readonly Dictionary<HotkeyAction, TextBox> _hotkeyBoxes = [];
+    private readonly TextBlock _hotkeyStatus = Readout();
+    private readonly TextBox _correction = new() { Watermark = "corrected Arabic", Width = 380 };
 
     private readonly TextBox _geminiKey = KeyBox();
     private readonly TextBox _groqKey = KeyBox();
@@ -46,10 +53,17 @@ public sealed class SettingsWindow : Window
         TextWrapping = TextWrapping.NoWrap,
     };
 
-    public SettingsWindow(AppServices services, OverlayWindow overlay)
+    public SettingsWindow(AppServices services, OverlayWindow overlay, AppSettings settings,
+        TranslationSession session)
     {
         _services = services;
         _overlay = overlay;
+        _settings = settings;
+        _session = session;
+
+        _register.SelectedIndex = settings.Register == ArabicRegister.Egyptian ? 1 : 0;
+        _fontSize.Value = settings.OverlayFontSize;
+        _opacity.Value = settings.OverlayOpacity;
 
         Title = "GamingTranslatorGlassHUD";
         Width = 720;
@@ -60,11 +74,17 @@ public sealed class SettingsWindow : Window
 
         _fontSize.PropertyChanged += (_, e) =>
         {
-            if (e.Property == RangeBase_ValueProperty) _overlay.BodyFontSize = _fontSize.Value;
+            if (e.Property != RangeBase_ValueProperty) return;
+            _overlay.BodyFontSize = _fontSize.Value;
+            _settings.OverlayFontSize = _fontSize.Value;
+            _settings.Save();
         };
         _opacity.PropertyChanged += (_, e) =>
         {
-            if (e.Property == RangeBase_ValueProperty) _overlay.PanelOpacity = _opacity.Value;
+            if (e.Property != RangeBase_ValueProperty) return;
+            _overlay.PanelOpacity = _opacity.Value;
+            _settings.OverlayOpacity = _opacity.Value;
+            _settings.Save();
         };
 
         LoadSecrets();
@@ -115,8 +135,36 @@ public sealed class SettingsWindow : Window
 
         stack.Children.Add(Section("Hotkeys"));
         stack.Children.Add(Note(PlatformServices.IsWindows
-            ? "Ctrl+Shift+R region   ·   Ctrl+Shift+T translate   ·   Ctrl+Shift+A auto-watch   ·   Ctrl+Shift+F correct"
-            : "Global hotkeys are Windows-only. Use the buttons above on macOS."));
+            ? "Type a combination such as Ctrl+Shift+T. Modifiers: Ctrl, Shift, Alt, Win. Keys include "
+              + "A-Z, 0-9, F1-F24, arrows, Insert/Delete/Home/End, numpad (Num0-Num9) and punctuation. "
+              + "F13-F24 are the safest choices - games almost never bind them."
+            : "Global hotkeys are Windows-only. On macOS use the buttons on this window instead."));
+
+        foreach (var action in Enum.GetValues<HotkeyAction>())
+        {
+            var box = new TextBox { Text = _settings.HotkeyFor(action).ToString(), Width = 200 };
+            _hotkeyBoxes[action] = box;
+            stack.Children.Add(Row(DefaultHotkeys.Describe(action), box));
+        }
+
+        var hotkeyButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        hotkeyButtons.Children.Add(Button("Apply hotkeys", ApplyHotkeys));
+        hotkeyButtons.Children.Add(Button("Reset to defaults", ResetHotkeys));
+        stack.Children.Add(hotkeyButtons);
+        stack.Children.Add(_hotkeyStatus);
+
+        stack.Children.Add(Section("Manual controls"));
+        var manual = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        manual.Children.Add(Button("Translate now", () => _ = _session.TranslateNowAsync()));
+        manual.Children.Add(Button("Toggle auto-watch", _session.ToggleAutoWatch));
+        stack.Children.Add(manual);
+
+        stack.Children.Add(Note("Correct the line currently on the overlay. The correction is pinned "
+                              + "and always wins over the model in future."));
+        var correctRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        correctRow.Children.Add(_correction);
+        correctRow.Children.Add(Button("Pin correction", () => _ = CorrectCurrentAsync()));
+        stack.Children.Add(correctRow);
 
         stack.Children.Add(Section("Diagnostics"));
         stack.Children.Add(_quota);
@@ -152,7 +200,7 @@ public sealed class SettingsWindow : Window
         }
     }
 
-    private async Task PickRegionAsync(string profileName)
+    public async Task PickRegionAsync(string profileName)
     {
         var picker = new RegionPickerWindow(profileName);
         await picker.ShowDialog(this);
@@ -172,9 +220,92 @@ public sealed class SettingsWindow : Window
         var profile = RegionProfile.FromPixels(profileName, region, width, height, uiScale: 1.0);
         await _services.Regions.SaveAsync(profile, CancellationToken.None);
 
+        _settings.LastRegionProfile = profileName;
+        _settings.Save();
+
         _status.Text = $"Saved '{profileName}' as {profile.RelWidth:P0} x {profile.RelHeight:P0} " +
                        $"of the client rect.";
     }
+
+    /// <summary>
+    /// Pins a manual correction for the line on the overlay. It is stored as an override row, so it
+    /// always wins over whatever the model produces for that line from now on.
+    /// </summary>
+    public async Task CorrectCurrentAsync()
+    {
+        if (_session.Current is not { } current)
+        {
+            _status.Text = "Nothing on the overlay to correct yet.";
+            return;
+        }
+
+        var corrected = _correction.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(corrected))
+        {
+            _correction.Text = current.Arabic;
+            _status.Text = "Edit the text above, then press Pin correction.";
+            return;
+        }
+
+        await _services.Cache.PutOverrideAsync(
+            CacheKey.For(current.Source), current.Source, corrected, CancellationToken.None);
+
+        _overlay.ShowTranslation(null, corrected);
+        _correction.Text = "";
+        _status.Text = "Correction pinned. It will be used for this line from now on.";
+        await RefreshAsync();
+    }
+
+    private void ApplyHotkeys()
+    {
+        foreach (var (action, box) in _hotkeyBoxes)
+        {
+            var parsed = Hotkey.TryParse(box.Text);
+            if (parsed is null || !parsed.IsValid)
+            {
+                _hotkeyStatus.Text = $"'{box.Text}' is not a usable combination for " +
+                                     $"{DefaultHotkeys.Describe(action)}. It needs at least one modifier and a known key.";
+                return;
+            }
+
+            _settings.SetHotkey(action, parsed);
+        }
+
+        var conflicts = _settings.FindConflicts();
+        if (conflicts.Count > 0)
+        {
+            _hotkeyStatus.Text = "Two actions share a combination: " +
+                                 string.Join(", ", conflicts.Select(DefaultHotkeys.Describe)) +
+                                 ". One of them would never fire.";
+            return;
+        }
+
+        _settings.Save();
+        ReportHotkeyRegistrations(_services.Hotkeys.Register(_settings.ResolvedHotkeys()));
+    }
+
+    private void ResetHotkeys()
+    {
+        foreach (var (action, hotkey) in DefaultHotkeys.All)
+        {
+            _settings.SetHotkey(action, hotkey);
+            _hotkeyBoxes[action].Text = hotkey.ToString();
+        }
+
+        _settings.Save();
+        ReportHotkeyRegistrations(_services.Hotkeys.Register(_settings.ResolvedHotkeys()));
+    }
+
+    /// <summary>A clash with another application fails one binding, so name which one.</summary>
+    public void ReportHotkeyRegistrations(IReadOnlyList<HotkeyRegistration> results)
+    {
+        var failed = results.Where(r => !r.Succeeded).ToList();
+        _hotkeyStatus.Text = failed.Count == 0
+            ? $"All {results.Count} hotkeys registered."
+            : string.Join("  ·  ", failed.Select(f => $"{DefaultHotkeys.Describe(f.Action)}: {f.Error}"));
+    }
+
+    public void ReportStatus(string message) => _status.Text = message;
 
     private async Task TestTranslationAsync()
     {
@@ -183,9 +314,11 @@ public sealed class SettingsWindow : Window
 
         try
         {
-            _services.Pipeline.Register = _register.SelectedIndex == 1
+            _settings.Register = _register.SelectedIndex == 1
                 ? ArabicRegister.Egyptian
                 : ArabicRegister.ModernStandard;
+            _settings.Save();
+            _services.Pipeline.Register = _settings.Register;
 
             var frame = Core.Diagnostics.SyntheticFrames.Render(
                 new Core.Diagnostics.SyntheticLine("Y'shtola", "Come, the aether here grows unstable."));

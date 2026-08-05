@@ -1,27 +1,30 @@
 namespace GamingTranslatorGlassHUD.Core.Platform;
 
 /// <summary>
-/// Deliberately avoids F1-F12: FFXIV binds those to party-member targeting by default (brief 2.6).
+/// Defaults deliberately avoid F1-F12, which games bind (FFXIV uses them for party targeting).
+/// Every binding is user-configurable, because no combination is safe across every game.
 /// </summary>
 public enum HotkeyAction
 {
-    /// <summary>Ctrl+Shift+R - region picker.</summary>
+    /// <summary>Open the region picker.</summary>
     PickRegion,
 
-    /// <summary>Ctrl+Shift+T - translate what is on screen now. The default mode.</summary>
+    /// <summary>Translate what is on screen right now. The default mode of operation.</summary>
     TranslateNow,
 
-    /// <summary>Ctrl+Shift+A - toggle auto-watch.</summary>
+    /// <summary>Toggle auto-watch polling.</summary>
     ToggleAutoWatch,
 
-    /// <summary>Ctrl+Shift+F - correct the current translation.</summary>
+    /// <summary>Correct the current translation and pin the correction.</summary>
     FlagTranslation,
 }
+
+public sealed record HotkeyRegistration(HotkeyAction Action, Hotkey Hotkey, bool Succeeded, string? Error = null);
 
 /// <summary>
 /// Global hotkeys. Implemented on Windows with RegisterHotKey, never with a low-level keyboard
 /// hook: WH_KEYBOARD_LL is the pattern antivirus heuristics flag, and RegisterHotKey already fires
-/// while FFXIV has focus (brief 2.6, 16).
+/// while the game has focus.
 /// </summary>
 public interface IHotkeyService : IDisposable
 {
@@ -29,22 +32,31 @@ public interface IHotkeyService : IDisposable
 
     event Action<HotkeyAction>? Pressed;
 
-    /// <summary>Returns the actions that could not be registered, usually because of a clash.</summary>
-    IReadOnlyList<HotkeyAction> Register();
+    /// <summary>
+    /// Binds the given combinations. Returns one result per action, because a clash with another
+    /// running application fails that binding alone and the user needs to be told which one.
+    /// </summary>
+    IReadOnlyList<HotkeyRegistration> Register(IReadOnlyDictionary<HotkeyAction, Hotkey> bindings);
+
+    void Unregister();
 }
 
-/// <summary>Used on macOS, where there is no game to be focused anyway.</summary>
+/// <summary>Used off Windows, where there is no game holding focus anyway.</summary>
 public sealed class NullHotkeyService : IHotkeyService
 {
     public bool IsSupported => false;
 
     public event Action<HotkeyAction>? Pressed;
 
-    public IReadOnlyList<HotkeyAction> Register()
+    public IReadOnlyList<HotkeyRegistration> Register(IReadOnlyDictionary<HotkeyAction, Hotkey> bindings)
     {
-        _ = Pressed;   // silences the unused-event warning without suppressing it globally
-        return Enum.GetValues<HotkeyAction>();
+        _ = Pressed;
+        return bindings
+            .Select(b => new HotkeyRegistration(b.Key, b.Value, false, "Global hotkeys are Windows-only."))
+            .ToList();
     }
+
+    public void Unregister() { }
 
     public void Dispose() { }
 }

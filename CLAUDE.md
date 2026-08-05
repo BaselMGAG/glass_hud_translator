@@ -34,7 +34,7 @@ solution level it tries to force `net10.0` onto the Windows-only projects and fa
 dotnet test
 ```
 
-111 tests, all runnable on macOS and Linux.
+131 tests, all runnable on macOS and Linux.
 
 ```bash
 dotnet run --project tools/Replay -- --no-cache
@@ -59,7 +59,7 @@ actually loaded rather than the OS quietly substituting one.
 ```
 src/GamingTranslatorGlassHUD.Core/     net10.0                  all logic, all tests
 src/GamingTranslatorGlassHUD.Interop/  net10.0-windows          P/Invoke declarations, no logic
-src/GamingTranslatorGlassHUD.Windows/  net10.0-windows          Win32 impls — currently stubs
+src/GamingTranslatorGlassHUD.Windows/  net10.0-windows          Win32 impls (untested on hardware)
 src/GamingTranslatorGlassHUD.App/      net10.0;net10.0-windows  Avalonia UI
 tools/Replay/                          net10.0                  headless harness
 profiles/<game>/                       per-game data, no code
@@ -125,9 +125,14 @@ carries GHSA-2m69-gcr7-jv3q. Drop the pin once the dependency moves past it on i
 
 ## Where things stand
 
-The pipeline, UI, profiles, caching and provider routing all work and are tested. The Windows
-project is compiling stubs — screen capture, global hotkeys and the click-through overlay are the
-next milestone, and until they land you can't point this at a running game.
+The pipeline, UI, profiles, caching and provider routing all work and are tested.
+
+The Windows layer is **written but never executed**. BitBlt capture, RegisterHotKey, the overlay
+styles, DPAPI storage and the native OCR engine were all written on macOS against the API contracts
+and verified only by the compiler and by CI producing a publishable exe. Nobody has run any of it on
+a Windows machine yet. The most likely failure points, in rough order: the BITMAPINFOHEADER layout
+in GetDIBits, whether MOD_NOREPEAT behaves as expected under a game's input capture, and whether
+Avalonia's window handle is available early enough for the overlay styles to stick.
 
 `test-frames/` currently holds **synthetic** frames drawn by `SyntheticFrames`. They exercise every
 stage of the pipeline but say nothing about a real game's typeface, its translucency, or a moving

@@ -38,4 +38,15 @@
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
 
+  <!--
+    Tesseract language data, copied next to the exe rather than embedded: the native engine takes a
+    directory path, and a single-file bundle has no directory to point it at. eng.traineddata is the
+    "fast" model (~4 MB); swap in "best" from tessdata_best if accuracy on real frames warrants it.
+  -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\..\tessdata\**\*"
+          Link="tessdata\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

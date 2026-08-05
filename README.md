@@ -35,15 +35,17 @@ Early. Honest picture of what works today:
 
 | | |
 |---|---|
-| Translation pipeline (OCR → normalise → cache → LLM → render) | working, 111 tests |
+| Translation pipeline (OCR → normalise → cache → LLM → render) | working, 131 tests |
 | Arabic rendering, shaping, bidi, diacritics | working and verified |
 | Game profiles, glossary, OCR corrections | working |
 | Provider failover, quota tracking, caching | working |
-| Screen capture, global hotkeys, click-through overlay | **not yet — next milestone** |
+| Screen capture, global hotkeys, click-through overlay | written, **not yet tested on real hardware** |
 
-The Windows layer is currently compiling stubs, so you can't point it at a running game yet. The
-whole pipeline does run end to end against recorded screenshots, which is how it's being developed.
-See [CODING_SESSIONS.md](CODING_SESSIONS.md) for what's next.
+The Windows layer is written and compiles, and CI publishes a working .exe on every push. What it
+has not had yet is a single run on an actual Windows machine — I develop on macOS, so BitBlt
+capture, `RegisterHotKey`, click-through and DPI handling have all been written against the API
+contracts rather than verified against behaviour. Treat that milestone as "ready to test", not
+"working". The pipeline underneath it does run end to end against recorded screenshots.
 
 ## How it works
 
@@ -168,7 +170,8 @@ Issues and pull requests welcome. The most useful contributions right now:
 - **Game profiles.** You don't need to write any C# — a folder with three JSON files.
 - **Arabic review.** The FFXIV glossary is a starting point and would benefit from a native
   speaker's eye. Consistency matters more than any individual word choice.
-- **The Windows capture layer**, if you know Win32 and want to help land the next milestone.
+- **Testing the Windows layer.** It is written but unverified on real hardware. Bug reports with
+  the router log attached are worth a lot right now.
 
 [CLAUDE.md](CLAUDE.md) is the orientation doc for anyone about to change code. It lists the
 constraints that aren't obvious from reading it, and a few rules that look like style preferences

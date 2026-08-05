@@ -101,7 +101,7 @@ public sealed class TesseractCliEngine(TesseractOptions? options = null) : IOcrE
     /// Words are regrouped into their original lines so the speaker name stays on its own line for
     /// <see cref="Text.DialogueParser"/>.
     /// </summary>
-    internal static OcrResult ParseTsv(string tsv, float minWordConfidence)
+    public static OcrResult ParseTsv(string tsv, float minWordConfidence)
     {
         var lines = new Dictionary<(int Block, int Par, int Line), List<string>>();
         var order = new List<(int Block, int Par, int Line)>();

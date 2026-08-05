@@ -1,4 +1,6 @@
 using GamingTranslatorGlassHUD.App.Views;
+using GamingTranslatorGlassHUD.Core.Config;
+using GamingTranslatorGlassHUD.Core.Platform;
 using GamingTranslatorGlassHUD.Core.Storage;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -10,6 +12,7 @@ namespace GamingTranslatorGlassHUD.App;
 public partial class App : Application
 {
     private AppServices? _services;
+    private TranslationSession? _session;
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
@@ -19,14 +22,14 @@ public partial class App : Application
         {
             desktop.MainWindow = Program.HasFlag("--render-test")
                 ? new ArabicRenderTestWindow(
-                    saveTo: Program.Option("--render-test-out"),
-                    exitAfterSave: Program.HasFlag("--exit-after-render"))
+                    Program.Option("--render-test-out"), Program.HasFlag("--exit-after-render"))
                 : Program.HasFlag("--overlay-test")
                     ? BuildOverlaySnapshot(desktop)
                     : BuildMainWindow();
 
             desktop.ShutdownRequested += async (_, _) =>
             {
+                _session?.Dispose();
                 if (_services is not null) await _services.DisposeAsync();
             };
         }
@@ -34,10 +37,77 @@ public partial class App : Application
         base.OnFrameworkInitializationCompleted();
     }
 
+    private Avalonia.Controls.Window BuildMainWindow()
+    {
+        PlatformServices.InitialiseDpiAwareness();
+
+        var settings = AppSettings.Load();
+        var overlay = new OverlayWindow
+        {
+            BodyFontSize = settings.OverlayFontSize,
+            PanelOpacity = settings.OverlayOpacity,
+        };
+
+        try
+        {
+            AppPaths.Ensure();
+            _services = AppServices.CreateAsync(
+                    Program.Option("--data") ?? RepoPaths.Data,
+                    Program.Option("--profiles") ?? RepoPaths.Profiles,
+                    Program.Option("--profile") ?? settings.ProfileId,
+                    useStubProvider: Program.HasFlag("--stub"))
+                .GetAwaiter().GetResult();
+        }
+        catch (Exception e)
+        {
+            // Starting with no window at all would leave a process running with no explanation,
+            // so the failure goes on the overlay itself.
+            overlay.ShowMessage($"Startup failed: {e.Message}");
+            overlay.Show();
+            return overlay;
+        }
+
+        _session = new TranslationSession(_services, overlay, settings, RepoPaths.TestFrames);
+
+        var settingsWindow = new SettingsWindow(_services, overlay, settings, _session);
+        _session.Status += message => Dispatcher.UIThread.Post(() => settingsWindow.ReportStatus(message));
+
+        BindHotkeys(settings, settingsWindow);
+
+        settingsWindow.Opened += (_, _) => PositionOverlay(overlay);
+        return settingsWindow;
+    }
+
     /// <summary>
-    /// Renders the production overlay in each of its three states and writes them out, so the
-    /// shaping rules in OverlayWindow can be verified without a game or a running session.
+    /// Hotkeys arrive on a dedicated Win32 message thread, so every handler hops back to the UI
+    /// thread before touching a window.
     /// </summary>
+    private void BindHotkeys(AppSettings settings, SettingsWindow settingsWindow)
+    {
+        if (_services is null || _session is null) return;
+
+        _services.Hotkeys.Pressed += action => Dispatcher.UIThread.Post(() =>
+        {
+            switch (action)
+            {
+                case HotkeyAction.TranslateNow:
+                    _ = _session.TranslateNowAsync();
+                    break;
+                case HotkeyAction.ToggleAutoWatch:
+                    _session.ToggleAutoWatch();
+                    break;
+                case HotkeyAction.PickRegion:
+                    _ = settingsWindow.PickRegionAsync(settings.LastRegionProfile);
+                    break;
+                case HotkeyAction.FlagTranslation:
+                    _ = settingsWindow.CorrectCurrentAsync();
+                    break;
+            }
+        });
+
+        settingsWindow.ReportHotkeyRegistrations(_services.Hotkeys.Register(settings.ResolvedHotkeys()));
+    }
+
     private static Avalonia.Controls.Window BuildOverlaySnapshot(IClassicDesktopStyleApplicationLifetime desktop)
     {
         var overlay = new OverlayWindow();
@@ -72,37 +142,9 @@ public partial class App : Application
         return overlay;
     }
 
-    private Avalonia.Controls.Window BuildMainWindow()
-    {
-        var overlay = new OverlayWindow();
-
-        try
-        {
-            AppPaths.Ensure();
-            _services = AppServices.CreateAsync(
-                    Program.Option("--data") ?? RepoPaths.Data,
-                    Program.Option("--profiles") ?? RepoPaths.Profiles,
-                    Program.Option("--profile"),
-                    useStubProvider: Program.HasFlag("--stub"))
-                .GetAwaiter().GetResult();
-        }
-        catch (Exception e)
-        {
-            // Starting with no window at all would leave the user with a process and no
-            // explanation, so surface the failure in the overlay itself.
-            overlay.ShowMessage($"Startup failed: {e.Message}");
-            overlay.Show();
-            return overlay;
-        }
-
-        var settings = new SettingsWindow(_services, overlay);
-        settings.Opened += (_, _) => PositionOverlay(overlay);
-        return settings;
-    }
-
     /// <summary>
-    /// Bottom-centre, roughly where FFXIV's dialogue box sits. On Windows the region profile
-    /// governs this instead (Session 2).
+    /// Bottom-centre, roughly where a dialogue box sits. On Windows the saved region profile takes
+    /// over once one exists.
     /// </summary>
     private static void PositionOverlay(OverlayWindow overlay)
     {
@@ -118,14 +160,16 @@ public partial class App : Application
 }
 
 /// <summary>
-/// Finds data/ and profiles/ whether the app is running from a build output during development or
-/// from the published folder next to the exe.
+/// Finds data/, profiles/ and test-frames/ whether running from a build output during development
+/// or from the published folder next to the exe.
 /// </summary>
 internal static class RepoPaths
 {
     public static string Data => Resolve("data");
 
     public static string Profiles => Resolve("profiles");
+
+    public static string TestFrames => Resolve("test-frames");
 
     private static string Resolve(string folder)
     {

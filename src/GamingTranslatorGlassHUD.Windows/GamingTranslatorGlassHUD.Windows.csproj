@@ -14,6 +14,9 @@
 
   <ItemGroup>
     <PackageReference Include="SkiaSharp" />
+    <!-- Bundles the native tesseract/leptonica DLLs so the user installs nothing. -->
+    <PackageReference Include="TesseractOCR" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
   </ItemGroup>
 
 </Project>

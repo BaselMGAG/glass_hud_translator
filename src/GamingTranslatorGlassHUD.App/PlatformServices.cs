@@ -5,13 +5,16 @@ using GamingTranslatorGlassHUD.Core.Storage;
 
 namespace GamingTranslatorGlassHUD.App;
 
+public sealed record GameWindowInfo(
+    CaptureRegion ClientArea, string Title, double Scaling, bool CanCapture, string Message);
+
 /// <summary>
 /// The one file in this project allowed to contain <c>#if WINDOWS</c>.
 ///
 /// <para>
-/// If a second one appears, the seam has leaked and the Mac build has stopped being a faithful
-/// rehearsal of the Windows build. Everything platform-specific is reached through here, so
-/// Session 2 fills in the Windows branches without touching any view.
+/// If a second one appears, the seam has leaked and the macOS build has stopped being a faithful
+/// rehearsal of the Windows build. Everything platform-specific is reached through here, which is
+/// what allowed the entire Win32 layer to be written and type-checked on a Mac.
 /// </para>
 /// </summary>
 public static class PlatformServices
@@ -23,16 +26,31 @@ public static class PlatformServices
         false;
 #endif
 
-    /// <summary>Shown in Settings so it is obvious which implementations are live.</summary>
     public static string Description => IsWindows
-        ? "Windows: BitBlt capture, RegisterHotKey, DPAPI secrets"
-        : "macOS dev: recorded frames, no hotkeys, PLAINTEXT secrets";
+        ? "Windows: BitBlt capture, RegisterHotKey, DPAPI-encrypted keys"
+        : "macOS/Linux dev: recorded frames, no global hotkeys, PLAINTEXT keys";
+
+    /// <summary>Per-monitor v2. Also declared in app.manifest; this is the belt to that braces.</summary>
+    public static void InitialiseDpiAwareness()
+    {
+#if WINDOWS
+        try
+        {
+            Interop.NativeMethods.SetProcessDpiAwarenessContext(
+                Interop.NativeMethods.DpiAwarenessContextPerMonitorAwareV2);
+        }
+        catch (EntryPointNotFoundException)
+        {
+            // Windows older than 1703. The manifest still covers it.
+        }
+#endif
+    }
 
     public static IFrameSource CreateFrameSource(string testFramesDirectory)
     {
 #if WINDOWS
-        // Session 2: return new GamingTranslatorGlassHUD.Windows.Win32FrameSource();
-        return new FolderFrameSource(testFramesDirectory, wrap: true);
+        _ = testFramesDirectory;
+        return new Windows.Win32FrameSource();
 #else
         return new FolderFrameSource(testFramesDirectory, wrap: true);
 #endif
@@ -42,8 +60,9 @@ public static class PlatformServices
     {
         var options = new TesseractOptions { Language = language };
 #if WINDOWS
-        // Session 2: return new GamingTranslatorGlassHUD.Windows.TesseractNativeEngine(options);
-        return new TesseractCliEngine(options);
+        // Bundled natives so the user installs nothing, with an automatic fallback to a
+        // tesseract.exe shipped alongside if those fail to load.
+        return new Windows.TesseractNativeEngine(options);
 #else
         return new TesseractCliEngine(options);
 #endif
@@ -52,11 +71,10 @@ public static class PlatformServices
     public static ISecretStore CreateSecretStore()
     {
 #if WINDOWS
-        // Session 2: return new GamingTranslatorGlassHUD.Windows.DpapiSecretStore();
-        return new DevPlainFileSecretStore();
+        return new Windows.DpapiSecretStore();
 #else
-        // ProtectedData throws off Windows, so the settings screen would be undebuggable without
-        // this branch (PROJECT_PLAN.md 1.3). It warns loudly on construction.
+        // ProtectedData throws off Windows, so without this branch the settings screen could not be
+        // run or debugged on the development machine at all. It warns loudly on construction.
         return new DevPlainFileSecretStore();
 #endif
     }
@@ -64,22 +82,52 @@ public static class PlatformServices
     public static IHotkeyService CreateHotkeyService()
     {
 #if WINDOWS
-        // Session 2: return new GamingTranslatorGlassHUD.Windows.GlobalHotkeyService();
-        return new NullHotkeyService();
+        return new Windows.GlobalHotkeyService();
 #else
         return new NullHotkeyService();
 #endif
     }
 
     /// <summary>
-    /// Click-through, no-activate, always-on-top, and excluded from its own captures. No-op off
-    /// Windows - the overlay is still usable for layout work, it simply does not float over a game.
+    /// Click-through, never-focused, always-on-top, and excluded from its own captures. Returns a
+    /// warning when that last part is unavailable, which is the case on Windows builds before 2004.
     /// </summary>
-    public static void ApplyOverlayWindowStyles(nint windowHandle)
+    public static string? ApplyOverlayWindowStyles(nint windowHandle)
     {
 #if WINDOWS
-        // Session 2: GamingTranslatorGlassHUD.Windows.OverlayWindowStyles.Apply(windowHandle);
-#endif
+        return Windows.OverlayWindowStyles.Apply(windowHandle).Warning;
+#else
         _ = windowHandle;
+        return null;
+#endif
+    }
+
+    public static void ReassertTopmost(nint windowHandle)
+    {
+#if WINDOWS
+        Windows.OverlayWindowStyles.Reassert(windowHandle);
+#else
+        _ = windowHandle;
+#endif
+    }
+
+    /// <summary>
+    /// Locates the game window and reports whether it can be captured. Off Windows there is no game
+    /// to find, so this returns null and the caller falls back to the primary screen.
+    /// </summary>
+    public static GameWindowInfo? FindGameWindow(IReadOnlyList<string> titleFragments)
+    {
+#if WINDOWS
+        var window = Windows.GameWindowLocator.Find(titleFragments)
+                     ?? Windows.GameWindowLocator.Foreground();
+        if (window is null) return null;
+
+        var verdict = Windows.DisplayModeGuard.Check(window);
+        return new GameWindowInfo(window.ClientArea, window.Title, window.Scaling,
+            verdict.CanCapture, verdict.Message);
+#else
+        _ = titleFragments;
+        return null;
+#endif
     }
 }

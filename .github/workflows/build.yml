@@ -54,6 +54,20 @@ jobs:
         run: |
           Copy-Item -Recurse data out/data
           Copy-Item -Recurse profiles out/profiles
+          if (-not (Test-Path out/tessdata)) { Copy-Item -Recurse tessdata out/tessdata }
+        shell: pwsh
+
+      # The native Tesseract libraries and eng.traineddata have to survive publishing, or OCR
+      # falls back to an exe that is not there and the app cannot read anything at all.
+      - name: Verify the published payload
+        run: |
+          $missing = @()
+          if (-not (Test-Path out/GamingTranslatorGlassHUD.exe)) { $missing += 'GamingTranslatorGlassHUD.exe' }
+          if (-not (Test-Path out/tessdata/eng.traineddata))     { $missing += 'tessdata/eng.traineddata' }
+          if (-not (Test-Path out/profiles/ffxiv/profile.json))  { $missing += 'profiles/ffxiv/profile.json' }
+          if (-not (Test-Path out/data/models.json))             { $missing += 'data/models.json' }
+          if ($missing.Count -gt 0) { Write-Error "Missing from publish output: $($missing -join ', ')"; exit 1 }
+          Get-ChildItem out | Select-Object Name, Length | Format-Table
         shell: pwsh
 
       - uses: actions/upload-artifact@v5
