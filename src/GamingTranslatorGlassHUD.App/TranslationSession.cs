@@ -42,6 +42,15 @@ public sealed class TranslationSession : IDisposable
 
     public bool IsAutoWatching => _autoWatch is not null;
 
+    /// <summary>
+    /// When set, every captured region is written here as a PNG. This is how a real frame corpus
+    /// gets collected: play normally for twenty minutes and the folder fills with exactly the
+    /// frames the OCR has to cope with, rather than screenshots someone took by hand.
+    /// </summary>
+    public string? SaveFramesDirectory { get; set; }
+
+    private int _savedFrames;
+
     public event Action<string>? Status;
 
     /// <summary>The line currently on the overlay, so it can be corrected with the flag hotkey.</summary>
@@ -176,6 +185,7 @@ public sealed class TranslationSession : IDisposable
 
     private async Task ProcessAsync(Frame frame, CancellationToken ct)
     {
+        SaveFrameIfRequested(frame);
         _services.Pipeline.Register = _settings.Register;
 
         var outcome = await _services.Pipeline.ProcessAsync(frame, ct).ConfigureAwait(false);
@@ -224,6 +234,23 @@ public sealed class TranslationSession : IDisposable
         var client = window.ClientArea;
         var relative = profile.Resolve(client.Width, client.Height);
         return new CaptureRegion(client.X + relative.X, client.Y + relative.Y, relative.Width, relative.Height);
+    }
+
+    private void SaveFrameIfRequested(Frame frame)
+    {
+        if (SaveFramesDirectory is null) return;
+
+        try
+        {
+            Directory.CreateDirectory(SaveFramesDirectory);
+            var name = $"{DateTime.Now:yyyyMMdd-HHmmss}-{++_savedFrames:D3}.png";
+            frame.SavePng(Path.Combine(SaveFramesDirectory, name));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Collecting frames is a convenience; never let it take down a play session.
+            Report($"Could not save frame: {e.Message}");
+        }
     }
 
     private void Report(string message) => Status?.Invoke(message);

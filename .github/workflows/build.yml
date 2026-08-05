@@ -55,6 +55,9 @@ jobs:
           Copy-Item -Recurse data out/data
           Copy-Item -Recurse profiles out/profiles
           if (-not (Test-Path out/tessdata)) { Copy-Item -Recurse tessdata out/tessdata }
+          Copy-Item scripts/windows/*.bat out/
+          Copy-Item README.md out/README.md
+          Copy-Item README.ar.md out/README.ar.md
         shell: pwsh
 
       # The native Tesseract libraries and eng.traineddata have to survive publishing, or OCR
@@ -66,6 +69,7 @@ jobs:
           if (-not (Test-Path out/tessdata/eng.traineddata))     { $missing += 'tessdata/eng.traineddata' }
           if (-not (Test-Path out/profiles/ffxiv/profile.json))  { $missing += 'profiles/ffxiv/profile.json' }
           if (-not (Test-Path out/data/models.json))             { $missing += 'data/models.json' }
+          if (-not (Test-Path out/1-test-no-api-key.bat))        { $missing += '1-test-no-api-key.bat' }
           if ($missing.Count -gt 0) { Write-Error "Missing from publish output: $($missing -join ', ')"; exit 1 }
           Get-ChildItem out | Select-Object Name, Length | Format-Table
         shell: pwsh

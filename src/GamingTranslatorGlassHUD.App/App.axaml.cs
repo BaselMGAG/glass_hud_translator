@@ -67,7 +67,10 @@ public partial class App : Application
             return overlay;
         }
 
-        _session = new TranslationSession(_services, overlay, settings, RepoPaths.TestFrames);
+        _session = new TranslationSession(_services, overlay, settings, RepoPaths.TestFrames)
+        {
+            SaveFramesDirectory = Program.Option("--save-frames"),
+        };
 
         var settingsWindow = new SettingsWindow(_services, overlay, settings, _session);
         _session.Status += message => Dispatcher.UIThread.Post(() => settingsWindow.ReportStatus(message));
