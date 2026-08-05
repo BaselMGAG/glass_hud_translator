@@ -127,12 +127,27 @@ carries GHSA-2m69-gcr7-jv3q. Drop the pin once the dependency moves past it on i
 
 The pipeline, UI, profiles, caching and provider routing all work and are tested.
 
-The Windows layer is **written but never executed**. BitBlt capture, RegisterHotKey, the overlay
-styles, DPAPI storage and the native OCR engine were all written on macOS against the API contracts
-and verified only by the compiler and by CI producing a publishable exe. Nobody has run any of it on
-a Windows machine yet. The most likely failure points, in rough order: the BITMAPINFOHEADER layout
-in GetDIBits, whether MOD_NOREPEAT behaves as expected under a game's input capture, and whether
-Avalonia's window handle is available early enough for the overlay styles to stick.
+The Windows layer is under test on real hardware against Final Fantasy XIV.
+
+Confirmed working: **BitBlt capture** and **the overlay rendering over a live game** — the two
+things most likely to have been wrong, since both were written blind. `BITMAPINFOHEADER` and the
+Avalonia window-handle timing were the specific worries and neither materialised.
+
+Still unverified: click-through, hotkeys firing while the game holds focus, DPI scaling above 100%,
+and the full translation round trip.
+
+Found and fixed so far, all from one screenshot:
+
+- The app never exited. Avalonia shuts down on last-window-close and the overlay is a second
+  top-level window, so closing Settings left an orphaned overlay and a live process.
+- Failures reported only to the Settings status line, leaving the overlay stuck on
+  "جارٍ الترجمة" — which reads as a hang. Every exit path now leaves the overlay defined.
+- Tesseract discovery only knew Unix paths, so on Windows it suggested `brew install`.
+- **`PublishSingleFile` broke native OCR.** TesseractOCR ships its natives as plain
+  copy-to-output content under `x64/` and resolves them from `Assembly.Location`, which is an
+  empty string inside a single-file bundle. Publishing as a folder fixes it, and CI now fails if
+  `x64/tesseract55.dll` is missing. Do not reintroduce single-file publishing — it buys nothing
+  here, because tessdata, profiles and data ship alongside regardless.
 
 `test-frames/` currently holds **synthetic** frames drawn by `SyntheticFrames`. They exercise every
 stage of the pipeline but say nothing about a real game's typeface, its translucency, or a moving

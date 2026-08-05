@@ -4,6 +4,8 @@
 
 **Arabic subtitles for games that never shipped with Arabic support.**
 
+*Games Arabic AI translation — real-time, on screen, without touching the game.*
+
 [English](README.md) · [العربية](README.ar.md)
 
 [![build](https://github.com/basel2000de/non_arabic_supported_games_llm_hud_translator/actions/workflows/build.yml/badge.svg)](https://github.com/basel2000de/non_arabic_supported_games_llm_hud_translator/actions/workflows/build.yml)
@@ -27,6 +29,8 @@ I built it so my brother could follow the story in games he was otherwise only h
 
 <div align="center">
 <img src="docs/images/overlay.png" alt="The overlay showing a loading state, a finished Arabic translation with an embedded English place name, and the English fallback when translation fails" width="820">
+<br>
+<sub>The overlay in its three states. <b>Screenshots from real gameplay to follow</b> — these are rendered from the actual overlay control.</sub>
 </div>
 
 ## Status
@@ -39,13 +43,17 @@ Early. Honest picture of what works today:
 | Arabic rendering, shaping, bidi, diacritics | working and verified |
 | Game profiles, glossary, OCR corrections | working |
 | Provider failover, quota tracking, caching | working |
-| Screen capture, global hotkeys, click-through overlay | written, **not yet tested on real hardware** |
+| Screen capture on Windows | **confirmed on real hardware** |
+| Overlay rendering over a running game | **confirmed on real hardware** |
+| Click-through, hotkeys under game focus, live translation | written, still being tested |
 
-The Windows layer is written and compiles, and CI publishes a working .exe on every push. What it
-has not had yet is a single run on an actual Windows machine — I develop on macOS, so BitBlt
-capture, `RegisterHotKey`, click-through and DPI handling have all been written against the API
-contracts rather than verified against behaviour. Treat that milestone as "ready to test", not
-"working". The pipeline underneath it does run end to end against recorded screenshots.
+Being tested against **Final Fantasy XIV** on real hardware right now. Screen capture and the
+overlay are confirmed working over a live game. The remaining Windows behaviour — clicks passing
+through to the game, hotkeys firing while the game holds focus, and the full translation round
+trip — is written and building but still going through its first real runs.
+
+I develop on macOS, so everything Windows-specific was written against the API contracts and is
+being verified on a borrowed laptop. Expect rough edges for a little while yet.
 
 ## How it works
 
@@ -87,7 +95,64 @@ needs no credit card.
 For development: .NET 10 SDK and `tesseract`. macOS and Linux build and run everything except the
 screen-capture and hotkey layer.
 
-## Try it
+## How to use
+
+**1. Get it running.** Download the latest build from
+[Actions](https://github.com/basel2000de/non_arabic_supported_games_llm_hud_translator/actions) —
+open the newest green run and grab the artifact at the bottom. Unzip it somewhere ordinary like
+`C:\glasshud`; keep the whole folder together, since the exe needs `tessdata/`, `profiles/` and
+`data/` beside it.
+
+Windows SmartScreen will block it the first time: *More info* → *Run anyway*. That's expected for
+an unsigned app with no download history.
+
+**2. Set your game up.** The game must run in **Borderless Windowed**. Exclusive fullscreen breaks
+both screen capture and always-on-top overlays, and the app will tell you so rather than showing
+you black frames. Also make sure the game isn't running as administrator, or Windows blocks the
+overlay from drawing over it.
+
+**3. Add an API key.** Settings → API keys → paste a Gemini or Groq key → Save. They're encrypted
+against your Windows account. Both are free and neither needs a card — see [Requirements](#requirements).
+
+**4. Tell it where the text is.** Press `Ctrl+Shift+R`. The screen freezes on a screenshot so
+nothing moves while you aim. Drag a box over the dialogue text, press `Space` to see exactly what
+the OCR reads from that box, adjust until it reads cleanly, then `Enter` to save. The rectangle is
+stored relative to the game window, so it survives the window being moved.
+
+**5. Play.** Press `Ctrl+Shift+T` whenever you want the current line translated. Arabic appears over
+the game in about a second — instantly if that line has been seen before.
+
+### Hotkeys
+
+| | |
+|---|---|
+| `Ctrl+Shift+T` | Translate what's on screen now |
+| `Ctrl+Shift+A` | Auto-watch on/off — follows dialogue by itself, good for cutscenes |
+| `Ctrl+Shift+H` | Show/hide the overlay (translation keeps running underneath) |
+| `Ctrl+Shift+R` | Re-pick the capture region |
+| `Ctrl+Shift+F` | Correct the current translation and pin the correction |
+
+All five are rebindable in Settings. Type a combination like `Ctrl+Shift+T`; modifiers are Ctrl,
+Shift, Alt and Win, and keys include A–Z, 0–9, F1–F24, arrows, Insert/Delete/Home/End, the numpad
+(`Num0`–`Num9`) and punctuation. **F13–F24 are the safest choices** — games almost never bind them.
+
+### Tips
+
+**Auto-watch for cutscenes.** Manual triggering is the default because it costs one request per
+line. During a long cutscene, `Ctrl+Shift+A` lets it follow along by itself. It stops automatically
+after 90 seconds with no new text, so leaving it on during an AFK can't quietly drain your quota.
+
+**Fix a bad name once.** If a character's name comes out wrong, press `Ctrl+Shift+F`, correct it,
+and that correction is pinned — it wins over the model for that line from then on. For a name that
+appears constantly, add it to your game's `glossary.json` instead.
+
+**Nothing happening?** Settings shows a status line, a router log, and which OCR engine actually
+loaded. Almost every problem is visible there.
+
+**Stuck overlay?** Run `0-force-stop.bat`. The overlay has no Alt-Tab entry and clicks pass through
+it, so there's no window to close — the process has to be ended.
+
+## Try the pipeline without a game
 
 ```bash
 git clone https://github.com/basel2000de/non_arabic_supported_games_llm_hud_translator.git
@@ -96,7 +161,7 @@ dotnet run --project tools/Replay -- --no-cache
 ```
 
 That runs the full pipeline against generated sample frames using a stub translator, so it needs no
-API key and makes no network calls. You'll see each stage: what the OCR read, how it was cleaned
+API key, no game, and makes no network calls. It works on macOS and Linux too. You'll see each stage: what the OCR read, how it was cleaned
 up, which glossary terms matched, and what came back.
 
 Swap in a real model once you've put a key in Settings:
