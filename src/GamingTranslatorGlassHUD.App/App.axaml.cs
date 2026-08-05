@@ -13,6 +13,7 @@ public partial class App : Application
 {
     private AppServices? _services;
     private TranslationSession? _session;
+    private OverlayWindow? _overlay;
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
@@ -20,6 +21,11 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            // Avalonia defaults to shutting down when the LAST window closes. The overlay is a
+            // second top-level window that stays open, so closing Settings left the process alive
+            // with an orphaned overlay on screen that could not be dismissed.
+            desktop.ShutdownMode = Avalonia.Controls.ShutdownMode.OnMainWindowClose;
+
             desktop.MainWindow = Program.HasFlag("--render-test")
                 ? new ArabicRenderTestWindow(
                     Program.Option("--render-test-out"), Program.HasFlag("--exit-after-render"))
@@ -29,6 +35,7 @@ public partial class App : Application
 
             desktop.ShutdownRequested += async (_, _) =>
             {
+                _overlay?.Close();
                 _session?.Dispose();
                 if (_services is not null) await _services.DisposeAsync();
             };
@@ -42,7 +49,7 @@ public partial class App : Application
         PlatformServices.InitialiseDpiAwareness();
 
         var settings = AppSettings.Load();
-        var overlay = new OverlayWindow
+        var overlay = _overlay = new OverlayWindow
         {
             BodyFontSize = settings.OverlayFontSize,
             PanelOpacity = settings.OverlayOpacity,
@@ -87,7 +94,9 @@ public partial class App : Application
     /// </summary>
     private void BindHotkeys(AppSettings settings, SettingsWindow settingsWindow)
     {
-        if (_services is null || _session is null) return;
+        if (_services is null || _session is null || _overlay is null) return;
+
+        var overlay = _overlay;
 
         _services.Hotkeys.Pressed += action => Dispatcher.UIThread.Post(() =>
         {
@@ -104,6 +113,11 @@ public partial class App : Application
                     break;
                 case HotkeyAction.FlagTranslation:
                     _ = settingsWindow.CorrectCurrentAsync();
+                    break;
+                case HotkeyAction.ToggleOverlay:
+                    settingsWindow.ReportStatus(overlay.ToggleHidden()
+                        ? "Overlay shown."
+                        : "Overlay hidden. Translation carries on in the background.");
                     break;
             }
         });

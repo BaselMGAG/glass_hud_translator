@@ -65,14 +65,14 @@ public sealed class TranslationSession : IDisposable
         try
         {
             var region = await ResolveRegionAsync(ct).ConfigureAwait(false);
-            if (region is null) return;
+            if (region is null) return;   // ResolveRegionAsync has already explained why
 
             _overlay.ShowLoading();
 
             var frame = await _frames.GetFrameAsync(region.Value, ct).ConfigureAwait(false);
             if (frame is null)
             {
-                Report("Nothing captured. Is the game running in borderless windowed mode?");
+                Fail("Nothing was captured. Is the game running in Borderless Windowed mode?");
                 return;
             }
 
@@ -80,11 +80,13 @@ public sealed class TranslationSession : IDisposable
         }
         catch (OperationCanceledException)
         {
-            // Shutting down.
+            _overlay.Clear();
         }
         catch (Exception e)
         {
-            Report($"Translation failed: {e.Message}");
+            // Every exit path has to leave the overlay in a defined state. Reporting only to the
+            // Settings status line left it showing "loading" forever, which reads as a hang.
+            Fail($"Translation failed: {e.Message}");
         }
         finally
         {
@@ -190,9 +192,13 @@ public sealed class TranslationSession : IDisposable
 
         var outcome = await _services.Pipeline.ProcessAsync(frame, ct).ConfigureAwait(false);
 
-        if (string.IsNullOrWhiteSpace(outcome.Body))
+        // Guards against burning a request on an empty dialogue box: a stray glyph or a UI border
+        // can OCR to one or two characters, which is not dialogue.
+        if (outcome.Body.Trim().Length < _settings.MinimumCharactersToTranslate)
         {
-            Report("No text found in the capture region.");
+            Fail(outcome.Body.Trim().Length == 0
+                ? "No text in the capture region. Is a dialogue box actually on screen?"
+                : $"Only \"{outcome.Body.Trim()}\" found - too short to be dialogue.");
             return;
         }
 
@@ -222,12 +228,16 @@ public sealed class TranslationSession : IDisposable
         {
             // No game window - either not running, or we are on macOS where the frame source
             // replays recorded PNGs and ignores the region anyway.
-            return PlatformServices.IsWindows ? null : CaptureRegion.Empty;
+            if (!PlatformServices.IsWindows) return CaptureRegion.Empty;
+
+            Fail($"Could not find a window for {_services.Profile.DisplayName}. " +
+                 "Is the game running, and not minimised?");
+            return null;
         }
 
         if (!window.CanCapture)
         {
-            Report(window.Message);
+            Fail(window.Message);
             return null;
         }
 
@@ -254,6 +264,13 @@ public sealed class TranslationSession : IDisposable
     }
 
     private void Report(string message) => Status?.Invoke(message);
+
+    /// <summary>Reports to both the Settings status line and the overlay the user is looking at.</summary>
+    private void Fail(string message)
+    {
+        Report(message);
+        _overlay.ShowError(message);
+    }
 
     public void Dispose()
     {

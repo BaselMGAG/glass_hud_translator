@@ -42,6 +42,8 @@ public sealed class TesseractNativeEngine : IOcrEngine
     /// <summary>Non-null when the native path failed and the exe fallback is carrying the load.</summary>
     public string? InitialisationWarning { get; private set; }
 
+    public string? Diagnostics => InitialisationWarning ?? "Native Tesseract loaded.";
+
     private void TryInitialiseNative()
     {
         try
@@ -62,7 +64,12 @@ public sealed class TesseractNativeEngine : IOcrEngine
                 "Falling back to tesseract.exe. OCR will be slower but still works.";
 
             _engine = null;
-            _fallback = new TesseractCliEngine(_options with { ExecutablePath = ResolveBundledExe() });
+            var exe = ResolveBundledExe();
+            if (exe is null)
+                InitialisationWarning += " No tesseract.exe found alongside the app either, so OCR "
+                                       + "cannot run at all. See the README on bundling one.";
+
+            _fallback = new TesseractCliEngine(_options with { ExecutablePath = exe });
         }
     }
 

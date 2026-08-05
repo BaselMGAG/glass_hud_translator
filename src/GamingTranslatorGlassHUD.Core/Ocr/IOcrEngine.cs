@@ -18,5 +18,12 @@ public interface IOcrEngine : IDisposable
 {
     string Name { get; }
 
+    /// <summary>
+    /// How this engine started up, surfaced in Settings. An engine that quietly fell back to a
+    /// slower path, or cannot work at all, has to say so somewhere the user will actually look -
+    /// otherwise the only symptom is that nothing happens.
+    /// </summary>
+    string? Diagnostics => null;
+
     Task<OcrResult> RecognizeAsync(Frame frame, CancellationToken ct);
 }

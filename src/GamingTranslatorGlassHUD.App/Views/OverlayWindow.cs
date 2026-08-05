@@ -125,8 +125,41 @@ public sealed class OverlayWindow : Window
     public void ShowMessage(string message) =>
         Dispatcher.UIThread.Post(() => Render(null, message, warning: null));
 
-    private void Render(string? speaker, string text, string? warning, bool englishBody = false)
+    /// <summary>
+    /// Something went wrong. Shown on the overlay rather than only in Settings, because the overlay
+    /// is where the user is looking - an earlier version reported failures to the Settings status
+    /// line only, so the overlay sat on "loading" forever and the app looked hung.
+    /// </summary>
+    public void ShowError(string message) => Dispatcher.UIThread.Post(() =>
+        Render(null, message, warning: null, englishBody: true, isError: true));
+
+    /// <summary>Hides the panel entirely. Used when there is nothing to say.</summary>
+    public void Clear() => Dispatcher.UIThread.Post(Hide);
+
+    /// <summary>
+    /// True when the user has hidden the HUD by hotkey. Distinct from simply not being shown:
+    /// translations keep running and keep being cached while hidden, they just are not drawn, so
+    /// unhiding is instant and nothing was missed.
+    /// </summary>
+    public bool HiddenByUser { get; private set; }
+
+    /// <summary>Returns the new visibility, so the caller can report it.</summary>
+    public bool ToggleHidden()
     {
+        HiddenByUser = !HiddenByUser;
+
+        if (HiddenByUser) Hide();
+        else if (!string.IsNullOrEmpty(_body.Text)) Show();
+
+        return !HiddenByUser;
+    }
+
+    private void Render(string? speaker, string text, string? warning, bool englishBody = false,
+        bool isError = false)
+    {
+        _body.Foreground = isError ? new SolidColorBrush(Color.Parse("#f28b82")) : Brushes.White;
+        _body.FontSize = isError ? Math.Min(18, BodyFontSize) : BodyFontSize;
+
         _speaker.Text = speaker;
         _speaker.IsVisible = !string.IsNullOrWhiteSpace(speaker);
 
@@ -137,7 +170,8 @@ public sealed class OverlayWindow : Window
         _warning.Text = warning;
         _warning.IsVisible = warning is not null;
 
-        if (!IsVisible) Show();
+        // Respect an explicit hide: a new line arriving must not pop the HUD back over the game.
+        if (!IsVisible && !HiddenByUser) Show();
     }
 
     protected override void OnOpened(EventArgs e)

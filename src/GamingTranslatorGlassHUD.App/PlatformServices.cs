@@ -56,6 +56,25 @@ public static class PlatformServices
 #endif
     }
 
+    /// <summary>
+    /// A still of the whole screen, so the region picker can be drawn on a frozen image rather than
+    /// over a live game. Picking on a still is far easier: the dialogue stays put while you drag.
+    /// </summary>
+    public static Frame? CaptureFullScreen()
+    {
+#if WINDOWS
+        var width = Interop.NativeMethods.GetSystemMetrics(Interop.NativeMethods.SmCxScreen);
+        var height = Interop.NativeMethods.GetSystemMetrics(Interop.NativeMethods.SmCyScreen);
+        if (width <= 0 || height <= 0) return null;
+
+        using var source = new Windows.Win32FrameSource();
+        return source.GetFrameAsync(new CaptureRegion(0, 0, width, height), CancellationToken.None)
+            .GetAwaiter().GetResult();
+#else
+        return null;
+#endif
+    }
+
     public static IOcrEngine CreateOcrEngine(string language = "eng")
     {
         var options = new TesseractOptions { Language = language };

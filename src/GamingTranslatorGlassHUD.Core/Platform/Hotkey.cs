@@ -134,6 +134,7 @@ public static class DefaultHotkeys
             [HotkeyAction.TranslateNow] = new(HotkeyModifiers.Control | HotkeyModifiers.Shift, "T"),
             [HotkeyAction.ToggleAutoWatch] = new(HotkeyModifiers.Control | HotkeyModifiers.Shift, "A"),
             [HotkeyAction.FlagTranslation] = new(HotkeyModifiers.Control | HotkeyModifiers.Shift, "F"),
+            [HotkeyAction.ToggleOverlay] = new(HotkeyModifiers.Control | HotkeyModifiers.Shift, "H"),
         };
 
     public static string Describe(HotkeyAction action) => action switch
@@ -142,6 +143,7 @@ public static class DefaultHotkeys
         HotkeyAction.TranslateNow => "Translate what is on screen now",
         HotkeyAction.ToggleAutoWatch => "Toggle auto-watch",
         HotkeyAction.FlagTranslation => "Correct the current translation",
+        HotkeyAction.ToggleOverlay => "Show / hide the overlay",
         _ => action.ToString(),
     };
 }

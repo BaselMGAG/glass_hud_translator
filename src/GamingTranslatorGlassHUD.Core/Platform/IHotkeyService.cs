@@ -17,6 +17,12 @@ public enum HotkeyAction
 
     /// <summary>Correct the current translation and pin the correction.</summary>
     FlagTranslation,
+
+    /// <summary>
+    /// Show or hide the overlay without stopping translation. Needed for the moments the HUD is in
+    /// the way - a boss mechanic under the text box, or a screenshot worth taking clean.
+    /// </summary>
+    ToggleOverlay,
 }
 
 public sealed record HotkeyRegistration(HotkeyAction Action, Hotkey Hotkey, bool Succeeded, string? Error = null);

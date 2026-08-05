@@ -22,18 +22,64 @@ public sealed class TesseractCliEngine(TesseractOptions? options = null) : IOcrE
 
     public string Name => "tesseract-cli";
 
+    public string? Diagnostics =>
+        (_options.ExecutablePath ?? Locate()) is { } path ? $"tesseract binary: {path}" : InstallHint;
+
+    /// <summary>
+    /// Finds a tesseract binary. Looks beside the app first, so a copy shipped with the release
+    /// wins over whatever happens to be installed.
+    ///
+    /// <para>
+    /// This used to search only Unix paths, which meant that on Windows - where it is the fallback
+    /// for the native engine failing - it always came up empty and reported "install it with brew",
+    /// on a machine that has no brew. That produced a silent hang rather than a usable error.
+    /// </para>
+    /// </summary>
     public static string? Locate()
     {
-        foreach (var candidate in new[]
-                 {
-                     "/opt/homebrew/bin/tesseract", "/usr/local/bin/tesseract", "/usr/bin/tesseract",
-                 })
+        var exe = OperatingSystem.IsWindows() ? "tesseract.exe" : "tesseract";
+
+        var candidates = new List<string>
         {
+            Path.Combine(AppContext.BaseDirectory, "tesseract", exe),
+            Path.Combine(AppContext.BaseDirectory, exe),
+        };
+
+        candidates.AddRange(OperatingSystem.IsWindows()
+            ? [
+                @"C:\Program Files\Tesseract-OCR\tesseract.exe",
+                @"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Programs", "Tesseract-OCR", "tesseract.exe"),
+            ]
+            : ["/opt/homebrew/bin/tesseract", "/usr/local/bin/tesseract", "/usr/bin/tesseract"]);
+
+        foreach (var candidate in candidates)
             if (File.Exists(candidate)) return candidate;
+
+        // Finally whatever is on PATH.
+        foreach (var dir in (Environment.GetEnvironmentVariable("PATH") ?? "")
+                 .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            try
+            {
+                var candidate = Path.Combine(dir.Trim(), exe);
+                if (File.Exists(candidate)) return candidate;
+            }
+            catch (ArgumentException)
+            {
+                // Malformed PATH entry; skip it.
+            }
         }
 
         return null;
     }
+
+    public static string InstallHint => OperatingSystem.IsWindows()
+        ? "No Tesseract found. The bundled native engine should normally handle this - if you are "
+          + "seeing this, put a tesseract.exe in a 'tesseract' folder next to the app, or install "
+          + "Tesseract-OCR from https://github.com/UB-Mannheim/tesseract/wiki."
+        : "No Tesseract found. Install it with: brew install tesseract";
 
     public async Task<OcrResult> RecognizeAsync(Frame frame, CancellationToken ct)
     {
@@ -57,9 +103,7 @@ public sealed class TesseractCliEngine(TesseractOptions? options = null) : IOcrE
     private async Task<string> RunAsync(string inputPath, CancellationToken ct)
     {
         var exe = _options.ExecutablePath ?? Locate()
-            ?? throw new InvalidOperationException(
-                "tesseract was not found. Install it with 'brew install tesseract', or set " +
-                "TesseractOptions.ExecutablePath.");
+            ?? throw new InvalidOperationException(InstallHint);
 
         var start = new ProcessStartInfo(exe)
         {

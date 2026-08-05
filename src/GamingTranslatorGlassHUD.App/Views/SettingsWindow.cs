@@ -157,6 +157,8 @@ public sealed class SettingsWindow : Window
         var manual = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         manual.Children.Add(Button("Translate now", () => _ = _session.TranslateNowAsync()));
         manual.Children.Add(Button("Toggle auto-watch", _session.ToggleAutoWatch));
+        manual.Children.Add(Button("Show / hide overlay", () => _status.Text = _overlay.ToggleHidden()
+            ? "Overlay shown." : "Overlay hidden. Translation carries on in the background."));
         stack.Children.Add(manual);
 
         stack.Children.Add(Note("Correct the line currently on the overlay. The correction is pinned "
@@ -167,6 +169,7 @@ public sealed class SettingsWindow : Window
         stack.Children.Add(correctRow);
 
         stack.Children.Add(Section("Diagnostics"));
+        stack.Children.Add(Note($"OCR: {_services.Ocr.Name} — {_services.Ocr.Diagnostics ?? "no detail"}"));
         stack.Children.Add(_quota);
         stack.Children.Add(_cache);
         stack.Children.Add(_status);
@@ -202,7 +205,13 @@ public sealed class SettingsWindow : Window
 
     public async Task PickRegionAsync(string profileName)
     {
-        var picker = new RegionPickerWindow(profileName);
+        // Freeze the screen first so the dialogue does not advance while the user is aiming, and
+        // hide our own overlay so it cannot end up inside the captured region.
+        _overlay.Clear();
+        await Task.Delay(120);
+        var screenshot = PlatformServices.CaptureFullScreen();
+
+        var picker = new RegionPickerWindow(profileName, screenshot, TestRegionAsync);
         await picker.ShowDialog(this);
 
         if (picker.Result is not { } region)
@@ -211,13 +220,17 @@ public sealed class SettingsWindow : Window
             return;
         }
 
-        // On Windows this resolves against the FFXIV client rect (Session 2). On macOS there is no
-        // game window, so the screen stands in - enough to exercise storage and the picker itself.
-        var bounds = Screens.Primary?.Bounds;
-        var width = bounds?.Width ?? 1920;
-        var height = bounds?.Height ?? 1080;
+        // Stored relative to the game's client area, not the screen, so the profile survives the
+        // window being moved. Falls back to the screen when there is no game window to measure.
+        var game = PlatformServices.FindGameWindow(_services.Profile.WindowTitles);
+        var origin = game?.ClientArea ?? new CaptureRegion(0, 0,
+            Screens.Primary?.Bounds.Width ?? 1920, Screens.Primary?.Bounds.Height ?? 1080);
 
-        var profile = RegionProfile.FromPixels(profileName, region, width, height, uiScale: 1.0);
+        var relative = new CaptureRegion(
+            region.X - origin.X, region.Y - origin.Y, region.Width, region.Height);
+
+        var profile = RegionProfile.FromPixels(profileName, relative,
+            origin.Width, origin.Height, game?.Scaling ?? 1.0);
         await _services.Regions.SaveAsync(profile, CancellationToken.None);
 
         _settings.LastRegionProfile = profileName;
@@ -225,6 +238,21 @@ public sealed class SettingsWindow : Window
 
         _status.Text = $"Saved '{profileName}' as {profile.RelWidth:P0} x {profile.RelHeight:P0} " +
                        $"of the client rect.";
+    }
+
+    /// <summary>
+    /// Reads whatever is inside a candidate rectangle, so the picker can show the user exactly what
+    /// the OCR sees before they commit to it. Costs no API quota - OCR only, no translation.
+    /// </summary>
+    private async Task<string> TestRegionAsync(CaptureRegion region)
+    {
+        var screenshot = PlatformServices.CaptureFullScreen();
+        if (screenshot is null) return "(screen capture is Windows-only)";
+
+        if (!region.FitsWithin(screenshot.Width, screenshot.Height)) return "(selection is off-screen)";
+
+        var result = await _services.Ocr.RecognizeAsync(screenshot.Crop(region), CancellationToken.None);
+        return result.RawText;
     }
 
     /// <summary>

@@ -36,6 +36,13 @@ public sealed record AppSettings
     /// <summary>Bindings as display strings, e.g. "Ctrl+Shift+T". Missing entries fall back to defaults.</summary>
     [JsonPropertyName("hotkeys")] public Dictionary<string, string> Hotkeys { get; set; } = [];
 
+    /// <summary>
+    /// Below this many characters the capture is treated as "no dialogue on screen" and nothing is
+    /// sent. Stops an empty text box, or a stray UI border OCR'd as a stray glyph, costing a request.
+    /// </summary>
+    [JsonPropertyName("minimumCharactersToTranslate")]
+    public int MinimumCharactersToTranslate { get; set; } = 3;
+
     [JsonPropertyName("lastRegionProfile")] public string LastRegionProfile { get; set; } = "dialogue";
 
     [JsonPropertyName("hasCompletedFirstRun")] public bool HasCompletedFirstRun { get; set; }
