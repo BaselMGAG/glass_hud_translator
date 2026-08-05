@@ -41,7 +41,7 @@
   </ItemGroup>
 
   <ItemGroup Label="Storage">
-    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.5" />
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.10" />
     <!--
       Transitive pin. Microsoft.Data.Sqlite 10.0.5 pulls lib.e_sqlite3 2.1.11, which carries
       GHSA-2m69-gcr7-jv3q (vulnerable SQLite, <= 2.1.11). 2.1.12 is a native-only bump - the
