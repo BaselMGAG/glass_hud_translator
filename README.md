@@ -136,6 +136,24 @@ All five are rebindable in Settings. Type a combination like `Ctrl+Shift+T`; mod
 Shift, Alt and Win, and keys include A–Z, 0–9, F1–F24, arrows, Insert/Delete/Home/End, the numpad
 (`Num0`–`Num9`) and punctuation. **F13–F24 are the safest choices** — games almost never bind them.
 
+### Using a mouse button
+
+Mouse buttons can't be bound directly. Windows' `RegisterHotKey` only accepts keyboard keys, and
+supporting mouse buttons would mean installing a global input hook — the exact pattern antivirus
+heuristics flag, which this project avoids on purpose.
+
+Use your mouse's own software instead (Logitech G HUB, Razer Synapse, Corsair iCUE, SteelSeries GG,
+and most generic drivers can all do this). Map the side button to a key combination, then bind that
+combination here.
+
+Best combination to use: something with **F13–F24**. Those keys don't exist on physical keyboards,
+so no game has anything bound to them and a conflict is impossible.
+
+```
+mouse button 4  →  Ctrl+F13   (in your mouse software)
+Ctrl+F13        →  Translate what is on screen now   (in Settings → Hotkeys)
+```
+
 ### Tips
 
 **Auto-watch for cutscenes.** Manual triggering is the default because it costs one request per
