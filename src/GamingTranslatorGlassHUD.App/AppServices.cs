@@ -64,9 +64,27 @@ public sealed class AppServices : IAsyncDisposable
     public IReadOnlyList<string> LaneNames { get; }
 
     /// <summary>The active game profile - regions, glossary, OCR fixes and prompt voice.</summary>
-    public GameProfile Profile { get; }
+    public GameProfile Profile { get; private set; }
 
     public IReadOnlyList<string> AvailableProfiles { get; }
+
+    private string ProfilesDirectory { get; init; } = "";
+
+    /// <summary>
+    /// Loads a different game profile and applies it immediately - glossary, OCR corrections,
+    /// prompt voice and the window it measures capture regions against. Capture regions themselves
+    /// are stored per profile, so the previous profile's rectangle is waiting when you switch back.
+    /// </summary>
+    public bool SwitchProfile(string id)
+    {
+        if (id == Profile.Id) return false;
+
+        Profile = GameProfileStore.LoadOrFallback(ProfilesDirectory, id);
+        Pipeline.UseProfile(Profile.DisplayName, Profile.StyleHint,
+            new GlossaryMatcher(Profile.Glossary), Profile.Corrections);
+
+        return true;
+    }
 
     public static async Task<AppServices> CreateAsync(
         string dataDirectory, string profilesDirectory, string? preferredProfileId,
@@ -108,7 +126,10 @@ public sealed class AppServices : IAsyncDisposable
         return new AppServices(db, http, cache, log, quota, regions, secrets, models, glossary,
             corrections, ocr, hotkeys, pipeline, routerLog,
             lanes.Select(l => l.Provider.Name).ToList(), profile,
-            GameProfileStore.Discover(profilesDirectory));
+            GameProfileStore.Discover(profilesDirectory))
+        {
+            ProfilesDirectory = profilesDirectory,
+        };
     }
 
     private static List<(ITranslationProvider Provider, int Rpm)> BuildLanes(

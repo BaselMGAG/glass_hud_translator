@@ -34,6 +34,8 @@ public sealed class TranslationPipeline(
     TranslationLog? log = null)
 {
     private string? _previousLine;
+    private GlossaryMatcher _glossary = glossary;
+    private OcrCorrections _corrections = corrections ?? OcrCorrections.Empty;
 
     public ArabicRegister Register { get; set; } = ArabicRegister.ModernStandard;
 
@@ -41,6 +43,20 @@ public sealed class TranslationPipeline(
     public string GameName { get; set; } = "a video game";
 
     public string? StyleHint { get; set; }
+
+    /// <summary>
+    /// Swaps everything a game profile owns, without rebuilding the pipeline. Switching between a
+    /// game and the desktop is a thing people do several times an hour, and making that a restart
+    /// would be enough friction that they simply would not bother.
+    /// </summary>
+    public void UseProfile(string gameName, string? styleHint, GlossaryMatcher matcher, OcrCorrections ocrCorrections)
+    {
+        GameName = gameName;
+        StyleHint = styleHint;
+        _glossary = matcher;
+        _corrections = ocrCorrections;
+        ResetContext();
+    }
 
     /// <summary>Cleared when the player leaves a conversation, so context does not bleed scenes.</summary>
     public void ResetContext() => _previousLine = null;
@@ -53,7 +69,7 @@ public sealed class TranslationPipeline(
         var requestedAt = DateTimeOffset.UtcNow;
 
         var recognised = await ocr.RecognizeAsync(frame, ct).ConfigureAwait(false);
-        var normalized = TextNormalizer.Normalize(recognised.RawText, corrections);
+        var normalized = TextNormalizer.Normalize(recognised.RawText, _corrections);
         var (speaker, body) = DialogueParser.Parse(normalized);
 
         if (string.IsNullOrWhiteSpace(body))
@@ -77,7 +93,7 @@ public sealed class TranslationPipeline(
                 recognised.Confidence, Stopwatch.GetElapsedTime(started));
         }
 
-        var hits = glossary.Match(body);
+        var hits = _glossary.Match(body);
         var result = await router.TranslateAsync(
             new TranslationRequest(body, speaker, hits, _previousLine, Register, requestedAt,
                 GameName, StyleHint), ct)

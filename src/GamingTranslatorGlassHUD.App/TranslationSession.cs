@@ -221,7 +221,7 @@ public sealed class TranslationSession : IDisposable
     private async Task<CaptureRegion?> ResolveRegionAsync(CancellationToken ct)
     {
         var profile = await _services.Regions
-            .LoadOrDefaultAsync(_settings.LastRegionProfile, ct).ConfigureAwait(false);
+            .LoadOrDefaultAsync(_services.Profile.Id, _settings.LastRegionProfile, ct).ConfigureAwait(false);
 
         var window = PlatformServices.FindGameWindow(_services.Profile.WindowTitles);
         if (window is null)

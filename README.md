@@ -252,9 +252,12 @@ The difference between a game profile and the general one:
 | Glossary of proper nouns | yes | none by default |
 | Prompt voice | tuned per game | plain contemporary prose |
 
-So `general` is the right choice for reading something once, and a game profile is worth making for
-anything you'll come back to. Changing profile needs a restart, since the glossary and OCR language
-load at startup.
+**Each profile keeps its own capture regions.** Pick the dialogue box once for the game and the
+subtitle bar once for your video player, and switching between them restores the right rectangle
+automatically — no re-picking. Switching takes effect immediately; no restart.
+
+So `general` is right for reading something once, and a game profile is worth making for anything
+you come back to.
 
 ### Why Final Fantasy XIV shows up everywhere
 

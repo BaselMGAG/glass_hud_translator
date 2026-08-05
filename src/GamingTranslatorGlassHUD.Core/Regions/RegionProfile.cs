@@ -60,26 +60,28 @@ public sealed record RegionProfile(
 
 public sealed class RegionProfileStore(AppDatabase db)
 {
-    public Task SaveAsync(RegionProfile profile, CancellationToken ct) =>
+    public Task SaveAsync(string gameProfileId, RegionProfile profile, CancellationToken ct) =>
         db.ExecuteAsync("""
-            INSERT INTO region_profiles (name, resolution, ui_scale, rel_x, rel_y, rel_w, rel_h)
-            VALUES ($name, $resolution, $scale, $x, $y, $w, $h)
-            ON CONFLICT(name) DO UPDATE SET
+            INSERT INTO region_profiles (profile, name, resolution, ui_scale, rel_x, rel_y, rel_w, rel_h)
+            VALUES ($profile, $name, $resolution, $scale, $x, $y, $w, $h)
+            ON CONFLICT(profile, name) DO UPDATE SET
               resolution = excluded.resolution, ui_scale = excluded.ui_scale,
               rel_x = excluded.rel_x, rel_y = excluded.rel_y,
               rel_w = excluded.rel_w, rel_h = excluded.rel_h;
             """, ct,
+            ("$profile", gameProfileId),
             ("$name", profile.Name), ("$resolution", profile.Resolution), ("$scale", profile.UiScale),
             ("$x", profile.RelX), ("$y", profile.RelY), ("$w", profile.RelWidth), ("$h", profile.RelHeight));
 
-    public Task<RegionProfile?> LoadAsync(string name, CancellationToken ct) =>
+    public Task<RegionProfile?> LoadAsync(string gameProfileId, string name, CancellationToken ct) =>
         db.WithConnectionAsync(async (connection, token) =>
         {
             await using var command = connection.CreateCommand();
             command.CommandText = """
                 SELECT name, resolution, ui_scale, rel_x, rel_y, rel_w, rel_h
-                FROM region_profiles WHERE name = $name;
+                FROM region_profiles WHERE profile = $profile AND name = $name;
                 """;
+            command.Parameters.AddWithValue("$profile", gameProfileId);
             command.Parameters.AddWithValue("$name", name);
 
             await using var reader = await command.ExecuteReaderAsync(token).ConfigureAwait(false);
@@ -89,6 +91,10 @@ public sealed class RegionProfileStore(AppDatabase db)
                 reader.GetDouble(3), reader.GetDouble(4), reader.GetDouble(5), reader.GetDouble(6));
         }, ct);
 
-    public async Task<RegionProfile> LoadOrDefaultAsync(string name, CancellationToken ct) =>
-        await LoadAsync(name, ct).ConfigureAwait(false) ?? RegionProfile.Default(name);
+    public async Task<RegionProfile> LoadOrDefaultAsync(string gameProfileId, string name, CancellationToken ct) =>
+        await LoadAsync(gameProfileId, name, ct).ConfigureAwait(false) ?? RegionProfile.Default(name);
+
+    /// <summary>True once the user has picked this region themselves rather than inheriting a default.</summary>
+    public async Task<bool> HasAsync(string gameProfileId, string name, CancellationToken ct) =>
+        await LoadAsync(gameProfileId, name, ct).ConfigureAwait(false) is not null;
 }

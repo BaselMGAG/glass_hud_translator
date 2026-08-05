@@ -1,3 +1,4 @@
+using GamingTranslatorGlassHUD.Core.Regions;
 using GamingTranslatorGlassHUD.Core.Storage;
 using GamingTranslatorGlassHUD.Core.Translation;
 using Xunit;
@@ -204,5 +205,69 @@ public class SecretStoreTests
         {
             File.Delete(path);
         }
+    }
+}
+
+public class RegionProfileStoreTests
+{
+    [Fact]
+    public async Task RegionsAreKeptSeparatePerGameProfile()
+    {
+        // Switching between a game and the desktop must not clobber either rectangle. Keyed by name
+        // alone, picking a region for one profile silently overwrote the other's.
+        await using var db = await AppDatabase.OpenInMemoryAsync();
+        var store = new RegionProfileStore(db);
+        var ct = CancellationToken.None;
+
+        await store.SaveAsync("ffxiv", new RegionProfile("dialogue", "1920x1080", 1.0, 0.2, 0.7, 0.6, 0.2), ct);
+        await store.SaveAsync("general", new RegionProfile("dialogue", "1920x1080", 1.0, 0.1, 0.1, 0.3, 0.3), ct);
+
+        var game = await store.LoadAsync("ffxiv", "dialogue", ct);
+        var desktop = await store.LoadAsync("general", "dialogue", ct);
+
+        Assert.Equal(0.7, game!.RelY, 3);
+        Assert.Equal(0.1, desktop!.RelY, 3);
+    }
+
+    [Fact]
+    public async Task SwitchingBackFindsTheOriginalRegionWaiting()
+    {
+        await using var db = await AppDatabase.OpenInMemoryAsync();
+        var store = new RegionProfileStore(db);
+        var ct = CancellationToken.None;
+
+        await store.SaveAsync("ffxiv", new RegionProfile("dialogue", "1920x1080", 1.0, 0.2, 0.7, 0.6, 0.2), ct);
+        await store.SaveAsync("general", new RegionProfile("dialogue", "1920x1080", 1.0, 0.1, 0.1, 0.3, 0.3), ct);
+
+        Assert.True(await store.HasAsync("ffxiv", "dialogue", ct));
+        Assert.Equal(0.6, (await store.LoadOrDefaultAsync("ffxiv", "dialogue", ct)).RelWidth, 3);
+    }
+
+    [Fact]
+    public async Task AnUnpickedProfileFallsBackToDefaultsRatherThanAnotherProfilesRegion()
+    {
+        await using var db = await AppDatabase.OpenInMemoryAsync();
+        var store = new RegionProfileStore(db);
+        var ct = CancellationToken.None;
+
+        await store.SaveAsync("ffxiv", new RegionProfile("dialogue", "1920x1080", 1.0, 0.2, 0.7, 0.6, 0.2), ct);
+
+        Assert.False(await store.HasAsync("general", "dialogue", ct));
+        Assert.Equal(RegionProfile.Default("dialogue").RelY,
+            (await store.LoadOrDefaultAsync("general", "dialogue", ct)).RelY, 3);
+    }
+
+    [Fact]
+    public async Task EachProfileKeepsItsOwnDialogueSubtitleAndQuestRegions()
+    {
+        await using var db = await AppDatabase.OpenInMemoryAsync();
+        var store = new RegionProfileStore(db);
+        var ct = CancellationToken.None;
+
+        foreach (var name in RegionProfile.Names.All)
+            await store.SaveAsync("ffxiv", new RegionProfile(name, "1920x1080", 1.0, 0.1, 0.2, 0.3, 0.4), ct);
+
+        foreach (var name in RegionProfile.Names.All)
+            Assert.True(await store.HasAsync("ffxiv", name, ct), name);
     }
 }

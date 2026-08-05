@@ -13,7 +13,7 @@ namespace GamingTranslatorGlassHUD.Core.Storage;
 /// </summary>
 public sealed class AppDatabase : IAsyncDisposable
 {
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
 
     private readonly SqliteConnection _connection;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -63,6 +63,7 @@ public sealed class AppDatabase : IAsyncDisposable
         if (version >= SchemaVersion) return;
 
         await ExecuteAsync(Schema, ct).ConfigureAwait(false);
+        await MigrateRegionsToV2Async(ct).ConfigureAwait(false);
         await ExecuteAsync($"PRAGMA user_version={SchemaVersion};", ct).ConfigureAwait(false);
     }
 
@@ -102,10 +103,12 @@ public sealed class AppDatabase : IAsyncDisposable
         );
 
         CREATE TABLE IF NOT EXISTS region_profiles (
-          name        TEXT PRIMARY KEY,
+          profile     TEXT NOT NULL,
+          name        TEXT NOT NULL,
           resolution  TEXT NOT NULL,
           ui_scale    REAL NOT NULL,
-          rel_x REAL NOT NULL, rel_y REAL NOT NULL, rel_w REAL NOT NULL, rel_h REAL NOT NULL
+          rel_x REAL NOT NULL, rel_y REAL NOT NULL, rel_w REAL NOT NULL, rel_h REAL NOT NULL,
+          PRIMARY KEY (profile, name)
         );
 
         CREATE TABLE IF NOT EXISTS counters (
@@ -113,6 +116,46 @@ public sealed class AppDatabase : IAsyncDisposable
           value INTEGER NOT NULL
         );
         """;
+
+    /// <summary>
+    /// v1 keyed capture regions by name alone, so switching game profile silently overwrote the
+    /// previous profile's rectangle. Existing rows are attributed to "ffxiv", the only profile that
+    /// existed while v1 was in use. Safe to run repeatedly - it checks for the column first.
+    /// </summary>
+    private async Task MigrateRegionsToV2Async(CancellationToken ct)
+    {
+        var hasProfileColumn = await WithConnectionAsync(async (connection, token) =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA table_info(region_profiles);";
+            await using var reader = await command.ExecuteReaderAsync(token).ConfigureAwait(false);
+
+            while (await reader.ReadAsync(token).ConfigureAwait(false))
+                if (reader.GetString(1) == "profile") return true;
+
+            return false;
+        }, ct).ConfigureAwait(false);
+
+        if (hasProfileColumn) return;
+
+        await ExecuteAsync("""
+            ALTER TABLE region_profiles RENAME TO region_profiles_v1;
+
+            CREATE TABLE region_profiles (
+              profile     TEXT NOT NULL,
+              name        TEXT NOT NULL,
+              resolution  TEXT NOT NULL,
+              ui_scale    REAL NOT NULL,
+              rel_x REAL NOT NULL, rel_y REAL NOT NULL, rel_w REAL NOT NULL, rel_h REAL NOT NULL,
+              PRIMARY KEY (profile, name)
+            );
+
+            INSERT INTO region_profiles (profile, name, resolution, ui_scale, rel_x, rel_y, rel_w, rel_h)
+            SELECT 'ffxiv', name, resolution, ui_scale, rel_x, rel_y, rel_w, rel_h FROM region_profiles_v1;
+
+            DROP TABLE region_profiles_v1;
+            """, ct).ConfigureAwait(false);
+    }
 
     internal async Task<T> WithConnectionAsync<T>(
         Func<SqliteConnection, CancellationToken, Task<T>> work, CancellationToken ct)

@@ -137,8 +137,18 @@ public sealed class SettingsWindow : Window
 
             _settings.ProfileId = id;
             _settings.Save();
-            _status.Text = $"Profile set to '{id}'. Restart the app for it to take effect — the "
-                         + "glossary and OCR language are loaded at startup.";
+            _services.SwitchProfile(id);
+
+            _ = Dispatcher.UIThread.InvokeAsync(async () =>
+            {
+                var picked = await _services.Regions.HasAsync(
+                    id, _settings.LastRegionProfile, CancellationToken.None);
+
+                _status.Text = picked
+                    ? $"Switched to '{_services.Profile.DisplayName}'. Its saved capture region is back."
+                    : $"Switched to '{_services.Profile.DisplayName}'. No region picked for it yet — "
+                      + "press Ctrl+Shift+R.";
+            });
         };
         stack.Children.Add(Row("Profile", profiles));
         stack.Children.Add(Note(
@@ -264,7 +274,7 @@ public sealed class SettingsWindow : Window
 
         var profile = RegionProfile.FromPixels(profileName, relative,
             origin.Width, origin.Height, game?.Scaling ?? 1.0);
-        await _services.Regions.SaveAsync(profile, CancellationToken.None);
+        await _services.Regions.SaveAsync(_services.Profile.Id, profile, CancellationToken.None);
 
         _settings.LastRegionProfile = profileName;
         _settings.Save();
