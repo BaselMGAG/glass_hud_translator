@@ -7,12 +7,13 @@ using GlassHudTranslator.Core.Config;
 namespace GlassHudTranslator.Core.Translation;
 
 /// <summary>
-/// One HTTP client for every provider.
+/// One HTTP client for every provider that speaks OpenAI chat-completions.
 ///
 /// <para>
-/// Gemini, Groq and Ollama all expose the OpenAI chat-completions shape, so the only things that
-/// differ are the base URL, the key, and the model name - which means there is no reason for
-/// GeminiProvider and GroqProvider to exist as separate classes (brief 4.1).
+/// Gemini, Groq, OpenAI itself and Ollama all expose that shape, so the only things that differ
+/// are the base URL, the key, and the model name - which means there is no reason for
+/// GeminiProvider and GroqProvider to exist as separate classes (brief 4.1). Anthropic is the one
+/// provider that does not fit; it has its own lane rather than a branch in here.
 /// </para>
 /// </summary>
 public sealed class OpenAiCompatibleProvider(
@@ -26,6 +27,8 @@ public sealed class OpenAiCompatibleProvider(
 
     public IReadOnlyList<string> Models => config.Models;
 
+    public bool IsConfigured => config.Secret is null || !string.IsNullOrWhiteSpace(apiKey());
+
     public async Task<string> TranslateAsync(TranslationRequest request, string model, CancellationToken ct)
     {
         var (system, user) = PromptBuilder.Build(request);
@@ -36,7 +39,7 @@ public sealed class OpenAiCompatibleProvider(
                 model,
                 [new ChatMessage("system", system), new ChatMessage("user", user)],
                 Temperature: 0.3,
-                MaxTokens: 300), options: Json),
+                MaxTokens: config.MaxOutputTokens), options: Json),
         };
 
         var key = apiKey();
@@ -93,7 +96,8 @@ public sealed class OpenAiCompatibleProvider(
 
             // Several providers answer a retired model with 400 rather than 404, so the body has
             // to be inspected. Getting this wrong would burn the whole lane on a dead model name.
-            HttpStatusCode.BadRequest when MentionsModel(detail) => ProviderFailure.ModelNotFound,
+            HttpStatusCode.BadRequest when ProviderDiagnostics.MentionsMissingModel(detail)
+                => ProviderFailure.ModelNotFound,
 
             HttpStatusCode.BadRequest => ProviderFailure.Fatal,
             _ when (int)response.StatusCode >= 500 => ProviderFailure.Transient,
@@ -101,16 +105,8 @@ public sealed class OpenAiCompatibleProvider(
         };
 
         return new ProviderException(Name, model, failure,
-            $"{(int)response.StatusCode} {response.ReasonPhrase}: {Truncate(detail, 300)}");
+            $"{(int)response.StatusCode} {response.ReasonPhrase}: {ProviderDiagnostics.Truncate(detail, 300)}");
     }
-
-    private static bool MentionsModel(string body) =>
-        body.Contains("model", StringComparison.OrdinalIgnoreCase) &&
-        (body.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
-         body.Contains("does not exist", StringComparison.OrdinalIgnoreCase) ||
-         body.Contains("decommissioned", StringComparison.OrdinalIgnoreCase) ||
-         body.Contains("unsupported", StringComparison.OrdinalIgnoreCase) ||
-         body.Contains("invalid", StringComparison.OrdinalIgnoreCase));
 
     private static async Task<string> SafeReadAsync(HttpResponseMessage response, CancellationToken ct)
     {
@@ -123,9 +119,6 @@ public sealed class OpenAiCompatibleProvider(
             return "<unreadable body>";
         }
     }
-
-    private static string Truncate(string text, int max) =>
-        text.Length <= max ? text : text[..max] + "...";
 
     private sealed record ChatRequest(
         string Model,

@@ -1,0 +1,37 @@
+name: Arabic review
+description: A translation or a glossary spelling is wrong
+labels: [arabic, help wanted]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the most useful kind of issue on the project. The glossary was written by someone
+        who is not a native speaker, and a wrong name spelling repeats on every line it appears in.
+
+        You do not need to explain at length or be polite about it. Wrong is wrong.
+
+  - type: input
+    id: wrong
+    attributes:
+      label: What it currently says
+    validations:
+      required: true
+
+  - type: input
+    id: right
+    attributes:
+      label: What it should say
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why (optional)
+      description: Useful if it is a judgement call rather than a plain error.
+
+  - type: dropdown
+    id: register
+    attributes:
+      label: Which register were you using
+      options: ['Modern Standard Arabic', 'Egyptian Arabic', 'Both / not sure']

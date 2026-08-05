@@ -153,8 +153,7 @@ static List<(ITranslationProvider Provider, int Rpm)> BuildLanes(
     {
         if (options.Provider != "all" && config.Name != options.Provider) continue;
 
-        lanes.Add((new OpenAiCompatibleProvider(config, http,
-            () => config.Secret is null ? null : secrets.Get(config.Secret)), config.Rpm));
+        lanes.Add((ProviderFactory.Create(config, http, secrets), config.Rpm));
     }
 
     if (lanes.Count == 0)

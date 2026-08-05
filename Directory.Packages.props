@@ -25,6 +25,16 @@
     <PackageVersion Include="HarfBuzzSharp" Version="8.3.1.1" />
   </ItemGroup>
 
+  <ItemGroup Label="Translation">
+    <!--
+      Anthropic's Messages API is not OpenAI-shaped, so this is the one provider that cannot go
+      through OpenAiCompatibleProvider. The official SDK carries a single transitive dependency
+      (Microsoft.Extensions.AI.Abstractions) and gives typed exceptions per status code, which map
+      onto ProviderFailure far more reliably than sniffing status codes out of raw HTTP.
+    -->
+    <PackageVersion Include="Anthropic" Version="12.39.0" />
+  </ItemGroup>
+
   <ItemGroup Label="Windows">
     <PackageVersion Include="TesseractOCR" Version="5.5.2" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.3" />

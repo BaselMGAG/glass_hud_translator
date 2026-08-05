@@ -1,0 +1,47 @@
+# Written to match the code that is already here, not to impose a new style on it.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{json,yml,yaml,md}]
+indent_size = 2
+
+[*.md]
+# Two trailing spaces are a line break in Markdown.
+trim_trailing_whitespace = false
+
+[*.{bat,cmd}]
+end_of_line = crlf
+
+[*.cs]
+max_line_length = 100
+
+# ── the conventions this codebase actually uses ────────────────────────────────────────────
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_expression_bodied_properties = when_on_single_line:suggestion
+csharp_prefer_braces = when_multiline:suggestion
+csharp_using_directive_placement = outside_namespace:warning
+csharp_style_prefer_primary_constructors = true:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+dotnet_style_readonly_field = true:warning
+dotnet_sort_system_directives_first = true
+csharp_new_line_before_open_brace = all
+
+# Nullability is enabled solution-wide and is load-bearing: half the platform seam is
+# "this returns null off Windows". Dereferencing without a check is an error, not a hint.
+dotnet_diagnostic.CS8600.severity = error
+dotnet_diagnostic.CS8602.severity = error
+dotnet_diagnostic.CS8603.severity = error
+dotnet_diagnostic.CS8618.severity = error
+
+# Already an error via WarningsAsErrors in Directory.Build.props. Restated so it is visible to
+# anyone reading this file: calling a Windows-only API from shared code must not compile.
+dotnet_diagnostic.CA1416.severity = error

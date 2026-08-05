@@ -14,10 +14,15 @@ using Avalonia.Threading;
 namespace GlassHudTranslator.App.Views;
 
 /// <summary>
-/// The app's control panel. Keys, register, overlay appearance, and - importantly - the quota and
-/// cache readouts, which are the diagnostics that answer whether anything is actually wrong
-/// (brief 12). Deliberately not on the overlay: the overlay must stay unreadable-free while
-/// the game is being played.
+/// The app's control panel.
+///
+/// <para>
+/// Organised as tabs rather than one long scroll, because the sections are used at completely
+/// different times: keys and regions are first-run setup, hotkeys are set once, and Diagnostics is
+/// where you go when something is wrong mid-session. Scrolling past the API keys to reach the
+/// quota readout was the reason the readout went unnoticed (brief 12). The status line is docked
+/// outside the tabs so that whichever tab is open, the answer to "did that work?" is on screen.
+/// </para>
 /// </summary>
 public sealed class SettingsWindow : Window
 {
@@ -26,12 +31,15 @@ public sealed class SettingsWindow : Window
     private readonly AppSettings _settings;
     private readonly TranslationSession _session;
     private readonly Dictionary<HotkeyAction, TextBox> _hotkeyBoxes = [];
+
+    /// <summary>Key box per secret name. Built from models.json, never hardcoded.</summary>
+    private readonly Dictionary<string, TextBox> _keyBoxes = [];
+
     private readonly TextBlock _hotkeyStatus = Readout();
+    private readonly TextBlock _laneSummary = Readout();
     private TextBlock _profileNote = Readout();
     private readonly TextBox _correction = new() { Watermark = "corrected Arabic", Width = 380 };
 
-    private readonly TextBox _geminiKey = KeyBox();
-    private readonly TextBox _groqKey = KeyBox();
     private readonly ComboBox _register = new()
     {
         ItemsSource = new[] { "Modern Standard Arabic", "Egyptian Arabic" },
@@ -48,7 +56,7 @@ public sealed class SettingsWindow : Window
     {
         IsReadOnly = true,
         AcceptsReturn = true,
-        Height = 110,
+        Height = 160,
         FontFamily = new FontFamily("monospace"),
         FontSize = 11,
         TextWrapping = TextWrapping.NoWrap,
@@ -67,11 +75,11 @@ public sealed class SettingsWindow : Window
         _opacity.Value = settings.OverlayOpacity;
 
         Title = "Glass HUD Translator";
-        Width = 720;
-        Height = 760;
+        Width = 760;
+        Height = 700;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
-        Content = new ScrollViewer { Content = BuildBody() };
+        Content = BuildShell();
 
         _fontSize.PropertyChanged += (_, e) =>
         {
@@ -99,17 +107,59 @@ public sealed class SettingsWindow : Window
         };
 
         LoadSecrets();
+        UpdateLaneSummary();
         _ = RefreshAsync();
     }
 
     private static AvaloniaProperty RangeBase_ValueProperty => Slider.ValueProperty;
 
-    private Control BuildBody()
-    {
-        var stack = new StackPanel { Spacing = 14, Margin = new Thickness(24) };
+    // ── shell ─────────────────────────────────────────────────────────────────────────────
 
-        stack.Children.Add(Heading("Glass HUD Translator"));
-        stack.Children.Add(Note(PlatformServices.Description));
+    private Control BuildShell()
+    {
+        var tabs = new TabControl { Margin = new Thickness(8, 8, 8, 0) };
+        tabs.Items.Add(Tab("Providers", BuildProvidersTab()));
+        tabs.Items.Add(Tab("Translating", BuildTranslatingTab()));
+        tabs.Items.Add(Tab("Overlay", BuildOverlayTab()));
+        tabs.Items.Add(Tab("Hotkeys", BuildHotkeysTab()));
+        tabs.Items.Add(Tab("Diagnostics", BuildDiagnosticsTab()));
+
+        // Docked, not scrolled with the tab body: every action on every tab reports here, and a
+        // confirmation you have to scroll to find is a confirmation nobody reads.
+        var statusBar = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#1f2023")),
+            Padding = new Thickness(16, 10),
+            Child = _status,
+        };
+        DockPanel.SetDock(statusBar, Dock.Bottom);
+
+        var root = new DockPanel { LastChildFill = true };
+        root.Children.Add(statusBar);
+        root.Children.Add(tabs);
+        return root;
+    }
+
+    private static TabItem Tab(string header, Control body) => new()
+    {
+        Header = header,
+        Content = new ScrollViewer
+        {
+            Content = new StackPanel { Spacing = 12, Margin = new Thickness(20, 16) }
+                .With(panel => panel.Children.Add(body)),
+        },
+    };
+
+    // ── tabs ──────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// One key field per lane in models.json that needs one. Adding a provider is then a config
+    /// edit rather than a UI change, which is the same reason model names live in that file.
+    /// </summary>
+    private Control BuildProvidersTab()
+    {
+        var stack = new StackPanel { Spacing = 12 };
+
         if (!PlatformServices.IsWindows)
         {
             stack.Children.Add(Warning(
@@ -117,13 +167,79 @@ public sealed class SettingsWindow : Window
                 + "keys are stored in PLAINTEXT. Windows uses BitBlt, RegisterHotKey and DPAPI."));
         }
 
-        stack.Children.Add(Section("API keys"));
         stack.Children.Add(Note(
-            "Bring your own keys - neither needs a credit card. Gemini: aistudio.google.com. "
-            + "Groq: console.groq.com."));
-        stack.Children.Add(Row("Gemini", _geminiKey));
-        stack.Children.Add(Row("Groq", _groqKey));
+            "Bring your own key. Nothing is embedded in this app, and lanes are tried top to "
+            + "bottom - so the free tiers answer first and a paid provider only sees the lines they "
+            + "could not. A lane with no key is switched off and costs nothing."));
+
+        foreach (var problem in _services.Models.Problems())
+            stack.Children.Add(Warning($"models.json: {problem}"));
+
+        foreach (var provider in _services.Models.Providers.Where(p => p.Secret is not null))
+        {
+            stack.Children.Add(Section(provider.Label));
+            stack.Children.Add(KeyRow(provider));
+        }
+
+        var free = _services.Models.Providers.Any(p => !p.IsPaid && p.Secret is not null);
+        if (free)
+        {
+            stack.Children.Add(Note(
+                "Gemini and Groq both issue a key without a credit card, and between them cover "
+                + "roughly 15,000 lines a day - more than a full day of play."));
+        }
+
         stack.Children.Add(Button("Save keys", SaveSecrets));
+        stack.Children.Add(Section("Active lanes"));
+        stack.Children.Add(_laneSummary);
+
+        return stack;
+    }
+
+    private Control KeyRow(ProviderConfig provider)
+    {
+        var box = KeyBox();
+        _keyBoxes[provider.Secret!] = box;
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+        row.Children.Add(box);
+        row.Children.Add(TierBadge(provider));
+
+        var stack = new StackPanel { Spacing = 4 };
+        stack.Children.Add(row);
+
+        if (!string.IsNullOrWhiteSpace(provider.KeyUrl))
+            stack.Children.Add(Note($"Key from {provider.KeyUrl}"));
+
+        stack.Children.Add(Note($"Models tried in order: {string.Join(" → ", provider.Models)}"));
+        return stack;
+    }
+
+    /// <summary>
+    /// The free/paid distinction is the whole reason the paid lanes are worth adding, so it is
+    /// stated next to the box rather than buried in a paragraph someone has to read first.
+    /// </summary>
+    private static Control TierBadge(ProviderConfig provider)
+    {
+        var (text, colour) = provider.Tier.ToLowerInvariant() switch
+        {
+            ProviderTiers.Paid => ("PAID — billed per line", "#fdd663"),
+            ProviderTiers.Local => ("LOCAL", "#9aa0a6"),
+            _ => ("FREE TIER", "#81c995"),
+        };
+
+        return new TextBlock
+        {
+            Text = text,
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = new SolidColorBrush(Color.Parse(colour)),
+        };
+    }
+
+    private Control BuildTranslatingTab()
+    {
+        var stack = new StackPanel { Spacing = 12 };
 
         stack.Children.Add(Section("What are you translating?"));
         var profiles = new ComboBox
@@ -157,19 +273,13 @@ public sealed class SettingsWindow : Window
         UpdateProfileNote();
         stack.Children.Add(_profileNote);
 
-        stack.Children.Add(Section("Translation"));
+        stack.Children.Add(Section("Arabic"));
         stack.Children.Add(Row("Register", _register));
         stack.Children.Add(Note(
             "Modern Standard suits FFXIV's archaic narrative voice. Egyptian lands well for "
             + "merchants and comic relief, and reads as comedy for Elezen nobility."));
 
-        stack.Children.Add(Section("Overlay"));
-        stack.Children.Add(Row("Font size", _fontSize));
-        stack.Children.Add(Row("Panel opacity", _opacity));
-        stack.Children.Add(Button("Preview overlay", () =>
-            _overlay.ShowTranslation("Y'shtola", "تعال، فالأثير هنا يزداد اضطراباً.")));
-
-        stack.Children.Add(Section("Regions"));
+        stack.Children.Add(Section("Capture regions"));
         stack.Children.Add(Note(
             "Games often draw narrative text in more than one place — a dialogue box, a subtitle bar, "
             + "a quest window — so each gets its own rectangle. Each profile keeps its own set, so "
@@ -179,18 +289,52 @@ public sealed class SettingsWindow : Window
             regionButtons.Children.Add(Button($"Pick {name}", () => _ = PickRegionAsync(name)));
         stack.Children.Add(regionButtons);
 
-        stack.Children.Add(Section("Hotkeys"));
+        stack.Children.Add(Section("Corrections"));
+        stack.Children.Add(Note("Correct the line currently on the overlay. The correction is pinned "
+                              + "and always wins over the model in future."));
+        var correctRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        correctRow.Children.Add(_correction);
+        correctRow.Children.Add(Button("Pin correction", () => _ = CorrectCurrentAsync()));
+        stack.Children.Add(correctRow);
+
+        return stack;
+    }
+
+    private Control BuildOverlayTab()
+    {
+        var stack = new StackPanel { Spacing = 12 };
+
+        stack.Children.Add(Row("Font size", _fontSize));
+        stack.Children.Add(Row("Panel opacity", _opacity));
+        stack.Children.Add(Note(
+            "Both apply live. Never set a fixed line height on the overlay: too tight and the marks "
+            + "that hang below the baseline are clipped, which turns ي into ى — a different letter."));
+
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        buttons.Children.Add(Button("Preview overlay", () =>
+            _overlay.ShowTranslation("Y'shtola", "تعال، فالأثير هنا يزداد اضطراباً.")));
+        buttons.Children.Add(Button("Show / hide overlay", () => _status.Text = _overlay.ToggleHidden()
+            ? "Overlay shown." : "Overlay hidden. Translation carries on in the background."));
+        stack.Children.Add(buttons);
+
+        return stack;
+    }
+
+    private Control BuildHotkeysTab()
+    {
+        var stack = new StackPanel { Spacing = 12 };
+
         stack.Children.Add(Note(PlatformServices.IsWindows
             ? "Type a combination such as Ctrl+Shift+T. Modifiers: Ctrl, Shift, Alt, Win. Keys include "
               + "A-Z, 0-9, F1-F24, arrows, Insert/Delete/Home/End, numpad (Num0-Num9) and punctuation. "
               + "F13-F24 are the safest choices - games almost never bind them."
-            : "Global hotkeys are Windows-only. On macOS use the buttons on this window instead."));
+            : "Global hotkeys are Windows-only. On macOS use the manual buttons below instead."));
 
         foreach (var action in Enum.GetValues<HotkeyAction>())
         {
             var box = new TextBox { Text = _settings.HotkeyFor(action).ToString(), Width = 200 };
             _hotkeyBoxes[action] = box;
-            stack.Children.Add(Row(DefaultHotkeys.Describe(action), box));
+            stack.Children.Add(Row(DefaultHotkeys.Describe(action), box, labelWidth: 150));
         }
 
         var hotkeyButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -200,26 +344,27 @@ public sealed class SettingsWindow : Window
         stack.Children.Add(_hotkeyStatus);
 
         stack.Children.Add(Section("Manual controls"));
+        stack.Children.Add(Note("The same five actions, for when a hotkey is unavailable or clashes."));
         var manual = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         manual.Children.Add(Button("Translate now", () => _ = _session.TranslateNowAsync()));
         manual.Children.Add(Button("Toggle auto-watch", _session.ToggleAutoWatch));
-        manual.Children.Add(Button("Show / hide overlay", () => _status.Text = _overlay.ToggleHidden()
-            ? "Overlay shown." : "Overlay hidden. Translation carries on in the background."));
         stack.Children.Add(manual);
 
-        stack.Children.Add(Note("Correct the line currently on the overlay. The correction is pinned "
-                              + "and always wins over the model in future."));
-        var correctRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        correctRow.Children.Add(_correction);
-        correctRow.Children.Add(Button("Pin correction", () => _ = CorrectCurrentAsync()));
-        stack.Children.Add(correctRow);
+        return stack;
+    }
 
-        stack.Children.Add(Section("Diagnostics"));
+    private Control BuildDiagnosticsTab()
+    {
+        var stack = new StackPanel { Spacing = 12 };
+
+        stack.Children.Add(Note(PlatformServices.Description));
         stack.Children.Add(Note($"OCR: {_services.Ocr.Name} — {_services.Ocr.Diagnostics ?? "no detail"}"));
         stack.Children.Add(_quota);
         stack.Children.Add(_cache);
-        stack.Children.Add(_status);
-        stack.Children.Add(Note("Router log - a model disappearing upstream shows up here:"));
+
+        stack.Children.Add(Section("Router log"));
+        stack.Children.Add(Note("A model disappearing upstream shows up here, by name. So does a "
+                              + "provider being rate limited, and a line that fell back to English."));
         stack.Children.Add(_routerLog);
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -246,23 +391,52 @@ public sealed class SettingsWindow : Window
               + "player. Move the window and you will need to pick the region again.";
     }
 
+    /// <summary>
+    /// Spells out which lanes will actually be tried, in order. Without this, "no key entered" and
+    /// "key entered but wrong" look identical from the outside - the first is silent by design.
+    /// </summary>
+    private void UpdateLaneSummary()
+    {
+        var lanes = _services.Models.Enabled(includeDevOnly: !PlatformServices.IsWindows)
+            .Select(p =>
+            {
+                var live = p.Secret is null || _services.Secrets.Has(p.Secret);
+                var tier = p.IsPaid ? " (paid)" : "";
+                return live ? $"{p.Label}{tier}" : $"{p.Label} — no key, skipped";
+            })
+            .ToList();
+
+        _laneSummary.Text = lanes.Count == 0
+            ? "No lanes configured. Translation will fall back to showing the English."
+            : string.Join("\n", lanes.Select((lane, i) => $"{i + 1}.  {lane}"));
+    }
+
     private void LoadSecrets()
     {
-        _geminiKey.Text = _services.Secrets.Get(SecretNames.GeminiApiKey) ?? "";
-        _groqKey.Text = _services.Secrets.Get(SecretNames.GroqApiKey) ?? "";
+        foreach (var (name, box) in _keyBoxes)
+            box.Text = _services.Secrets.Get(name) ?? "";
     }
 
     private void SaveSecrets()
     {
-        Store(SecretNames.GeminiApiKey, _geminiKey.Text);
-        Store(SecretNames.GroqApiKey, _groqKey.Text);
-        _status.Text = "Keys saved.";
-
-        void Store(string name, string? value)
+        var saved = 0;
+        foreach (var (name, box) in _keyBoxes)
         {
-            if (string.IsNullOrWhiteSpace(value)) _services.Secrets.Delete(name);
-            else _services.Secrets.Set(name, value.Trim());
+            if (string.IsNullOrWhiteSpace(box.Text))
+            {
+                _services.Secrets.Delete(name);
+            }
+            else
+            {
+                _services.Secrets.Set(name, box.Text.Trim());
+                saved++;
+            }
         }
+
+        UpdateLaneSummary();
+        _status.Text = saved == 0
+            ? "All keys cleared. Nothing will be translated until one is entered."
+            : $"{saved} key{(saved == 1 ? "" : "s")} saved. Lanes without one are skipped.";
     }
 
     public async Task PickRegionAsync(string profileName)
@@ -447,7 +621,7 @@ public sealed class SettingsWindow : Window
                 _quota.Text = "Quota today:  " + string.Join("   ·   ", quota.Select(q => q.ToString()));
                 _cache.Text = $"Cache:  {stats.Entries} entries ({stats.Overrides} corrected)   ·   " +
                               $"{stats.Hits}/{stats.Lookups} hits ({stats.HitRate:P0})";
-                _routerLog.Text = string.Join('\n', _services.RouterLog.TakeLast(30));
+                _routerLog.Text = string.Join('\n', _services.RouterLog.TakeLast(40));
             });
         }
         catch (Exception e)
@@ -460,15 +634,10 @@ public sealed class SettingsWindow : Window
 
     private static TextBox KeyBox() => new() { PasswordChar = '•', Width = 380, Watermark = "not set" };
 
-    private static TextBlock Heading(string text) => new()
-    {
-        Text = text, FontSize = 22, FontWeight = FontWeight.SemiBold,
-    };
-
     private static TextBlock Section(string text) => new()
     {
         Text = text, FontSize = 14, FontWeight = FontWeight.SemiBold,
-        Margin = new Thickness(0, 14, 0, 0),
+        Margin = new Thickness(0, 10, 0, 0),
         Foreground = new SolidColorBrush(Color.Parse("#8ab4f8")),
     };
 
@@ -496,14 +665,24 @@ public sealed class SettingsWindow : Window
         return button;
     }
 
-    private static Control Row(string label, Control control) => new StackPanel
+    private static Control Row(string label, Control control, double labelWidth = 110) => new StackPanel
     {
         Orientation = Orientation.Horizontal,
         Spacing = 12,
         Children =
         {
-            new TextBlock { Text = label, Width = 110, VerticalAlignment = VerticalAlignment.Center },
+            new TextBlock { Text = label, Width = labelWidth, VerticalAlignment = VerticalAlignment.Center },
             control,
         },
     };
+}
+
+internal static class ControlExtensions
+{
+    /// <summary>Lets a panel be configured inline, so tab bodies stay one expression.</summary>
+    public static T With<T>(this T control, Action<T> configure)
+    {
+        configure(control);
+        return control;
+    }
 }

@@ -1,0 +1,76 @@
+name: release
+
+# Push a tag, get a permanent public download.
+#
+#   git tag v0.2.0 && git push origin v0.2.0
+#
+# This exists because build artifacts are the wrong way to hand someone an app: they expire after
+# ninety days and require a GitHub account to download at all. Nobody being asked to try this is
+# going to sign in to fetch a zip. A release is a plain link that keeps working.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build a release from (e.g. v0.2.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/publish-windows.yml
+    with:
+      # Passed through with the leading v; publish-windows.yml strips it before MSBuild sees it.
+      version: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: GlassHudTranslator-win-x64
+          path: out
+
+      # Zipped here rather than by upload-artifact, so the asset is one file with a predictable
+      # name instead of GitHub's own re-zip of the artifact.
+      - name: Package
+        run: |
+          TAG="${{ inputs.tag != '' && inputs.tag || github.ref_name }}"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          cd out && zip -qr "../GlassHudTranslator-$TAG-win-x64.zip" . && cd ..
+          ls -lh "GlassHudTranslator-$TAG-win-x64.zip"
+
+      # gh is preinstalled on the runner. Deliberately not a third-party release action: this job
+      # holds a token that can write to the repository, and that is not a good place to take on a
+      # supply-chain dependency for something two commands already do.
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<'EOF'
+          Windows 10/11, 64-bit. No installer and no admin rights: unzip it anywhere and run
+          `GlassHudTranslator.exe`.
+
+          **First run**
+          1. Open Settings → **Providers** and paste an API key. Gemini and Groq are free and need
+             no credit card; OpenAI and Anthropic are there for people who already pay for one.
+          2. Settings → **Translating** → pick your profile, then pick a capture region.
+          3. Press the translate hotkey in game.
+
+          Run `1-test-no-api-key.bat` first if you want to check the overlay renders Arabic before
+          setting anything up.
+
+          ---
+          EOF
+          gh release create "$TAG" \
+            "GlassHudTranslator-$TAG-win-x64.zip" \
+            --title "Glass HUD Translator $TAG" \
+            --notes-file notes.md \
+            --generate-notes

@@ -54,6 +54,18 @@ public interface ITranslationProvider
     /// <summary>Ordered fallback list from models.json. Never hardcoded (brief 12).</summary>
     IReadOnlyList<string> Models { get; }
 
+    /// <summary>
+    /// False when the lane has no key yet and so cannot be tried at all.
+    ///
+    /// <para>
+    /// This is what makes a paid lane safe to ship enabled: without a key it is skipped in silence
+    /// rather than failing once per translated line and burying the router log - which is the log
+    /// the user reads when something is actually wrong. It is re-read per request, so pasting a key
+    /// into Settings brings the lane to life without a restart.
+    /// </para>
+    /// </summary>
+    bool IsConfigured => true;
+
     Task<string> TranslateAsync(TranslationRequest request, string model, CancellationToken ct);
 }
 

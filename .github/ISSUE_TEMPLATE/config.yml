@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: How do I use this?
+    url: https://github.com/basel2000de/non_arabic_supported_games_llm_hud_translator#how-to-use
+    about: The README covers setup, hotkeys and picking a capture region.

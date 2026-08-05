@@ -28,3 +28,7 @@ Tesseract OCR          Apache-2.0     https://github.com/tesseract-ocr/tesseract
 Avalonia UI            MIT            https://github.com/AvaloniaUI/Avalonia
 SkiaSharp              MIT            https://github.com/mono/SkiaSharp
 Microsoft.Data.Sqlite  MIT            https://github.com/dotnet/efcore
+Anthropic SDK for C#   MIT            https://github.com/anthropics/anthropic-sdk-csharp
+
+The translation providers themselves are third-party services reached over the network. No API key
+for any of them is embedded in this software; each user supplies their own.

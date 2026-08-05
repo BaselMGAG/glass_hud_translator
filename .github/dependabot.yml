@@ -1,0 +1,29 @@
+version: 2
+
+# The project already shipped one transitive dependency carrying a known CVE
+# (SQLitePCLRaw.lib.e_sqlite3, GHSA-2m69-gcr7-jv3q, pinned by hand in Directory.Packages.props).
+# Noticing that a second time by hand is not a plan.
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Avalonia's packages move as a set and its Skia package pins SkiaSharp, so bumping one of
+      # them alone produces a diamond conflict rather than a build.
+      avalonia:
+        patterns: ['Avalonia*']
+      testing:
+        patterns: ['xunit*', 'Microsoft.NET.Test.Sdk', 'Microsoft.Extensions.TimeProvider.Testing']
+    ignore:
+      # Deliberately held at 11.x - see the note in Directory.Packages.props.
+      - dependency-name: Avalonia*
+        update-types: ['version-update:semver-major']
+      # Pinned to whatever Avalonia.Skia depends on; it is not ours to move.
+      - dependency-name: SkiaSharp*
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

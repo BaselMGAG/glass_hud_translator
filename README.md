@@ -105,19 +105,26 @@ into bright sunlight and every pixel shifts while the text hasn't changed at all
 a quest, replay a cutscene, roll an alt, and it's free and instant. The cache also means a dropped
 connection doesn't blank the screen.
 
-**Two API lanes, not one.** Cutscene dialogue advances every 3–5 seconds, which is right at the free
-tier's per-minute ceiling for a single provider. Running Gemini and Groq as parallel lanes and
+**Parallel API lanes, not one.** Cutscene dialogue advances every 3–5 seconds, which is right at the
+free tier's per-minute ceiling for a single provider. Running Gemini and Groq as parallel lanes and
 failing over the moment one is rate-limited roughly triples the headroom.
 
-**Bring your own key.** No key is embedded in the binary. Both providers used have a free tier that
-needs no credit card.
+**Free by default, paid if you already are.** Four providers ship: Gemini and Groq on their free
+tiers, then OpenAI and Anthropic for people who already pay for one of those and would rather use
+it. Lanes are tried in the order they appear in `data/models.json`, so the free tiers answer first
+and a paid provider only ever sees the lines they couldn't. A lane with no key entered is switched
+off and costs nothing — adding the paid options changes nothing for anyone who doesn't want them.
+
+**Bring your own key.** No key is embedded in the binary.
 
 ## Requirements
 
 - **Windows 10/11** to actually play with it. The game must run **borderless windowed** — exclusive
   fullscreen breaks both screen capture and always-on-top overlays.
-- A free API key from [Google AI Studio](https://aistudio.google.com) and/or
-  [Groq](https://console.groq.com). No card needed for either.
+- An API key. A free one from [Google AI Studio](https://aistudio.google.com) and/or
+  [Groq](https://console.groq.com) — no card needed for either — or, if you already pay for one,
+  [OpenAI](https://platform.openai.com/api-keys) or
+  [Anthropic](https://console.anthropic.com/settings/keys).
 - Nothing else. Releases are self-contained, so there's no .NET runtime to install.
 
 For development: .NET 10 SDK and `tesseract`. macOS and Linux build and run everything except the
@@ -125,11 +132,15 @@ screen-capture and hotkey layer.
 
 ## How to use
 
-**1. Get it running.** Download the latest build from
+**1. Get it running.** Download the zip from
+[Releases](https://github.com/basel2000de/non_arabic_supported_games_llm_hud_translator/releases).
+Unzip it somewhere ordinary like `C:\glasshud`; keep the whole folder together, since the exe needs
+`tessdata/`, `profiles/` and `data/` beside it.
+
+If you want the very latest commit instead of the last release, the same build is on
 [Actions](https://github.com/basel2000de/non_arabic_supported_games_llm_hud_translator/actions) —
-open the newest green run and grab the artifact at the bottom. Unzip it somewhere ordinary like
-`C:\glasshud`; keep the whole folder together, since the exe needs `tessdata/`, `profiles/` and
-`data/` beside it.
+open the newest green run and grab the artifact at the bottom. That needs a GitHub account and
+expires after ninety days, which is why releases exist.
 
 Windows SmartScreen will block it the first time: *More info* → *Run anyway*. That's expected for
 an unsigned app with no download history.
@@ -139,8 +150,10 @@ both screen capture and always-on-top overlays, and the app will tell you so rat
 you black frames. Also make sure the game isn't running as administrator, or Windows blocks the
 overlay from drawing over it.
 
-**3. Add an API key.** Settings → API keys → paste a Gemini or Groq key → Save. They're encrypted
-against your Windows account. Both are free and neither needs a card — see [Requirements](#requirements).
+**3. Add an API key.** Settings → **Providers** → paste a key → Save. Keys are encrypted against
+your Windows account. Each provider says next to its box whether it's free or billed per line, and
+where to get a key. Gemini and Groq are free and need no card; enter one of those and you're done.
+Any provider you leave blank is switched off.
 
 **4. Tell it where the text is.** Press `Ctrl+Shift+R`. The screen freezes on a screenshot so
 nothing moves while you aim. Drag a box over the dialogue text, press `Space` to see exactly what
@@ -160,7 +173,7 @@ the game in about a second — instantly if that line has been seen before.
 | `Ctrl+Shift+R` | Re-pick the capture region |
 | `Ctrl+Shift+F` | Correct the current translation and pin the correction |
 
-All five are rebindable in Settings. Type a combination like `Ctrl+Shift+T`; modifiers are Ctrl,
+All five are rebindable in Settings → **Hotkeys**. Type a combination like `Ctrl+Shift+T`; modifiers are Ctrl,
 Shift, Alt and Win, and keys include A–Z, 0–9, F1–F24, arrows, Insert/Delete/Home/End, the numpad
 (`Num0`–`Num9`) and punctuation. **F13–F24 are the safest choices** — games almost never bind them.
 
@@ -192,8 +205,10 @@ after 90 seconds with no new text, so leaving it on during an AFK can't quietly 
 and that correction is pinned — it wins over the model for that line from then on. For a name that
 appears constantly, add it to your game's `glossary.json` instead.
 
-**Nothing happening?** Settings shows a status line, a router log, and which OCR engine actually
-loaded. Almost every problem is visible there.
+**Nothing happening?** Settings → **Diagnostics** shows the quota used today, cache hit rate, which
+OCR engine actually loaded, and a router log that names any provider or model that failed. Settings
+→ **Providers** lists the lanes in the order they'll be tried and flags any with no key. Almost
+every problem is visible in one of those two places.
 
 **Stuck overlay?** Run `0-force-stop.bat`. The overlay has no Alt-Tab entry and clicks pass through
 it, so there's no window to close — the process has to be ended.
@@ -299,12 +314,14 @@ which is why so much care goes into normalising text before hashing it.
 
 ## Contributing
 
-Issues and pull requests welcome. The most useful contributions right now:
+Issues and pull requests welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). The most useful
+contributions right now:
 
-- **Game profiles.** You don't need to write any C# — a folder with three JSON files.
 - **Arabic review.** The FFXIV glossary is a starting point and would benefit from a native
-  speaker's eye. Consistency matters more than any individual word choice.
-- **Testing the Windows layer.** It is written but unverified on real hardware. Bug reports with
+  speaker's eye. Consistency matters more than any individual word choice. This is the single most
+  valuable thing anyone can contribute.
+- **Game profiles.** You don't need to write any C# — a folder with three JSON files.
+- **Bug reports from real play.** It has been tested against one game on one machine. Reports with
   the router log attached are worth a lot right now.
 
 [CLAUDE.md](CLAUDE.md) is the orientation doc for anyone about to change code. It lists the

@@ -141,9 +141,7 @@ public sealed class AppServices : IAsyncDisposable
         // alongside the game, and the shipped app must not wait on a localhost port that is not
         // there (brief 2.7).
         return models.Enabled(includeDevOnly: !PlatformServices.IsWindows)
-            .Select(config => ((ITranslationProvider)new OpenAiCompatibleProvider(
-                    config, http, () => config.Secret is null ? null : secrets.Get(config.Secret)),
-                config.Rpm))
+            .Select(config => (ProviderFactory.Create(config, http, secrets), config.Rpm))
             .ToList();
     }
 

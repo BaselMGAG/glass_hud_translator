@@ -1,0 +1,98 @@
+name: publish-windows
+
+# Called by build.yml on every push and by release.yml on a tag, so the artifact a release ships
+# is produced by exactly the same steps that have been running green on every commit. Keeping two
+# copies of these steps is how a release build quietly stops matching the tested one.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Tag or version to stamp into the assembly, with or without a leading v.
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      # Self-contained FOLDER, not a single file. TesseractOCR ships its native DLLs as ordinary
+      # copy-to-output content under x64/ rather than as runtimes/win-x64/native assets, and it
+      # locates them at runtime from Assembly.Location - which is an empty string inside a
+      # single-file bundle. Publishing single-file therefore loaded the managed wrapper fine and
+      # then failed to find its own natives, which is what "No Tesseract found" on the overlay
+      # actually meant. Nothing was gained by single-file anyway: tessdata, profiles, data and the
+      # launcher scripts all ship alongside regardless, so it was always a folder.
+      # Git tags read v0.2.0; MSBuild will not accept the v. Everything that is not a release build
+      # is stamped 0.0.0-dev, so a copy someone was handed can always be told from a tagged one.
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $v = '${{ inputs.version }}' -replace '^v', ''
+          if ([string]::IsNullOrWhiteSpace($v)) { $v = '0.0.0-dev' }
+          "value=$v" >> $env:GITHUB_OUTPUT
+          Write-Host "Building version $v"
+
+      - name: Publish self-contained
+        run: >
+          dotnet publish src/GlassHudTranslator.App/GlassHudTranslator.App.csproj
+          -f net10.0-windows -c Release -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=false
+          -p:Version=${{ steps.version.outputs.value }}
+          -o out
+
+      - name: Ship the data files alongside the exe
+        run: |
+          Copy-Item -Recurse data out/data
+          Copy-Item -Recurse profiles out/profiles
+          if (-not (Test-Path out/tessdata)) { Copy-Item -Recurse tessdata out/tessdata }
+          Copy-Item scripts/windows/*.bat out/
+          Copy-Item README.md out/README.md
+          Copy-Item README.ar.md out/README.ar.md
+        shell: pwsh
+
+      # The native Tesseract libraries and eng.traineddata have to survive publishing, or OCR
+      # falls back to an exe that is not there and the app cannot read anything at all.
+      - name: Verify the published payload
+        run: |
+          $missing = @()
+          if (-not (Test-Path out/GlassHudTranslator.exe)) { $missing += 'GlassHudTranslator.exe' }
+          if (-not (Test-Path out/tessdata/eng.traineddata))     { $missing += 'tessdata/eng.traineddata' }
+          if (-not (Test-Path out/profiles/ffxiv/profile.json))  { $missing += 'profiles/ffxiv/profile.json' }
+          if (-not (Test-Path out/data/models.json))             { $missing += 'data/models.json' }
+          if (-not (Test-Path out/1-test-no-api-key.bat))        { $missing += '1-test-no-api-key.bat' }
+
+          # The exact failure that reached the overlay on the first real run. These two DLLs are
+          # what the managed wrapper P/Invokes into; without them OCR cannot start at all.
+          if (-not (Test-Path out/x64/tesseract55.dll))          { $missing += 'x64/tesseract55.dll' }
+          if (-not (Get-ChildItem out/x64/leptonica*.dll -ErrorAction SilentlyContinue)) { $missing += 'x64/leptonica*.dll' }
+          if ($missing.Count -gt 0) { Write-Error "Missing from publish output: $($missing -join ', ')"; exit 1 }
+          Get-ChildItem out | Select-Object Name, Length | Format-Table
+        shell: pwsh
+
+      # models.json is the file users are invited to edit, and a mistake in it is invisible until a
+      # translation quietly falls back to English. Parse the shipped copy before it goes out.
+      - name: Verify the shipped models.json parses
+        run: |
+          $json = Get-Content out/data/models.json -Raw | ConvertFrom-Json
+          if ($json.providers.Count -lt 1) { Write-Error 'models.json lists no providers'; exit 1 }
+          foreach ($p in $json.providers) {
+            if (-not $p.models -or $p.models.Count -lt 1) {
+              Write-Error "Provider '$($p.name)' lists no models"; exit 1
+            }
+          }
+          Write-Host "models.json: $($json.providers.Count) provider lanes"
+        shell: pwsh
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: GlassHudTranslator-win-x64
+          path: out
+          if-no-files-found: error

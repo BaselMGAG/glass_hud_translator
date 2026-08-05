@@ -21,10 +21,22 @@ public static class SecretStoreExtensions
         !string.IsNullOrWhiteSpace(store.Get(name));
 }
 
+/// <summary>
+/// The secret names shipped in data/models.json.
+///
+/// <para>
+/// These are here for tests and for anything that needs to name one key in particular. Nothing in
+/// the UI enumerates this class: the settings screen builds its key fields from models.json, so a
+/// lane added to that file gets a key box without a code change - which is what makes adding a
+/// provider a config edit rather than a release.
+/// </para>
+/// </summary>
 public static class SecretNames
 {
     public const string GeminiApiKey = "GeminiApiKey";
     public const string GroqApiKey = "GroqApiKey";
+    public const string OpenAiApiKey = "OpenAiApiKey";
+    public const string AnthropicApiKey = "AnthropicApiKey";
 }
 
 /// <summary>

@@ -1,0 +1,37 @@
+name: Game profile
+description: Ask for, or offer, a profile for a game
+labels: [profile]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A profile needs no programming — copy `profiles/_template/`, fill in three text files, and
+        open a pull request. See CONTRIBUTING.md. This issue is for saying what you are working on,
+        or asking whether someone else already has.
+
+  - type: input
+    id: game
+    attributes:
+      label: Game
+    validations:
+      required: true
+
+  - type: input
+    id: title
+    attributes:
+      label: Exact window title
+      description: What the game's window is called. Leave blank if you do not know yet.
+
+  - type: dropdown
+    id: offering
+    attributes:
+      label: Are you offering to make it, or asking for it?
+      options: ['I am making it', 'I am asking for it']
+    validations:
+      required: true
+
+  - type: textarea
+    id: tone
+    attributes:
+      label: How should it read in Arabic
+      description: One sentence. Formal and epic, modern and casual, comic — whatever fits.

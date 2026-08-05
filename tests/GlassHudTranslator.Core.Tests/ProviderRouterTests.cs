@@ -14,6 +14,8 @@ internal sealed class FakeProvider(string name, params string[] models) : ITrans
 
     public IReadOnlyList<string> Models { get; } = models.Length > 0 ? models : ["m1"];
 
+    public bool IsConfigured { get; set; } = true;
+
     public List<(string Model, int Attempt)> Calls { get; } = [];
 
     public FakeProvider Returns(string text)
@@ -190,6 +192,63 @@ public class ProviderRouterTests
 
         Assert.Equal(["gemini"], used);
     }
+
+    [Fact]
+    public async Task AnUnconfiguredLaneIsSkippedWithoutBeingCalled()
+    {
+        // What makes the paid lanes safe to ship switched on. Without a key the lane must cost
+        // nothing and say nothing, not fail once per line into the log the user reads to diagnose
+        // real problems.
+        var paid = new FakeProvider("anthropic").Returns("NOT THIS");
+        paid.IsConfigured = false;
+        var free = new FakeProvider("gemini").Returns("من gemini");
+
+        var router = new ProviderRouter([(paid, 40), (free, 13)], FastRetries);
+        var result = await router.TranslateAsync(Request(), CancellationToken.None);
+
+        Assert.Equal("gemini", result.Provider);
+        Assert.Empty(paid.Calls);
+    }
+
+    [Fact]
+    public async Task APerAttemptTimeoutFallsThroughInsteadOfThrowing()
+    {
+        // A provider that simply awaits the token it was handed raises a bare
+        // OperationCanceledException when the per-attempt cap fires. That used to escape the
+        // router entirely - out of a class whose contract, and whose callers, depend on it never
+        // throwing - and surfaced as a crash rather than as English on the overlay.
+        var hanging = new HangingProvider("slow");
+        var quick = new FakeProvider("groq").Returns("من groq");
+
+        var router = new ProviderRouter([(hanging, 60), (quick, 60)], new RouterOptions
+        {
+            RequestTimeout = TimeSpan.FromMilliseconds(50),
+            MaxTransientRetries = 0,
+        });
+
+        var result = await router.TranslateAsync(Request(), CancellationToken.None);
+
+        Assert.Equal("groq", result.Provider);
+        Assert.Equal(TranslationLogOutcomes.Ok, result.Outcome);
+    }
+
+    [Fact]
+    public async Task ATimeoutOnEveryLaneStillDegradesToEnglish()
+    {
+        var hanging = new HangingProvider("slow");
+
+        var router = new ProviderRouter([(hanging, 60)], new RouterOptions
+        {
+            RequestTimeout = TimeSpan.FromMilliseconds(50),
+            MaxTransientRetries = 0,
+        });
+
+        var result = await router.TranslateAsync(Request(), CancellationToken.None);
+
+        Assert.Equal(ProviderNames.Fallback, result.Provider);
+        Assert.Equal(TranslationLogOutcomes.FallbackEnglish, result.Outcome);
+        Assert.Equal("Come, the aether stirs.", result.Text);
+    }
 }
 
 public class TokenBucketTests
@@ -287,6 +346,20 @@ public class PromptBuilderTests
         var (system, _) = PromptBuilder.Build(new TranslationRequest("Hello."));
 
         Assert.Contains("Output ONLY the Arabic translation", system);
+    }
+}
+
+/// <summary>Waits on whatever token it is given, which is how a real client behaves on a stall.</summary>
+internal sealed class HangingProvider(string name) : ITranslationProvider
+{
+    public string Name { get; } = name;
+
+    public IReadOnlyList<string> Models { get; } = ["m1"];
+
+    public async Task<string> TranslateAsync(TranslationRequest request, string model, CancellationToken ct)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(30), ct);
+        return "unreachable";
     }
 }
 

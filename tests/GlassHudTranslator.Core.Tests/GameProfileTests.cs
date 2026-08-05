@@ -115,14 +115,7 @@ public class GameProfileTests : IDisposable
 
 public class GeneralProfileTests
 {
-    private static string ProfilesDirectory()
-    {
-        var dir = AppContext.BaseDirectory;
-        while (dir is not null && !File.Exists(Path.Combine(dir, "GlassHudTranslator.slnx")))
-            dir = Path.GetDirectoryName(dir);
-
-        return Path.Combine(dir ?? ".", "profiles");
-    }
+    private static string ProfilesDirectory() => TestPaths.Profiles;
 
     [Fact]
     public void ShippedProfilesLoad()

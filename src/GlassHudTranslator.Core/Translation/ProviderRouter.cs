@@ -65,6 +65,10 @@ public sealed class ProviderRouter(
         {
             if (ct.IsCancellationRequested) break;
 
+            // Deliberately silent. An unconfigured lane is switched off, not broken, and saying so
+            // once per line would drown the log that reports the failures that do matter.
+            if (!lane.Provider.IsConfigured) continue;
+
             if (lane.CooldownUntil > _clock.GetUtcNow())
             {
                 _log($"router: {lane.Provider.Name} in cooldown, skipping");
@@ -113,17 +117,28 @@ public sealed class ProviderRouter(
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
+                    // The caller gave up - the window closed, or a newer line arrived. Abandon
+                    // everything rather than moving down the chain for a line nobody wants.
                     return null;
                 }
-                catch (ProviderException e)
+                catch (Exception raised) when (raised is ProviderException or OperationCanceledException)
                 {
-                    switch (e.Failure)
+                    // A provider that lets the per-attempt cap surface as a raw cancellation would
+                    // otherwise escape this method entirely and throw out of a router that
+                    // documents, and is depended on for, never throwing. Treat it as what it is:
+                    // no answer in time, worth one more try or the next lane.
+                    var e = raised as ProviderException;
+                    var failure = e?.Failure ?? ProviderFailure.Transient;
+                    var detail = e?.Message
+                                 ?? $"no answer within {_options.RequestTimeout.TotalSeconds:F0}s";
+
+                    switch (failure)
                     {
                         case ProviderFailure.ModelNotFound:
                             // Loudly, because this is the failure that silently takes a working
                             // build offline weeks after it shipped.
                             _log($"router: MODEL GONE - {lane.Provider.Name}/{model} no longer exists " +
-                                 $"({e.Message}). Falling through to the next model in models.json. " +
+                                 $"({detail}). Falling through to the next model in models.json. " +
                                  "Update that file.");
                             goto nextModel;
 
@@ -134,7 +149,7 @@ public sealed class ProviderRouter(
                             return null;
 
                         case ProviderFailure.Fatal:
-                            _log($"router: {lane.Provider.Name} fatal - {e.Message}");
+                            _log($"router: {lane.Provider.Name} fatal - {detail}");
                             return null;
 
                         case ProviderFailure.Transient:
@@ -142,7 +157,7 @@ public sealed class ProviderRouter(
                             if (attempt == _options.MaxTransientRetries)
                             {
                                 _log($"router: {lane.Provider.Name}/{model} failed after " +
-                                     $"{attempt + 1} attempts - {e.Message}");
+                                     $"{attempt + 1} attempts - {detail}");
                                 return null;
                             }
 

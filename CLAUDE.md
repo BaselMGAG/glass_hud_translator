@@ -66,6 +66,10 @@ profiles/<game>/                       per-game data, no code
 data/models.json                       provider and model config
 ```
 
+CI is three workflows: `build.yml` (tests on ubuntu at 1x billing), `release.yml` (tag `v*` →
+public zip), and `publish-windows.yml`, which both of the others call so that the artifact a
+release ships comes from exactly the steps that have been running green on every commit.
+
 A useful thing to know: `net10.0-windows` **compiles on macOS**. The TFM only applies
 `[SupportedOSPlatform("windows")]`, which is an analyzer contract, not a build requirement. It's
 `UseWPF`/`UseWindowsForms` that would make a Windows host mandatory, and this project uses neither.
@@ -100,7 +104,28 @@ providers delete free models without warning. A 404 falls through to the next en
 logs `MODEL GONE` loudly.
 
 **The router must never throw.** When every provider fails the user sees the OCR'd English with a
-warning marker. Never blank, never crash.
+warning marker. Never blank, never crash. This has already been broken once: a provider that let
+the four-second per-attempt cap surface as a bare `OperationCanceledException` escaped the router
+entirely, because the only cancellation catch was guarded on the *outer* token, which is not the
+one that fires on a timeout. `TryLaneAsync` now catches `OperationCanceledException` alongside
+`ProviderException` and treats it as transient. Any new `catch` in that method needs the same care.
+
+**Lane order in `data/models.json` is the cost policy.** The router walks it top to bottom, so the
+free lanes must stay above the paid ones — a paid provider placed above a free one spends money on
+lines the free tier would have answered for nothing. There is a test asserting this.
+
+**A lane with no key must be skipped silently, not failed loudly.** `ITranslationProvider.
+IsConfigured` is what makes shipping the paid lanes switched on safe: without it, a user with only
+a Gemini key gets two "no API key" lines in the router log for every line translated, which buries
+the failures that actually matter. It is read per request, so a key pasted into Settings takes
+effect without a restart.
+
+**Adding an OpenAI-shaped provider is a config edit, not a code change.** A new lane in
+`data/models.json` gets a key field, a free/paid label and a "where to get one" link in Settings
+automatically, because that screen is generated from the file. Only a provider with its own
+protocol needs code — `AnthropicProvider` is the one example, and it exists as a separate class
+precisely so that `OpenAiCompatibleProvider`, whose whole justification is having no
+provider-specific branches, keeps having none.
 
 ## Things deliberately not done
 

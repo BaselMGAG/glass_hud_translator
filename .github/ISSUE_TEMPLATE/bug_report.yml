@@ -1,0 +1,46 @@
+name: Bug report
+description: Something did not work
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The Diagnostics tab in Settings answers most of this. If you only fill in one thing, make
+        it the router log — it names the provider and model that failed.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead.
+    validations:
+      required: true
+
+  - type: input
+    id: game
+    attributes:
+      label: What were you translating
+      placeholder: Final Fantasy XIV / a browser / a PDF
+    validations:
+      required: true
+
+  - type: textarea
+    id: router
+    attributes:
+      label: Router log
+      description: Settings → Diagnostics → Router log. Paste whatever is in the box.
+      render: text
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The release you downloaded, or the commit you built.
+      placeholder: v0.2.0
+
+  - type: dropdown
+    id: scaling
+    attributes:
+      label: Display scaling
+      description: Windows Settings → System → Display → Scale. Only 100% has been tested.
+      options: ['100%', '125%', '150%', '175% or more', 'Not sure']
