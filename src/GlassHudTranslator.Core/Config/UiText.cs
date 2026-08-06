@@ -1,4 +1,5 @@
 using GlassHudTranslator.Core.Platform;
+using GlassHudTranslator.Core.Regions;
 
 namespace GlassHudTranslator.Core.Config;
 
@@ -52,7 +53,7 @@ public sealed class UiText
     public required string TierFree { get; init; }
     public required string TierPaid { get; init; }
     public required string TierLocal { get; init; }
-    public required string NotSet { get; init; }
+    public required string PasteKeyHere { get; init; }
     public required string NoLanes { get; init; }
     public required string NoKeySkipped { get; init; }
     public required string KeysCleared { get; init; }
@@ -63,13 +64,23 @@ public sealed class UiText
     public required string WhatAreYouTranslating { get; init; }
     public required string Profile { get; init; }
     public required string Arabic { get; init; }
+
+    /// <summary>
+    /// Label for the MSA/Egyptian choice. Named after <c>ArabicRegister</c>, which is what it sets,
+    /// but deliberately not <em>worded</em> that way in either language: "register" is a linguist's
+    /// term, and its literal Arabic equivalent (المستوى اللغوي) reads as a grading scale rather
+    /// than a choice between two dialects. The label says what the two options are instead.
+    /// </summary>
     public required string Register { get; init; }
     public required string RegisterNote { get; init; }
     public required string RegisterMsa { get; init; }
     public required string RegisterEgyptian { get; init; }
     public required string CaptureRegions { get; init; }
     public required string RegionsNote { get; init; }
-    public required string Pick { get; init; }
+    public required string PickRegion { get; init; }
+    public required string RegionDialogue { get; init; }
+    public required string RegionSubtitle { get; init; }
+    public required string RegionQuest { get; init; }
     public required string Corrections { get; init; }
     public required string CorrectionsNote { get; init; }
     public required string CorrectedArabic { get; init; }
@@ -137,6 +148,21 @@ public sealed class UiText
     public required string CaptureWindowsOnly { get; init; }
     public required string SelectionOffScreen { get; init; }
 
+    /// <summary>
+    /// The display name for a capture region. The stored names are English identifiers - they are
+    /// dictionary keys in the region store and in every saved profile - so they cannot simply be
+    /// translated at the source. Interpolating one straight into a sentence is what produced
+    /// "حدد dialogue" on a button: half a translated interface, which reads as an unfinished build.
+    /// Anything unrecognised falls through unchanged rather than being dropped.
+    /// </summary>
+    public string RegionName(string region) => region switch
+    {
+        RegionProfile.Names.Dialogue => RegionDialogue,
+        RegionProfile.Names.Subtitle => RegionSubtitle,
+        RegionProfile.Names.Quest => RegionQuest,
+        _ => region,
+    };
+
     public string HotkeyDescription(HotkeyAction action) => action switch
     {
         HotkeyAction.PickRegion => HotkeyPickRegion,
@@ -191,7 +217,7 @@ public sealed class UiText
         TierFree = "FREE TIER",
         TierPaid = "PAID — billed per line",
         TierLocal = "LOCAL",
-        NotSet = "not set",
+        PasteKeyHere = "paste your key here",
         NoLanes = "No lanes configured. Translation will fall back to showing the English.",
         NoKeySkipped = "no key, skipped",
         KeysCleared = "All keys cleared. Nothing will be translated until one is entered.",
@@ -201,7 +227,7 @@ public sealed class UiText
         WhatAreYouTranslating = "What are you translating?",
         Profile = "Profile",
         Arabic = "Arabic",
-        Register = "Register",
+        Register = "Style",
         RegisterNote =
             "Modern Standard suits FFXIV's archaic narrative voice. Egyptian lands well for "
             + "merchants and comic relief, and reads as comedy for Elezen nobility.",
@@ -212,7 +238,10 @@ public sealed class UiText
             "Games often draw narrative text in more than one place — a dialogue box, a subtitle bar, "
             + "a quest window — so each gets its own rectangle. Each profile keeps its own set, so "
             + "switching between a game and the desktop does not lose either.",
-        Pick = "Pick",
+        PickRegion = "Pick {0}",
+        RegionDialogue = "dialogue",
+        RegionSubtitle = "subtitle",
+        RegionQuest = "quest",
         Corrections = "Corrections",
         CorrectionsNote = "Correct the line currently on the overlay. The correction is pinned "
                           + "and always wins over the model in future.",
@@ -275,7 +304,7 @@ public sealed class UiText
             "Switched to '{0}'. No region picked for it yet — press Ctrl+Shift+R.",
         KeysSaved = "{0} key(s) saved. Lanes without one are skipped.",
         RegionSaved = "Saved '{0}' as {1} x {2} of the client rect.",
-        RegisterSetTo = "Register set to {0}.",
+        RegisterSetTo = "Arabic style set to {0}.",
         TestResult = "{0}/{1} in {2} ms ({3})",
         NothingToCorrect = "Nothing on the overlay to correct yet.",
         EditThenPin = "Edit the text above, then press Pin correction.",
@@ -328,7 +357,7 @@ public sealed class UiText
         TierFree = "مستوى مجاني",
         TierPaid = "مدفوع — يُحاسَب على كل سطر",
         TierLocal = "محلّي",
-        NotSet = "غير محدَّد",
+        PasteKeyHere = "الصق المفتاح هنا",
         NoLanes = "لا توجد مسارات مضبوطة. ستُعرض الإنجليزية بدل الترجمة.",
         NoKeySkipped = "بلا مفتاح، متجاوَز",
         KeysCleared = "مُسحت كل المفاتيح. لن تتم أي ترجمة حتى تُدخل مفتاحاً.",
@@ -338,7 +367,7 @@ public sealed class UiText
         WhatAreYouTranslating = "ما الذي تترجمه؟",
         Profile = "الملف",
         Arabic = "العربية",
-        Register = "المستوى اللغوي",
+        Register = "أسلوب العربية",
         RegisterNote =
             "الفصحى تناسب الصوت السردي القديم في FFXIV. والمصرية تليق بالتجّار والمواقف الطريفة، "
             + "لكنها تبدو هزلية على لسان نبلاء الإلزِن.",
@@ -349,7 +378,10 @@ public sealed class UiText
             "كثيراً ما ترسم الألعاب نصّها السردي في أكثر من موضع — صندوق حوار، وشريط ترجمة، ونافذة "
             + "مهام — فلكلٍّ منها مستطيله. ولكل ملف مجموعته الخاصة، فالتنقّل بين لعبة وسطح المكتب "
             + "لا يفقدك أياً منهما.",
-        Pick = "حدّد",
+        PickRegion = "حدّد منطقة {0}",
+        RegionDialogue = "الحوار",
+        RegionSubtitle = "الترجمة",
+        RegionQuest = "المهمة",
         Corrections = "التصحيحات",
         CorrectionsNote = "صحّح السطر المعروض على الطبقة الآن. يُثبَّت التصحيح ويتقدّم على النموذج "
                           + "دائماً فيما بعد.",
@@ -410,7 +442,7 @@ public sealed class UiText
         ProfileSwitchedNoRegion = "انتقلت إلى «{0}». لم تُحدَّد له منطقة بعد — اضغط Ctrl+Shift+R.",
         KeysSaved = "حُفظ {0} من المفاتيح. والمسارات بلا مفتاح متجاوَزة.",
         RegionSaved = "حُفظت «{0}» بنسبة {1} × {2} من مساحة النافذة.",
-        RegisterSetTo = "ضُبط المستوى اللغوي على {0}.",
+        RegisterSetTo = "ضُبط أسلوب العربية على {0}.",
         TestResult = "{0}/{1} خلال {2} جزء من الثانية ({3})",
         NothingToCorrect = "لا يوجد على الطبقة ما يُصحَّح بعد.",
         EditThenPin = "عدّل النص أعلاه ثم اضغط «ثبّت التصحيح».",

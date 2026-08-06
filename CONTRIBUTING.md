@@ -76,6 +76,17 @@ people this project exists for.
 Platform error text (Win32 messages, "Global hotkeys are Windows-only") is deliberately left alone;
 it comes from the OS and is English there too.
 
+Two things that keep going wrong, both found by a native speaker rather than by the tests:
+
+- **Don't build a label by concatenating an identifier onto a translated word.** The capture region
+  names are stored English keys, so `$"{text.Pick} {name}"` produced `حدد dialogue` on three
+  buttons. Map the key to a display name (`UiText.RegionName`) and make the surrounding string a
+  format string. There is now a test for this one.
+- **Machine output must not be mirrored.** Model ids, URLs and quota counts reorder inside a
+  right-to-left paragraph, which reported the provider lanes — and therefore the cost policy —
+  backwards. Pass `machine: true` to `Note`/`Warning`/`Readout`. Not Unicode isolates: they are
+  absent from the bundled font and break glyph fallback for the whole window.
+
 ### Adding a provider
 
 It is a config edit, not a code change, as long as the provider speaks the OpenAI

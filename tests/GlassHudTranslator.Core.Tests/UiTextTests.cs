@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using GlassHudTranslator.Core.Config;
 using GlassHudTranslator.Core.Platform;
+using GlassHudTranslator.Core.Regions;
 using Xunit;
 
 namespace GlassHudTranslator.Core.Tests;
@@ -64,6 +65,53 @@ public class UiTextTests
                 // put a C# enum name in front of the user.
                 Assert.NotEqual(action.ToString(), described);
             }
+        }
+    }
+
+    [Fact]
+    public void EveryCaptureRegionHasADisplayNameInBothLanguages()
+    {
+        // The bug this locks down: region names are stored English keys, and the buttons used to be
+        // built by gluing one onto a translated verb - "حدد dialogue". Half a translated interface
+        // reads as an unfinished build, which is exactly what a first-time user should not see.
+        foreach (var region in RegionProfile.Names.All)
+        {
+            Assert.NotEqual(region, UiText.Ar.RegionName(region));
+            Assert.Equal(region, UiText.En.RegionName(region));
+        }
+    }
+
+    [Fact]
+    public void AnUnknownRegionFallsThroughRatherThanVanishing()
+    {
+        // A region name added to RegionProfile.Names without a translation should show as itself.
+        // Wrong-looking is recoverable; a blank button is not.
+        Assert.Equal("minimap", UiText.Ar.RegionName("minimap"));
+    }
+
+    [Fact]
+    public void NoArabicLabelLeavesAnEnglishWordInTheMiddleOfIt()
+    {
+        // Latin is legitimate in a handful of strings - hotkey syntax, provider names, file names -
+        // so this checks only the short labels a user reads as a unit: buttons, rows and tabs.
+        string[] shortLabels =
+        [
+            nameof(UiText.TabProviders), nameof(UiText.TabTranslating), nameof(UiText.TabOverlay),
+            nameof(UiText.TabHotkeys), nameof(UiText.TabDiagnostics), nameof(UiText.SaveKeys),
+            nameof(UiText.ActiveLanes), nameof(UiText.Profile), nameof(UiText.Arabic),
+            nameof(UiText.Register), nameof(UiText.CaptureRegions), nameof(UiText.PickRegion),
+            nameof(UiText.RegionDialogue), nameof(UiText.RegionSubtitle), nameof(UiText.RegionQuest),
+            nameof(UiText.Corrections), nameof(UiText.PinCorrection), nameof(UiText.FontSize),
+            nameof(UiText.PanelOpacity), nameof(UiText.PreviewOverlay), nameof(UiText.PasteKeyHere),
+            nameof(UiText.ApplyHotkeys), nameof(UiText.ResetToDefaults), nameof(UiText.TranslateNow),
+            nameof(UiText.RouterLog), nameof(UiText.TestTranslation), nameof(UiText.Refresh),
+        ];
+
+        foreach (var name in shortLabels)
+        {
+            var value = (string)typeof(UiText).GetProperty(name)!.GetValue(UiText.Ar)!;
+
+            Assert.DoesNotContain(value, c => c is >= 'a' and <= 'z' or >= 'A' and <= 'Z');
         }
     }
 

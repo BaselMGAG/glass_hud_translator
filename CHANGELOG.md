@@ -3,6 +3,38 @@
 Notable changes. Started once the app was working end to end, so everything before the first entry
 is "the thing being described in the README".
 
+## v0.2.1 — 6 August 2026
+
+Everything here came out of one round of review of the Arabic interface by a native speaker. None
+of it was findable by the person who wrote it, and all of it is the difference between an app that
+looks finished and one that looks like a build someone left running.
+
+### Fixed
+
+- **Three buttons read `حدد dialogue`.** The capture region names are stored English keys, and the
+  button captions were built by gluing one onto a translated verb — so the most prominent controls
+  on the Translating tab were half in each language. They now read حدّد منطقة الحوار / الترجمة /
+  المهمة, and the region picker's own title and instructions are translated the same way. A test
+  asserts every stored region name has an Arabic display name.
+- **The API key field said `غير محدَّد`** — "not set", which reads as though the setting's value is
+  unknown rather than as though you have not pasted a key yet. It is now `الصق المفتاح هنا`, which
+  is an instruction rather than a status, and "paste your key here" in English for the same reason.
+- **The dialect selector was labelled `المستوى اللغوي`.** Accurate, and a linguist's term for what
+  is a choice between two named dialects. Now `أسلوب العربية`; the English label is "Style" rather
+  than "Register" on the same grounds.
+- **The explanatory notes were styled as though nobody had to read them** — 11px in mid-grey, the
+  conventional "secondary, skip this" treatment. They are what tell a first-time user which
+  providers are free and what a capture region is, and that user may be neither technical nor an
+  English reader. Now 13px at 10.3:1 contrast instead of 6.3:1, with the extra line spacing Arabic
+  needs. The window is wider so the paragraphs wrap less, and no taller, so it still fits a laptop.
+- **The quota readout showed the provider lanes in reverse.** Latin runs inside a mirrored
+  paragraph reorder, so `gemini · groq · openai · anthropic · ollama` rendered back to front — and
+  that order is the cost policy, so the Arabic interface was telling the user the paid lane is tried
+  first. Model lists, key URLs and platform diagnostics had the same problem. They are now
+  left-to-right explicitly.
+- The region picker had no bundled font set, so on a Windows install without an Arabic font its
+  instructions — the only thing on that full-screen window — would have rendered as empty boxes.
+
 ## v0.2.0 — 6 August 2026
 
 ### Added

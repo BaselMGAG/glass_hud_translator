@@ -280,8 +280,17 @@ public sealed class UiText {
     public bool IsRightToLeft => Language == UiLanguage.Arabic;
     public static UiText For(UiLanguage language);
     public string HotkeyDescription(HotkeyAction action);
+
+    // Stored region keys are English identifiers - they name rows in the region store. Mapped to a
+    // display name rather than interpolated, or the Arabic build shows "حدد dialogue" on a button.
+    public string RegionName(string region);
     /* ~90 required string properties */
 }
+
+// Machine output - model ids, provider names, URLs, quota counts - is not translated and must not
+// be mirrored: reversed, the quota line reports the lane order, which is the cost policy,
+// backwards. Handled by FlowDirection on the control, never by Unicode isolates (U+2066…U+2069),
+// which are absent from the bundled font and break glyph fallback for the whole window.
 
 // ── Storage ────────────────────────────────────────────────────────────────
 public interface ITranslationCache {

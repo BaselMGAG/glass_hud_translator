@@ -130,6 +130,14 @@ labels, layout — and it uses the bundled Arabic font rather than hoping Window
 
 English stays the default, since that's what this documentation shows.
 
+The Arabic has since been through a round of review by a native speaker, which is the only way this
+kind of thing gets found. Three buttons still read `حدد dialogue` — the region names are stored
+English keys, and gluing one onto a translated verb leaves half an interface. The API key field said
+`غير محدَّد`, which sounds like the setting's value is unknown rather than that you haven't pasted a
+key yet. The dialect selector was labelled "المستوى اللغوي", a linguist's term for a choice between
+two named dialects. And the grey explanatory notes were sized as though nobody needed to read them,
+when they are exactly what a non-technical user has to read to finish setup.
+
 <div align="center">
 <img src="docs/images/settings-providers-ar.png" alt="The same Providers tab with the interface language set to Arabic: tab names, labels and notes are in Arabic and the whole layout is mirrored right-to-left, while API keys, URLs and model names stay left-to-right" width="820">
 <br>
@@ -139,7 +147,7 @@ English stays the default, since that's what this documentation shows.
 ## What you're configuring
 
 <div align="center">
-<img src="docs/images/settings-translating.png" alt="The Translating tab in Settings, showing the profile selector set to ffxiv, the Arabic register selector set to Modern Standard Arabic, buttons to pick the dialogue, subtitle and quest capture regions, and a box for pinning a correction" width="820">
+<img src="docs/images/settings-translating.png" alt="The Translating tab in Settings, showing the profile selector set to ffxiv, the Arabic style selector set to Modern Standard Arabic, buttons to pick the dialogue, subtitle and quest capture regions, and a box for pinning a correction" width="820">
 <br>
 <sub>Which game, which dialect, and where on screen the text sits. Each profile keeps its own regions.</sub>
 </div>

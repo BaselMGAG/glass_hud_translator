@@ -17,7 +17,7 @@
 ## What has changed since I wrote this
 
 This document is deliberately not rewritten as the code moves — it records what I decided and why,
-before I knew whether any of it would work. The decisions below all held. Four things have since
+before I knew whether any of it would work. The decisions below all held. Five things have since
 been *added* that it does not mention, so read it with these in mind:
 
 | | |
@@ -26,6 +26,7 @@ been *added* that it does not mention, so read it with these in mind:
 | **The interface is available in Arabic.** | The single largest omission in this document. It specifies Arabic *output* in detail and never once asks what language the app's own buttons are in — for an app whose entire premise is that its user does not read English comfortably. English remains the default. |
 | **Settings is tabbed.** | Providers / Translating / Overlay / Hotkeys / Diagnostics, rather than the one long panel implied here. |
 | **Five hotkeys, not four.** | Show/hide overlay was added after the first real play session. §2.6's table lists four. |
+| **The Arabic interface needs a native reader, not a test.** | §6 is careful about the Arabic the app *produces* and says nothing about the Arabic it *displays*. The first review round found buttons reading `حدد dialogue`, a key field labelled "not set" where an instruction belonged, a linguist's term where a plain one belonged, and explanatory text sized as though nobody had to read it. None of it was reachable from a test — but two of the four are now, and reviewing interface strings is in [CONTRIBUTING.md](../CONTRIBUTING.md). |
 
 Everything else below still describes the shipped app. Current contracts and schemas are in
 [PROJECT_PLAN.md](../PROJECT_PLAN.md); the rules that are easy to break are in

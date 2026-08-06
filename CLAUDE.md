@@ -135,6 +135,29 @@ does not have throws `FormatException` at runtime, and only ever for the users t
 for. Platform error text (Win32 messages, "Global hotkeys are Windows-only") is deliberately left
 untranslated; it comes from the OS.
 
+**Never build a label by concatenating a stored identifier onto a translated word.** The capture
+regions are stored under English keys — `dialogue`, `subtitle`, `quest` — because they are lookup
+keys in the region store and in every saved profile. Gluing one onto a translated verb produced
+`حدد dialogue` on three buttons, which is what a first-time Arabic user saw before they had done
+anything: half an interface. `UiText.RegionName` maps the key to a display name, and `PickRegion` is
+a format string rather than a prefix. A test asserts every stored region name has an Arabic one.
+
+**Machine output stays left-to-right, by `FlowDirection` on the control.** Model ids, provider
+names, URLs and quota counts are not words. Left in a mirrored paragraph they reorder, so
+`gemini → gemini-2.0-flash → gemini-2.5-flash-lite` renders back to front — and the order of the
+lanes *is* the cost policy, so a reversed quota line tells the user the paid provider is tried
+first. `SettingsWindow.Note`/`Warning`/`Readout` take a `machine: true` flag for this. **Do not use
+Unicode isolates (U+2066…U+2069) instead.** That was tried: neither character exists in the bundled
+Arabic font, and one unresolvable codepoint poisoned glyph fallback for the entire window, so every
+Latin word in the interface rendered as an empty box. It reproduced on every run.
+
+**The grey explanatory notes are not decoration — size them accordingly.** They were 11px in
+`#9aa0a6`, the conventional "secondary, skip this" styling. Nothing in Settings is secondary to
+someone opening it for the first time: those paragraphs are what say which providers are free and
+what a capture region is, and the intended reader is not technical and may not read English. They
+are 13px at `#c8ccd0` (10.3:1 against the window, up from 6.3:1), with `LineSpacing` — never
+`LineHeight` — and more of it in Arabic, where the wrapped paragraphs are denser.
+
 **Set the bundled font whenever Arabic is on screen.** `Fonts.Arabic` is bundled for the reason
 `NOTICE` gives: a Windows machine with no Arabic font installed renders every Arabic string as
 empty boxes. Relying on OS fallback works on macOS and hides the problem — the Arabic tab headers

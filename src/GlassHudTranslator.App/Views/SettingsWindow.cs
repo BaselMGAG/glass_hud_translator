@@ -67,8 +67,11 @@ public sealed class SettingsWindow : Window
         _session = session;
         _text = UiText.For(settings.Language);
 
-        Width = 760;
-        Height = 700;
+        // Widened with the note text so the explanatory paragraphs wrap less. Height stays inside
+        // 768 - the shortest screen this is likely to run on is a laptop, and a settings window
+        // whose Save button is below the bottom of the display is worse than one that scrolls.
+        Width = 800;
+        Height = 720;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
         Build();
@@ -106,8 +109,11 @@ public sealed class SettingsWindow : Window
         _laneSummary = Readout();
         _profileNote = Note("");
         _status = Readout();
-        _quota = Readout();
-        _cache = Readout();
+
+        // Both are lists of provider names and counts separated by dots. Left in the interface
+        // direction they read back to front, and the quota line's order is the lane order.
+        _quota = Readout(machine: true);
+        _cache = Readout(machine: true);
         _correction = new TextBox { Watermark = _text.CorrectedArabic, Width = 380 };
         _routerLog = new TextBox
         {
@@ -115,7 +121,7 @@ public sealed class SettingsWindow : Window
             AcceptsReturn = true,
             Height = 160,
             FontFamily = new FontFamily("monospace"),
-            FontSize = 11,
+            FontSize = 12,
             TextWrapping = TextWrapping.NoWrap,
 
             // The log is machine output - provider names, model ids, HTTP codes - and stays
@@ -265,7 +271,7 @@ public sealed class SettingsWindow : Window
         stack.Children.Add(Note(_text.ProvidersIntro));
 
         foreach (var problem in _services.Models.Problems())
-            stack.Children.Add(Warning($"models.json: {problem}"));
+            stack.Children.Add(Warning($"models.json: {problem}", machine: true));
 
         foreach (var provider in _services.Models.Providers.Where(p => p.Secret is not null))
         {
@@ -285,7 +291,7 @@ public sealed class SettingsWindow : Window
 
     private Control KeyRow(ProviderConfig provider)
     {
-        var box = KeyBox(_text.NotSet);
+        var box = KeyBox(_text.PasteKeyHere);
         _keyBoxes[provider.Secret!] = box;
 
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
@@ -296,9 +302,10 @@ public sealed class SettingsWindow : Window
         stack.Children.Add(row);
 
         if (!string.IsNullOrWhiteSpace(provider.KeyUrl))
-            stack.Children.Add(Note($"{_text.KeyFrom} {provider.KeyUrl}"));
+            stack.Children.Add(Note($"{_text.KeyFrom} {provider.KeyUrl}", machine: true));
 
-        stack.Children.Add(Note($"{_text.ModelsInOrder} {string.Join(" → ", provider.Models)}"));
+        stack.Children.Add(Note(
+            $"{_text.ModelsInOrder} {string.Join(" → ", provider.Models)}", machine: true));
         return stack;
     }
 
@@ -318,7 +325,7 @@ public sealed class SettingsWindow : Window
         return new TextBlock
         {
             Text = label,
-            FontSize = 11,
+            FontSize = 12,
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = new SolidColorBrush(Color.Parse(colour)),
         };
@@ -384,7 +391,13 @@ public sealed class SettingsWindow : Window
         stack.Children.Add(Note(_text.RegionsNote));
         var regionButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         foreach (var name in RegionProfile.Names.All)
-            regionButtons.Children.Add(Button($"{_text.Pick} {name}", () => _ = PickRegionAsync(name)));
+        {
+            // Formatted, not concatenated: the region name is a stored English key, and gluing it
+            // onto a translated verb produced "حدد dialogue" - a button half in each language.
+            regionButtons.Children.Add(Button(
+                string.Format(_text.PickRegion, _text.RegionName(name)),
+                () => _ = PickRegionAsync(name)));
+        }
         stack.Children.Add(regionButtons);
 
         stack.Children.Add(Section(_text.Corrections));
@@ -479,8 +492,11 @@ public sealed class SettingsWindow : Window
     {
         var stack = new StackPanel { Spacing = 12 };
 
-        stack.Children.Add(Note(PlatformServices.Description));
-        stack.Children.Add(Note($"OCR: {_services.Ocr.Name} — {_services.Ocr.Diagnostics ?? "-"}"));
+        // Both lines are English platform detail rather than interface text - Win32 names, binary
+        // paths - so they are isolated whole rather than translated.
+        stack.Children.Add(Note(PlatformServices.Description, machine: true));
+        stack.Children.Add(Note(
+            $"OCR: {_services.Ocr.Name} — {_services.Ocr.Diagnostics ?? "-"}", machine: true));
         stack.Children.Add(_quota);
         stack.Children.Add(_cache);
 
@@ -567,7 +583,7 @@ public sealed class SettingsWindow : Window
 
         if (picker.Result is not { } region)
         {
-            _status.Text = string.Format(_text.RegionUnchanged, profileName);
+            _status.Text = string.Format(_text.RegionUnchanged, _text.RegionName(profileName));
             return;
         }
 
@@ -587,7 +603,7 @@ public sealed class SettingsWindow : Window
         _settings.LastRegionProfile = profileName;
         _settings.Save();
 
-        _status.Text = string.Format(_text.RegionSaved, profileName,
+        _status.Text = string.Format(_text.RegionSaved, _text.RegionName(profileName),
             profile.RelWidth.ToString("P0"), profile.RelHeight.ToString("P0"));
     }
 
@@ -758,27 +774,68 @@ public sealed class SettingsWindow : Window
 
     private static TextBlock Section(string text) => new()
     {
-        Text = text, FontSize = 14, FontWeight = FontWeight.SemiBold,
+        Text = text, FontSize = 15, FontWeight = FontWeight.SemiBold,
         Margin = new Thickness(0, 10, 0, 0),
         Foreground = new SolidColorBrush(Color.Parse("#8ab4f8")),
     };
 
-    private static TextBlock Note(string text) => new()
+    /// <summary>
+    /// The grey explanatory paragraphs.
+    ///
+    /// <para>
+    /// These were 11px in #9aa0a6, which is the conventional "this is secondary, skip it" styling -
+    /// and exactly wrong here. Nothing in this window is secondary to someone setting it up for the
+    /// first time: these paragraphs are what tell them which providers are free, why the lanes are
+    /// ordered the way they are, and what a capture region is. The audience is not technical, and
+    /// the setting they are being talked through is the whole first-run experience.
+    /// </para>
+    ///
+    /// <para>
+    /// So: 13px at #c8ccd0, which is 10.3:1 against this window's background rather than 6.3:1.
+    /// The line spacing is extra rather than a fixed line height, per the rule the overlay follows -
+    /// Arabic hangs marks below the baseline, and a fixed box clips them. Arabic gets more of it,
+    /// because these are dense wrapped paragraphs and it is the script that needs the room.
+    /// </para>
+    /// </summary>
+    private TextBlock Note(string text, bool machine = false) => new()
     {
-        Text = text, FontSize = 11, TextWrapping = TextWrapping.Wrap,
-        Foreground = new SolidColorBrush(Color.Parse("#9aa0a6")),
+        Text = text, FontSize = 13, TextWrapping = TextWrapping.Wrap,
+        LineSpacing = _text.IsRightToLeft ? 5 : 3,
+        FlowDirection = Direction(machine),
+        Foreground = new SolidColorBrush(Color.Parse("#c8ccd0")),
     };
 
-    private static TextBlock Warning(string text) => new()
+    private TextBlock Warning(string text, bool machine = false) => new()
     {
-        Text = text, FontSize = 11, TextWrapping = TextWrapping.Wrap,
+        Text = text, FontSize = 13, TextWrapping = TextWrapping.Wrap,
+        LineSpacing = _text.IsRightToLeft ? 5 : 3,
+        FlowDirection = Direction(machine),
         Foreground = new SolidColorBrush(Color.Parse("#fdd663")),
     };
 
-    private static TextBlock Readout() => new()
+    private TextBlock Readout(bool machine = false) => new()
     {
-        Text = "", FontSize = 12, TextWrapping = TextWrapping.Wrap,
+        Text = "", FontSize = 13, TextWrapping = TextWrapping.Wrap,
+        LineSpacing = _text.IsRightToLeft ? 5 : 3,
+        FlowDirection = Direction(machine),
     };
+
+    /// <summary>
+    /// Machine output - model ids, provider names, URLs, quota counts - stays left-to-right even
+    /// when the interface is mirrored.
+    ///
+    /// <para>
+    /// A mirrored paragraph reorders the Latin runs inside it, so
+    /// <c>gemini → gemini-2.0-flash → …</c> renders back to front. That is not cosmetic: the order
+    /// of the lanes <em>is</em> the cost policy, and a quota readout showing it reversed tells the
+    /// user the paid provider is tried first. The obvious fix - wrapping each run in Unicode
+    /// isolates, U+2066…U+2069 - was tried and is wrong here: neither character exists in the
+    /// bundled Arabic font, and one unresolvable codepoint poisoned glyph fallback for the whole
+    /// window, so every Latin word in the interface rendered as an empty box.
+    /// </para>
+    /// </summary>
+    private FlowDirection Direction(bool machine) =>
+        !machine && _text.IsRightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
 
     private static Button Button(string text, Action onClick)
     {

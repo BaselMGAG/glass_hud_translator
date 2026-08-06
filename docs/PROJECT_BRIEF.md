@@ -185,6 +185,21 @@ actual users. And the first screenshots of the Arabic interface came out mirrore
 which turned out to be a quirk of how the screenshots were being generated rather than a bug in the
 app. Both were found by looking at the result instead of trusting that it worked.
 
+**8. The part a test cannot catch.** Translating the interface was not the end of it. A native
+speaker went through the Arabic and found four things nobody who built it would have: three buttons
+that read `حدد dialogue`, because the capture region names are stored English keys and had been
+glued onto a translated verb; a key field labelled "not set", which sounds like the setting is
+broken rather than like you haven't pasted a key yet; a linguist's term where a plain word belonged;
+and the grey explanatory notes styled as though nobody had to read them — when they are precisely
+what a non-technical user has to read to finish setup. One more surfaced while fixing those: the
+per-provider quota line was listing the providers in reverse, because Latin text inside a mirrored
+paragraph reorders — and that order is which provider gets tried first, so the Arabic interface was
+quietly reporting the paid one as the default.
+
+The takeaway is the useful part: a translated interface that passes every test can still be wrong in
+ways only a reader of that language sees, and "we translated it" is not the same as "someone who
+reads it has looked at it."
+
 ---
 
 ## Images available

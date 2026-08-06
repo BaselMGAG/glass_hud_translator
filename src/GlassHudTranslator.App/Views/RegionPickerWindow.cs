@@ -42,11 +42,22 @@ public sealed class RegionPickerWindow : Window
         _testOcr = testOcr;
         _text = text ?? UiText.En;
 
-        Title = string.Format(_text.SelectRegionTitle, profileName);
+        // The region's display name, not its stored key: this window is full-screen over the game
+        // and its instructions are the only thing on it, so a lone English word in them is loud.
+        var region = _text.RegionName(profileName);
+
+        Title = string.Format(_text.SelectRegionTitle, region);
         SystemDecorations = SystemDecorations.None;
         WindowState = WindowState.FullScreen;
         Topmost = true;
         Background = new SolidColorBrush(Colors.Black);
+
+        // Bundled font at the window, for the reason NOTICE gives: a Windows install with no Arabic
+        // font draws all of this as empty boxes, and this window's instructions are the only thing
+        // telling the user what to do. Deliberately no FlowDirection here - the selection lives on a
+        // Canvas, and mirroring the window would mirror its coordinates and save the wrong
+        // rectangle. Only the instruction panel below is mirrored.
+        FontFamily = _text.IsRightToLeft ? Fonts.Arabic : FontFamily.Default;
 
         if (screenshot is not null)
         {
@@ -62,13 +73,21 @@ public sealed class RegionPickerWindow : Window
             IsVisible = false,
         };
 
-        _readout = new TextBlock { FontSize = 15, Foreground = Brushes.White };
+        // Both carry machine output - pixel measurements and the raw English the OCR read - so they
+        // stay left-to-right even when the panel around them is mirrored.
+        _readout = new TextBlock
+        {
+            FontSize = 15,
+            Foreground = Brushes.White,
+            FlowDirection = FlowDirection.LeftToRight,
+        };
         _ocrPreview = new TextBlock
         {
-            FontSize = 13,
+            FontSize = 14,
             Foreground = new SolidColorBrush(Color.Parse("#81c995")),
             TextWrapping = TextWrapping.Wrap,
             MaxWidth = 760,
+            FlowDirection = FlowDirection.LeftToRight,
         };
 
         var hud = new Border
@@ -79,6 +98,9 @@ public sealed class RegionPickerWindow : Window
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Top,
             Margin = new Thickness(0, 28, 0, 0),
+            FlowDirection = _text.IsRightToLeft
+                ? FlowDirection.RightToLeft
+                : FlowDirection.LeftToRight,
             Child = new StackPanel
             {
                 Spacing = 8,
@@ -88,8 +110,8 @@ public sealed class RegionPickerWindow : Window
                     {
                         Text = string.Format(
                             screenshot is null ? _text.PickerHintPlain : _text.PickerHintFrozen,
-                            profileName),
-                        FontSize = 15,
+                            region),
+                        FontSize = 16,
                         Foreground = Brushes.White,
                         TextWrapping = TextWrapping.Wrap,
                         MaxWidth = 900,
