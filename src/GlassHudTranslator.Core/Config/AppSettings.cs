@@ -54,6 +54,24 @@ public sealed record AppSettings
 
     [JsonPropertyName("hasCompletedFirstRun")] public bool HasCompletedFirstRun { get; set; }
 
+    /// <summary>
+    /// Whether to ask GitHub, once a day, whether a newer release exists. On by default: the person
+    /// this app is for is not going to be watching a repository for tags, and an app they cannot
+    /// read the release notes of is one they will simply never update. It is the only request the
+    /// app makes that is not a translation, so it is disclosed in both READMEs and switchable here.
+    /// Nothing is sent but the request itself - no identifiers, no usage, no key.
+    /// </summary>
+    [JsonPropertyName("checkForUpdates")] public bool CheckForUpdates { get; set; } = true;
+
+    [JsonPropertyName("lastUpdateCheckUtc")] public DateTime? LastUpdateCheckUtc { get; set; }
+
+    /// <summary>
+    /// The newest release seen by a previous check. Lets the notice appear immediately on launch
+    /// rather than only in the one session per day where the check actually runs - and it clears
+    /// itself, because once the user has updated it is no longer newer than what is running.
+    /// </summary>
+    [JsonPropertyName("lastSeenRelease")] public string? LastSeenRelease { get; set; }
+
     private static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = true,

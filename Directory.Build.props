@@ -2,6 +2,14 @@
 
   <PropertyGroup>
     <LangVersion>latest</LangVersion>
+
+    <!--
+      Overridden by CI from the release tag (-p:Version=). A command-line property beats this one,
+      so a local build is unambiguously 0.0.0 - which is what UpdateCheck reads as "running from
+      source, stay quiet". Without a default here a local build reports 1.0.0, which is a version
+      the project could plausibly reach, and every release would look like an update to a developer.
+    -->
+    <Version>0.0.0-dev</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>

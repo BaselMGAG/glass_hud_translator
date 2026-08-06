@@ -1,4 +1,5 @@
 using Avalonia;
+using GlassHudTranslator.Core.Update;
 
 namespace GlassHudTranslator.App;
 
@@ -11,6 +12,33 @@ internal static class Program
     public static int Main(string[] args)
     {
         Args = args;
+
+        // Answers "which version are you running?" without asking someone to open a window and
+        // read a label in a language they may not use. Also how the release build's version stamp
+        // gets verified: from source this prints 0.0.0, and CI stamps the tag over it.
+        if (HasFlag("--version"))
+        {
+            Console.WriteLine(UpdateCheck.RunningVersion?.ToString() ?? "unknown");
+            return 0;
+        }
+
+        // Runs the update check on the console and prints what it found. Support can ask for this
+        // instead of guessing whether a machine is behind a proxy, rate limited, or simply current.
+        if (HasFlag("--check-updates"))
+        {
+            using var http = new HttpClient();
+            var result = UpdateCheck
+                .FetchAsync(http, UpdateCheck.RunningVersion, CancellationToken.None)
+                .GetAwaiter().GetResult();
+
+            Console.WriteLine($"running   {UpdateCheck.RunningVersion}");
+            Console.WriteLine($"outcome   {result.Outcome}");
+            if (result.Update is { } update)
+                Console.WriteLine($"available {update.Tag}  {update.AssetName}  {update.ReleaseUrl}");
+
+            return 0;
+        }
+
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 

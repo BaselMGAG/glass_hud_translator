@@ -3,9 +3,9 @@
 *Prepared as background material. Everything here is accurate as of 6 August 2026; the "What not
 to claim" section near the end matters as much as the rest.*
 
-**Download:** https://github.com/basel2000de/non_arabic_supported_games_llm_hud_translator/releases
+**Download:** https://github.com/basel2000de/glass_hud_translator/releases
 
-**Repository:** https://github.com/basel2000de/non_arabic_supported_games_llm_hud_translator
+**Repository:** https://github.com/basel2000de/glass_hud_translator
 **Licence:** Apache 2.0 (open source, free to use and modify, commercially too)
 **Creator:** Basel — Frankfurt, Germany
 
@@ -89,6 +89,9 @@ Practical features:
   button that shows exactly what the text recognition reads from your selection before you commit.
 - **Corrections stick.** Fix a character's name once and that correction is used from then on.
 - **Works on anything on screen**, not only games — a browser, a PDF, a video player.
+- **It tells you when a new version is out**, with the filename and the steps, and never installs
+  anything by itself. One request a day to GitHub's public releases page, nothing sent with it,
+  switchable off.
 - **Bring your own API key.** No key is embedded. Four providers are supported: two with free tiers
   that need no credit card (Google Gemini, Groq), and two paid ones for people who already have a
   key (OpenAI, Anthropic Claude). The free ones are always tried first, so the paid options cost
@@ -124,7 +127,7 @@ contribute to**, not a finished product.
 | Providers supported | 4 — two free (Google Gemini, Groq), two paid and opt-in (OpenAI, Anthropic Claude) |
 | Interface languages | 2 — English and Arabic, English by default |
 | Credit card needed | No |
-| Automated tests | 169 |
+| Automated tests | 231 |
 | Glossary | 86 Final Fantasy XIV proper nouns pinned so far |
 | Configurable hotkeys | 5 |
 | Licence | Apache 2.0 |

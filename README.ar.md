@@ -8,7 +8,7 @@
 
 [English](README.md) · [العربية](README.ar.md)
 
-[![build](https://github.com/basel2000de/non_arabic_supported_games_llm_hud_translator/actions/workflows/build.yml/badge.svg)](https://github.com/basel2000de/non_arabic_supported_games_llm_hud_translator/actions/workflows/build.yml)
+[![build](https://github.com/basel2000de/glass_hud_translator/actions/workflows/build.yml/badge.svg)](https://github.com/basel2000de/glass_hud_translator/actions/workflows/build.yml)
 [![licence](https://img.shields.io/badge/licence-Apache--2.0-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4.svg)](https://dotnet.microsoft.com/)
 
@@ -49,7 +49,7 @@
 [Anthropic](https://console.anthropic.com/settings/keys) فيمكنك استخدام مفتاحك عندهما بدل ذلك.
 
 **١. نزّل وفُكّ الضغط.** خذ الملف المضغوط من
-[Releases](https://github.com/basel2000de/non_arabic_supported_games_llm_hud_translator/releases)
+[Releases](https://github.com/basel2000de/glass_hud_translator/releases)
 وفُكّ ضغطه في مجلد عادي مثل `C:\glasshud`. أبقِ المجلد كاملاً كما هو، فالبرنامج يحتاج `tessdata/`
 و `profiles/` و `data/` بجواره.
 
@@ -143,6 +143,36 @@ Ctrl+F13      ←  ترجمة ما هو على الشاشة الآن   (في ا�
 
 **الطبقة عالقة؟** شغّل `0-force-stop.bat`. الطبقة بلا مدخل في Alt+Tab والنقرات تمرّ خلالها، فلا
 توجد نافذة تُغلق — يجب إنهاء العملية.
+
+## التحديثات
+
+مرة كل يوم يسأل البرنامج موقع GitHub إن كانت هناك نسخة أحدث. فإن وُجدت، فُتحت الإعدادات ومعها
+إشعار يسمّي الملف الذي تنزّله وما تفعله به. هذا كل ما في الأمر — فهو لا ينزّل ولا يثبّت شيئاً من
+تلقاء نفسه.
+
+</div>
+
+<div align="center">
+<img src="docs/images/update-available.png" alt="نافذة الإعدادات وفوق التبويبات إشعار أخضر يقول إن النسخة v0.2.1 متوفّرة وإن لديك v0.1.0، ويذكر اسم الملف وخطوات فكّ ضغطه وتشغيله وزرّي فتح صفحة التنزيل والتأجيل" width="820">
+<br>
+<sub>شكل الإشعار عند صدور نسخة جديدة. اسم الملف مقروء من الإصدار نفسه، فهو ملف موجود فعلاً.</sub>
+</div>
+
+<div dir="rtl" align="right">
+
+**التحديث يدوي عن قصد.** فُكّ ضغط النسخة الجديدة في مكان ما، وشغّلها، ثم احذف المجلد القديم بعد أن
+تعمل. أما التحديث التلقائي فقد دُرس ورُفض: ويندوز لا يسمح لبرنامج يعمل بأن يستبدل مكتباته، والنسخة
+غير موقَّعة فبرنامج ينزّل ملفاً تنفيذياً ويشغّله هو تحديداً النمط الذي تشير إليه مضادات الفيروسات،
+والتحديث التلقائي إذا أخطأ ترك صاحبه ببرنامج لا يعمل ورسالة خطأ بالإنجليزية قد لا يقرؤها.
+
+**إعداداتك تبقى كما هي.** المفاتيح والإعدادات ومناطق الالتقاط والذاكرة المؤقتة محفوظة في حسابك على
+ويندوز لا في مجلد البرنامج. أما ما عدّلته داخل `profiles/` أو `data/models.json` فلا ينتقل معك،
+فانسخه إن كنت قد غيّرته.
+
+**وهو الطلب الوحيد الذي يرسله البرنامج ولا يكون ترجمة.** ولا يُرسَل معه شيء: لا معرّف ولا بيانات
+استخدام ولا مفتاح — مجرّد طلب عادي لصفحة الإصدارات العامة على GitHub، وهي الصفحة نفسها التي
+يفتحها متصفّحك. وهو مُفعَّل افتراضياً لأن من كُتب البرنامج لأجله لن يتابع مستودعاً ينتظر إصداراً
+جديداً. ولإيقافه: الإعدادات ← **التشخيص** ← **التحديثات**، فلا يُرسَل شيء إطلاقاً.
 
 ## ما الذي تضبطه
 
@@ -313,8 +343,8 @@ profiles/
 </div>
 
 ```bash
-git clone https://github.com/basel2000de/non_arabic_supported_games_llm_hud_translator.git
-cd non_arabic_supported_games_llm_hud_translator
+git clone https://github.com/basel2000de/glass_hud_translator.git
+cd glass_hud_translator
 dotnet run --project tools/Replay -- --no-cache
 ```
 

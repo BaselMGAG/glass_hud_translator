@@ -8,7 +8,7 @@
 
 [English](README.md) · [العربية](README.ar.md)
 
-[![build](https://github.com/basel2000de/non_arabic_supported_games_llm_hud_translator/actions/workflows/build.yml/badge.svg)](https://github.com/basel2000de/non_arabic_supported_games_llm_hud_translator/actions/workflows/build.yml)
+[![build](https://github.com/basel2000de/glass_hud_translator/actions/workflows/build.yml/badge.svg)](https://github.com/basel2000de/glass_hud_translator/actions/workflows/build.yml)
 [![licence](https://img.shields.io/badge/licence-Apache--2.0-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4.svg)](https://dotnet.microsoft.com/)
 
@@ -43,7 +43,7 @@ for [OpenAI](https://platform.openai.com/api-keys) or
 [Anthropic](https://console.anthropic.com/settings/keys), you can use that key instead.
 
 **1. Download and unzip.** Take the zip from
-[Releases](https://github.com/basel2000de/non_arabic_supported_games_llm_hud_translator/releases)
+[Releases](https://github.com/basel2000de/glass_hud_translator/releases)
 and unzip it somewhere ordinary like `C:\glasshud`. Keep the folder together — the exe needs
 `tessdata/`, `profiles/` and `data/` beside it.
 
@@ -120,6 +120,34 @@ which OCR engine loaded, and a router log naming any provider or model that fail
 
 **Stuck overlay?** Run `0-force-stop.bat`. The overlay has no Alt-Tab entry and clicks pass through
 it, so there is no window to close — the process has to be ended.
+
+## Updates
+
+Once a day the app asks GitHub whether a newer release exists, and if there is one, Settings opens
+with a notice naming the file to download and what to do with it. That is the whole feature — it
+never downloads or installs anything by itself.
+
+<div align="center">
+<img src="docs/images/update-available.png" alt="The Settings window with a green notice above the tabs reading 'Version v0.2.1 is available. You have v0.1.0.', the filename GlassHudTranslator-v0.2.1-win-x64.zip, three numbered steps for unzipping and running it, a note that keys and settings are kept, and buttons to open the download page or dismiss" width="820">
+<br>
+<sub>What a new release looks like. The filename is read from the release itself, so it names a file that exists.</sub>
+</div>
+
+**Updating is a manual replace, on purpose.** Unzip the new version somewhere, run it, and delete
+the old folder once it works. Self-updating was considered and rejected: Windows won't let a running
+program overwrite its own libraries, the build is unsigned so an app that downloads and runs another
+executable is the exact pattern antivirus heuristics flag, and a self-updater that goes wrong leaves
+someone with an install that no longer starts and an English error message they may not read.
+
+**Your setup survives.** API keys, settings, capture regions and the translation cache live under
+your Windows account, not in the app folder. Anything you edited inside `profiles/` or
+`data/models.json` does not carry over — copy those across if you changed them.
+
+**It is the only request this app makes that isn't a translation.** Nothing is sent with it: no
+identifier, no usage data, no key — just a plain GET to GitHub's public releases endpoint, the same
+one your browser would hit. It's on by default because the person this was built for isn't going to
+be watching a repository for tags. Turn it off in Settings → **Diagnostics** → **Updates** and
+nothing is sent at all.
 
 ## The interface speaks Arabic too
 
@@ -304,8 +332,8 @@ twice, which is why so much care goes into normalising text before hashing it.
 ## Try it without a game
 
 ```bash
-git clone https://github.com/basel2000de/non_arabic_supported_games_llm_hud_translator.git
-cd non_arabic_supported_games_llm_hud_translator
+git clone https://github.com/basel2000de/glass_hud_translator.git
+cd glass_hud_translator
 dotnet run --project tools/Replay -- --no-cache
 ```
 

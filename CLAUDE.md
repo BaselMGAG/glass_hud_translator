@@ -135,6 +135,28 @@ does not have throws `FormatException` at runtime, and only ever for the users t
 for. Platform error text (Win32 messages, "Global hotkeys are Windows-only") is deliberately left
 untranslated; it comes from the OS.
 
+**The update check notifies; it must never install.** `UpdateCheck` reads GitHub's public
+`releases/latest` and puts a notice in Settings. Do not extend it into a self-updater. Windows will
+not let a running process overwrite its own DLLs — and the natives under `x64/` are exactly the
+files that would need replacing — the build is unsigned, so downloading and running an executable
+is the same antivirus-heuristic problem that rules out `WH_KEYBOARD_LL`, and the whole path would
+ship unverified because the Windows machine is borrowed. Its failure mode is an install that will
+not start, in the hands of someone who cannot read the error.
+
+**`UpdateCheck` never throws, and stays silent unless it has something to say.** Same contract as
+the router, for the same reason: nobody asked for it, so it is not allowed to interrupt them with
+its own failures. Two details are load-bearing. **`UpToDate` and `Unreachable` are distinct** — a
+captive portal answering 200 with a login page must not be reported as "you have the latest
+version", and only a check that actually reached GitHub resets the daily timer, or one launch spent
+offline costs twenty hours. And **the request needs a `User-Agent`**: GitHub rejects API calls
+without one with a 403, which would look exactly like a permanent rate limit.
+
+**A local build is version 0.0.0, and that means "say nothing".** `Directory.Build.props` sets
+`<Version>0.0.0-dev</Version>`; CI overrides it from the tag with `-p:Version=`. Without that
+default a build from source reports 1.0.0, which is a version this project could plausibly reach —
+so every release would look like a downgrade-to-update to whoever is developing it. Check with
+`dotnet run --project src/GlassHudTranslator.App -f net10.0 -- --version`.
+
 **Never build a label by concatenating a stored identifier onto a translated word.** The capture
 regions are stored under English keys — `dialogue`, `subtitle`, `quest` — because they are lookup
 keys in the region store and in every saved profile. Gluing one onto a translated verb produced

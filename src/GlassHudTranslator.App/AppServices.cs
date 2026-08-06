@@ -63,6 +63,12 @@ public sealed class AppServices : IAsyncDisposable
 
     public IReadOnlyList<string> LaneNames { get; }
 
+    /// <summary>
+    /// Shared with the update check, which sets its own headers per request and caps itself with a
+    /// linked token rather than inheriting this client's translation-length timeout.
+    /// </summary>
+    public HttpClient Http => _http;
+
     /// <summary>The active game profile - regions, glossary, OCR fixes and prompt voice.</summary>
     public GameProfile Profile { get; private set; }
 

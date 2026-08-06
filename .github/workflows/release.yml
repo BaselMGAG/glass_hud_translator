@@ -72,6 +72,10 @@ jobs:
           Run `1-test-no-api-key.bat` first if you want to check the overlay renders Arabic before
           setting anything up.
 
+          **Updating** is a manual replace: unzip this somewhere, run it, delete the old folder once
+          it works. Your keys, settings and capture regions are kept — they live under your Windows
+          account, not in the app folder. From v0.3.0 the app tells you when a new release is out.
+
           ---
           EOF
           gh release create "$TAG" \

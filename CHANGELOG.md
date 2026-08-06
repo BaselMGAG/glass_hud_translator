@@ -3,6 +3,31 @@
 Notable changes. Started once the app was working end to end, so everything before the first entry
 is "the thing being described in the README".
 
+## v0.3.0 — 6 August 2026
+
+### Added
+
+- **The app tells you when a new version is out.** Once a day it asks GitHub's public releases
+  endpoint whether a newer release exists; if there is one, Settings opens with a notice naming the
+  exact file to download, the three steps to install it, and what happens to the setup already on
+  the machine. There is no update server and no account — GitHub already hosts the answer next to
+  the download.
+- It **does not download or install anything by itself**, and that is deliberate. Windows will not
+  let a running process overwrite its own libraries; the build is unsigned, so an app that fetches
+  and runs an executable is the exact pattern antivirus heuristics flag; and a self-updater that
+  goes wrong leaves an install that no longer starts, belonging to someone who cannot read the
+  English error it fails with. The same reasoning already rules out low-level keyboard hooks.
+- Settings → **Diagnostics** → **Updates** has the off switch and a **Check now** button that
+  ignores the daily throttle. Checking is on by default, because the person this was built for is
+  not going to be watching a repository for tags — and it is the only request the app makes that is
+  not a translation, so what it sends (nothing but the request) is stated in both READMEs.
+- `--version` and `--check-updates` on the command line, so "which version are you on and can you
+  reach GitHub?" can be answered without opening a window or reading a label in a second language.
+
+### Changed
+
+- The repository moved to `github.com/basel2000de/glass_hud_translator`.
+
 ## v0.2.1 — 6 August 2026
 
 Everything here came out of one round of review of the Arabic interface by a native speaker. None

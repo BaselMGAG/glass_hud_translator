@@ -115,6 +115,24 @@ public sealed class UiText
     public required string Hits { get; init; }
     public required string Translating { get; init; }
 
+    // ── updates ────────────────────────────────────────────────────────────────────────────
+    public required string UpdateAvailable { get; init; }
+    public required string UpdateDownloadFile { get; init; }
+    public required string UpdateSteps { get; init; }
+    public required string UpdateKeepsYourSetup { get; init; }
+    public required string OpenDownloadPage { get; init; }
+    public required string DismissUpdate { get; init; }
+    public required string Updates { get; init; }
+    public required string CheckForUpdatesLabel { get; init; }
+    public required string CheckForUpdatesNote { get; init; }
+    public required string CheckNow { get; init; }
+    public required string CheckingForUpdates { get; init; }
+    public required string UpToDate { get; init; }
+    public required string UpdateCheckUnavailable { get; init; }
+    public required string UpdateCheckOffline { get; init; }
+    public required string UpdateCheckDisabled { get; init; }
+    public required string DevelopmentBuildNoUpdates { get; init; }
+
     // ── region picker ──────────────────────────────────────────────────────────────────────
     public required string SelectRegionTitle { get; init; }
     public required string PickerHintFrozen { get; init; }
@@ -281,6 +299,35 @@ public sealed class UiText
         Hits = "hits",
         Translating = "Translating...",
 
+        UpdateAvailable = "Version {0} is available. You have {1}.",
+        UpdateDownloadFile = "On the page that opens, under Assets, download:",
+        UpdateSteps =
+            "1. Unzip it anywhere — no installer, and no administrator rights.   "
+            + "2. Run GlassHudTranslator.exe from the new folder.   "
+            + "3. Delete the old folder once it works. Windows will warn about an unrecognised app "
+            + "the first time: More info → Run anyway.",
+        UpdateKeepsYourSetup =
+            "Your API keys, settings, capture regions and translation cache are kept — they are "
+            + "stored under your Windows account, not in the app folder. Anything you edited inside "
+            + "profiles/ or data/models.json does not carry over, so copy those across if you "
+            + "changed them.",
+        OpenDownloadPage = "Open the download page",
+        DismissUpdate = "Not now",
+        Updates = "Updates",
+        CheckForUpdatesLabel = "Check for updates",
+        CheckForUpdatesNote =
+            "Asks GitHub once a day whether a newer release exists, and never downloads or installs "
+            + "anything by itself. It is the only request this app makes that is not a translation. "
+            + "Nothing is sent with it: no identifier, no usage, no API key.",
+        CheckNow = "Check now",
+        CheckingForUpdates = "Checking...",
+        UpToDate = "You have the latest version ({0}).",
+        UpdateCheckUnavailable = "Could not reach GitHub. It will try again later.",
+        UpdateCheckOffline = "Last checked {0}.",
+        UpdateCheckDisabled = "Update checking is off. Nothing is sent to GitHub.",
+        DevelopmentBuildNoUpdates =
+            "Running from source, so there is no released version to compare against.",
+
         SelectRegionTitle = "Select the {0} region",
         PickerHintFrozen =
             "Drag a box over the {0} text. This is a frozen screenshot, so nothing will move while "
@@ -420,6 +467,36 @@ public sealed class UiText
         Corrected = "مصحَّحاً",
         Hits = "إصابة",
         Translating = "جارٍ الترجمة...",
+
+        UpdateAvailable = "صدرت النسخة {0}، ولديك {1}.",
+        UpdateDownloadFile = "في الصفحة التي ستُفتح، تحت Assets، نزّل الملف:",
+        UpdateSteps =
+            "١. فُكّ ضغطه في أي مكان — بلا مثبِّت وبلا صلاحيات مدير.   "
+            + "٢. شغّل GlassHudTranslator.exe من المجلد الجديد.   "
+            // Two Latin runs either side of an arrow reverse in a mirrored paragraph, so the
+            // instruction would read "Run anyway" first. An Arabic connective between them fixes
+            // the order in the words themselves rather than relying on the layout.
+            + "٣. احذف المجلد القديم بعد أن يعمل. وسيحذّرك ويندوز من برنامج غير معروف أول مرة، "
+            + "فاضغط «More info» ثم «Run anyway».",
+        UpdateKeepsYourSetup =
+            "تبقى مفاتيحك وإعداداتك ومناطق الالتقاط والذاكرة المؤقتة كما هي — فهي محفوظة في حسابك "
+            + "على ويندوز لا في مجلد البرنامج. أما ما عدّلته داخل profiles/ أو data/models.json فلا "
+            + "ينتقل معك، فانسخه إن كنت قد غيّرته.",
+        OpenDownloadPage = "افتح صفحة التنزيل",
+        DismissUpdate = "ليس الآن",
+        Updates = "التحديثات",
+        CheckForUpdatesLabel = "التحقّق من التحديثات",
+        CheckForUpdatesNote =
+            "يسأل GitHub مرة كل يوم إن كانت هناك نسخة أحدث، ولا ينزّل ولا يثبّت شيئاً من تلقاء "
+            + "نفسه. وهو الطلب الوحيد الذي يرسله البرنامج ولا يكون ترجمة. ولا يُرسَل معه شيء: لا "
+            + "معرّف ولا بيانات استخدام ولا مفتاح.",
+        CheckNow = "تحقّق الآن",
+        CheckingForUpdates = "جارٍ التحقّق...",
+        UpToDate = "لديك أحدث نسخة ({0}).",
+        UpdateCheckUnavailable = "تعذّر الوصول إلى GitHub. سيُعاد المحاولة لاحقاً.",
+        UpdateCheckOffline = "آخر تحقّق: {0}.",
+        UpdateCheckDisabled = "التحقّق من التحديثات مُعطَّل. ولا يُرسَل شيء إلى GitHub.",
+        DevelopmentBuildNoUpdates = "تعمل النسخة من المصدر، فلا إصدار منشور تُقارَن به.",
 
         SelectRegionTitle = "حدّد منطقة {0}",
         PickerHintFrozen =

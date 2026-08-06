@@ -146,7 +146,8 @@ GlassHudTranslator.sln
 │   │   │                   PromptBuilder, ProviderRouter, TokenBucket, QuotaLedger
 │   │   ├── Storage/        AppDatabase, TranslationCache, TranslationLog, ISecretStore
 │   │   ├── Regions/        RegionProfile, RegionProfileStore
-│   │   └── Config/         AppSettings, ModelsConfig, UiText
+│   │   ├── Config/         AppSettings, ModelsConfig, UiText
+│   │   └── Update/         UpdateCheck — notifies about new releases, never installs
 │   ├── GlassHudTranslator.Interop/        net10.0-windows          ← P/Invoke declarations only
 │   ├── GlassHudTranslator.Windows/        net10.0-windows          ← Win32 implementations
 │   │   ├── Win32FrameSource, GameWindowLocator, DisplayModeGuard
@@ -291,6 +292,27 @@ public sealed class UiText {
 // be mirrored: reversed, the quota line reports the lane order, which is the cost policy,
 // backwards. Handled by FlowDirection on the control, never by Unicode isolates (U+2066…U+2069),
 // which are absent from the bundled font and break glyph fallback for the whole window.
+
+// ── Updates ────────────────────────────────────────────────────────────────
+// Notifies only. No update server: GitHub's public releases/latest endpoint already sits next to
+// the download. Never throws - every failure is Unreachable, which is deliberately NOT UpToDate,
+// because a captive portal answering 200 must not be reported as "you have the latest version".
+// Only a check that reached GitHub resets the daily timer. Never installs: see CLAUDE.md.
+public enum UpdateOutcome { NotChecked, UpToDate, UpdateAvailable, Unreachable }
+
+public sealed record AvailableUpdate(Version Version, string Tag, string ReleaseUrl, string AssetName);
+public sealed record UpdateCheckResult(UpdateOutcome Outcome, AvailableUpdate? Update = null) {
+    public bool Reached { get; }                        // UpToDate or UpdateAvailable
+}
+
+public static class UpdateCheck {
+    public static Version? RunningVersion { get; }      // 0.0.0 from source; CI stamps the tag
+    public static bool IsDevelopmentBuild(Version? v);
+    public static bool IsDue(AppSettings s, DateTime utcNow);           // once per 20 h
+    public static Task<UpdateCheckResult> FetchAsync(HttpClient h, Version? current, CancellationToken ct);
+    public static AvailableUpdate? FromRememberedTag(string? tag, Version? current);
+    public static AvailableUpdate? Parse(string json);
+}
 
 // ── Storage ────────────────────────────────────────────────────────────────
 public interface ITranslationCache {

@@ -5,6 +5,7 @@ using GlassHudTranslator.Core.Text;
 using GlassHudTranslator.Core.Regions;
 using GlassHudTranslator.Core.Storage;
 using GlassHudTranslator.Core.Translation;
+using GlassHudTranslator.Core.Update;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -55,8 +56,17 @@ public sealed class SettingsWindow : Window
     private TextBlock _cache = null!;
     private TextBlock _status = null!;
     private TextBox _routerLog = null!;
+    private TextBlock _updateStatus = null!;
     private TabControl? _tabs;
     private Control? _shellRoot;
+
+    /// <summary>
+    /// The newest release seen, or null. Held on the window rather than re-fetched, so switching
+    /// language rebuilds the banner from what is already known instead of asking GitHub again.
+    /// </summary>
+    private AvailableUpdate? _update;
+
+    private bool _updateDismissed;
 
     public SettingsWindow(AppServices services, OverlayWindow overlay, AppSettings settings,
         TranslationSession session)
@@ -74,11 +84,19 @@ public sealed class SettingsWindow : Window
         Height = 720;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
+        // Rebuilt from what the last check found, before the window is laid out, so someone who has
+        // been putting off an update sees it as the window opens rather than a second later.
+        _update = UpdateCheck.FromRememberedTag(settings.LastSeenRelease, UpdateCheck.RunningVersion);
+
         Build();
 
         LoadSecrets();
         UpdateLaneSummary();
         _ = RefreshAsync();
+
+        // Fire and forget, and silent unless it finds something. Suppressed for the documentation
+        // screenshots: whether a banner is in them would otherwise depend on the day they were run.
+        if (!Program.HasFlag("--ui-shots")) _ = CheckForUpdateAsync(manual: false);
     }
 
     /// <summary>Tab headers, in order. Used by the documentation screenshot pass.</summary>
@@ -109,6 +127,7 @@ public sealed class SettingsWindow : Window
         _laneSummary = Readout();
         _profileNote = Note("");
         _status = Readout();
+        _updateStatus = Readout();
 
         // Both are lists of provider names and counts separated by dots. Left in the interface
         // direction they read back to front, and the quota line's order is the lane order.
@@ -163,9 +182,107 @@ public sealed class SettingsWindow : Window
             Background = new SolidColorBrush(Color.Parse("#1e1e1e")),
             FlowDirection = _text.IsRightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight,
         };
+
+        // Above the tabs rather than inside one: an update notice that only appears on the tab you
+        // happen to open is one most people never see. It is only built when there is something to
+        // say, so the window is unchanged for a user who is already current.
+        if (BuildUpdateBanner() is { } banner)
+        {
+            DockPanel.SetDock(banner, Dock.Top);
+            root.Children.Add(banner);
+        }
+
         root.Children.Add(statusBar);
         root.Children.Add(tabs);
         return _shellRoot = root;
+    }
+
+    /// <summary>
+    /// The update notice, or null when there is nothing to say.
+    ///
+    /// <para>
+    /// It spells the whole thing out - which file to download, what to do with it, and what happens
+    /// to the setup already on the machine - rather than only saying a version number. The reader
+    /// installed this once, possibly weeks ago, possibly with someone else's help, and "an update
+    /// is available" on its own leaves them exactly where they were.
+    /// </para>
+    /// </summary>
+    private Control? BuildUpdateBanner()
+    {
+        if (_update is not { } update || _updateDismissed) return null;
+
+        var body = new StackPanel { Spacing = 6 };
+
+        body.Children.Add(new TextBlock
+        {
+            Text = string.Format(_text.UpdateAvailable, update.Tag, Running()),
+            FontSize = 15,
+            FontWeight = FontWeight.SemiBold,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(Color.Parse("#81c995")),
+        });
+
+        body.Children.Add(Note(_text.UpdateDownloadFile));
+
+        // The asset name comes from the release itself, so this names a file that exists rather
+        // than one assembled from a pattern. Machine text, and long - it must not be mirrored or
+        // wrapped mid-name.
+        body.Children.Add(new TextBlock
+        {
+            Text = update.AssetName,
+            FontSize = 14,
+            FontFamily = new FontFamily("monospace"),
+            TextWrapping = TextWrapping.Wrap,
+            FlowDirection = FlowDirection.LeftToRight,
+            Foreground = new SolidColorBrush(Color.Parse("#e8eaed")),
+        });
+
+        body.Children.Add(Note(_text.UpdateSteps));
+        body.Children.Add(Note(_text.UpdateKeepsYourSetup));
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 4, 0, 0),
+        };
+        buttons.Children.Add(Button(_text.OpenDownloadPage, () => OpenUrl(update.ReleaseUrl)));
+        buttons.Children.Add(Button(_text.DismissUpdate, () =>
+        {
+            // For this session only. Nothing is written to settings: a user who dismisses a notice
+            // has not decided never to update, and the next launch is a fair time to mention it
+            // again. Turning the check off entirely is a separate, deliberate switch.
+            _updateDismissed = true;
+            Build(_tabs?.SelectedIndex ?? 0);
+        }));
+        body.Children.Add(buttons);
+
+        return new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#26312a")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#3d5245")),
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            Padding = new Thickness(20, 14),
+            Child = body,
+        };
+    }
+
+    private static string Running() =>
+        UpdateCheck.RunningVersion is { } v ? $"v{v.Major}.{v.Minor}.{v.Build}" : "-";
+
+    /// <summary>
+    /// Hands a URL to the OS browser. Avalonia's launcher rather than Process.Start, which needs
+    /// UseShellExecute and a platform branch - and this file is not allowed a platform branch.
+    /// </summary>
+    private void OpenUrl(string url)
+    {
+        try
+        {
+            _ = TopLevel.GetTopLevel(this)?.Launcher.LaunchUriAsync(new Uri(url));
+        }
+        catch (Exception e) when (e is UriFormatException or InvalidOperationException)
+        {
+            // No browser, or a URL the platform refuses. The address is on screen either way.
+            _status.Text = url;
+        }
     }
 
     private static TabItem Tab(string header, Control body) => new()
@@ -500,6 +617,34 @@ public sealed class SettingsWindow : Window
         stack.Children.Add(_quota);
         stack.Children.Add(_cache);
 
+        // Above the router log, which is a tall box that would otherwise push this below the fold.
+        // The off switch for the only request the app makes that is not a translation should not
+        // need scrolling to find.
+        stack.Children.Add(Section(_text.Updates));
+        stack.Children.Add(Note(_text.CheckForUpdatesNote));
+
+        var enabled = new CheckBox
+        {
+            Content = _text.CheckForUpdatesLabel,
+            IsChecked = _settings.CheckForUpdates,
+        };
+        enabled.IsCheckedChanged += (_, _) =>
+        {
+            _settings.CheckForUpdates = enabled.IsChecked == true;
+            _settings.Save();
+            if (!_settings.CheckForUpdates) _updateStatus.Text = _text.UpdateCheckDisabled;
+        };
+        stack.Children.Add(enabled);
+
+        var updateActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+
+        // Works whether or not the daily check is on, and ignores the once-a-day throttle: someone
+        // pressing this has asked, and answering "not yet, come back tomorrow" would be absurd.
+        updateActions.Children.Add(Button(_text.CheckNow, () => _ = CheckForUpdateAsync(manual: true)));
+        stack.Children.Add(updateActions);
+        stack.Children.Add(_updateStatus);
+        DescribeUpdateState();
+
         stack.Children.Add(Section(_text.RouterLog));
         stack.Children.Add(Note(_text.RouterLogNote));
         stack.Children.Add(_routerLog);
@@ -510,6 +655,80 @@ public sealed class SettingsWindow : Window
         stack.Children.Add(actions);
 
         return stack;
+    }
+
+    /// <summary>What the update line says before any check has run this session.</summary>
+    private void DescribeUpdateState()
+    {
+        _updateStatus.Text = UpdateCheck.IsDevelopmentBuild(UpdateCheck.RunningVersion)
+            ? _text.DevelopmentBuildNoUpdates
+            : !_settings.CheckForUpdates
+                ? _text.UpdateCheckDisabled
+                : _settings.LastUpdateCheckUtc is { } last
+                    ? string.Format(_text.UpdateCheckOffline, last.ToLocalTime().ToString("d MMM HH:mm"))
+                    : "";
+    }
+
+    /// <summary>
+    /// Asks GitHub whether there is a newer release. Fire-and-forget from the constructor, and
+    /// awaited from the Check now button.
+    ///
+    /// <para>
+    /// Never throws and never blocks: <see cref="UpdateCheck.FetchAsync"/> swallows every failure
+    /// into null, and this only distinguishes them for the manual case, where silence would look
+    /// like a broken button. The automatic case says nothing at all when there is nothing to say.
+    /// </para>
+    /// </summary>
+    public async Task CheckForUpdateAsync(bool manual)
+    {
+        if (UpdateCheck.IsDevelopmentBuild(UpdateCheck.RunningVersion))
+        {
+            if (manual) _updateStatus.Text = _text.DevelopmentBuildNoUpdates;
+            return;
+        }
+
+        if (!manual && !UpdateCheck.IsDue(_settings, DateTime.UtcNow)) return;
+
+        if (manual) _updateStatus.Text = _text.CheckingForUpdates;
+
+        var result = await UpdateCheck.FetchAsync(
+            _services.Http, UpdateCheck.RunningVersion, CancellationToken.None);
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            // Only a check that actually reached GitHub resets the daily timer. Stamping a failed
+            // one would mean a user who happened to be offline at launch waits another twenty hours
+            // before anything tries again.
+            if (result.Reached)
+            {
+                _settings.LastUpdateCheckUtc = DateTime.UtcNow;
+                _settings.LastSeenRelease = result.Update?.Tag;
+                _settings.Save();
+            }
+
+            switch (result.Outcome)
+            {
+                case UpdateOutcome.UpdateAvailable when result.Update is { } update:
+                    _update = update;
+                    _updateDismissed = false;
+                    _updateStatus.Text = string.Format(_text.UpdateAvailable, update.Tag, Running());
+                    Build(_tabs?.SelectedIndex ?? 0);
+                    break;
+
+                case UpdateOutcome.UpToDate:
+                    // Clears a notice left over from a remembered tag - a release can be deleted,
+                    // or the user may have updated by hand since it was recorded.
+                    var wasShowing = _update is not null;
+                    _update = null;
+                    if (manual) _updateStatus.Text = string.Format(_text.UpToDate, Running());
+                    if (wasShowing) Build(_tabs?.SelectedIndex ?? 0);
+                    break;
+
+                case UpdateOutcome.Unreachable when manual:
+                    _updateStatus.Text = _text.UpdateCheckUnavailable;
+                    break;
+            }
+        });
     }
 
     /// <summary>

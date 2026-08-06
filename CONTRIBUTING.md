@@ -60,6 +60,10 @@ dotnet run --project tools/Replay -- --no-cache
 - **Don't raise the OCR confidence threshold back to 40.** Tesseract scores unusual proper nouns
   low, and those are exactly the words that matter — 40 silently deleted "linkpearl" at 39.2.
 - **Don't add a low-level keyboard hook** (`WH_KEYBOARD_LL`). Antivirus heuristics flag it.
+- **Don't turn the update check into a self-updater.** It notifies and links; that is the whole
+  design. Windows won't let a running process replace its own DLLs, the build is unsigned so
+  downloading and running an executable is the same heuristic problem as the keyboard hook, and it
+  would ship untested. A wrong notification costs a click; a wrong self-update costs the install.
 - **Nothing may touch the game process.** No injection, no memory reading, no modified files. That
   property is the reason the app is safe to use, and it is not negotiable for a feature.
 
