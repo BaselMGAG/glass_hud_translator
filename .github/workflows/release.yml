@@ -58,9 +58,14 @@ jobs:
           Windows 10/11, 64-bit. No installer and no admin rights: unzip it anywhere and run
           `GlassHudTranslator.exe`.
 
+          **واجهة البرنامج متوفّرة بالعربية** — الإعدادات ← المزوّدون ← `Language · اللغة`
+
+          The interface is available in Arabic, right-to-left.
+
           **First run**
-          1. Open Settings → **Providers** and paste an API key. Gemini and Groq are free and need
-             no credit card; OpenAI and Anthropic are there for people who already pay for one.
+          1. Open Settings → **Providers**. The first control is the interface language, in English
+             or Arabic. Then paste an API key: Gemini and Groq are free and need no credit card;
+             OpenAI and Anthropic are there for people who already pay for one.
           2. Settings → **Translating** → pick your profile, then pick a capture region.
           3. Press the translate hotkey in game.
 
