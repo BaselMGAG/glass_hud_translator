@@ -15,17 +15,23 @@ Thanks for looking. This is an early project and the most useful contributions a
 
 Open an issue or a PR — either is fine, and you do not need to justify it at length.
 
-**2. Add a game profile.** No programming. A profile is a folder under `profiles/` with three
-files, and `profiles/_template/` is there to be copied:
+**2. Add a game profile.** No programming, and since v0.4.0 no files either: Settings →
+**Translating** → **+ Add a game** writes one for you. Pick your game from the list of open windows,
+choose how the writing should sound, and drag a box over the text.
+
+What it produces is still a folder of three text files, which is what makes it worth sharing:
 
 | File | What goes in it |
 |---|---|
-| `profile.json` | The window title to attach to, the source language, and one sentence describing the tone the translation should have |
+| `profile.json` | The window and program to attach to, the source language, and one sentence describing the tone the translation should have |
 | `glossary.json` | Proper nouns and how they should be spelled in Arabic |
 | `ocr-corrections.json` | Text recognition mistakes that game's font causes, and what they should read |
 
-Drop the folder in, restart, and pick it in Settings → Translating. If it works for you it will
-work for everyone else playing that game, which is the whole point.
+Yours are written to `%APPDATA%\GlassHudTranslator\profiles\<id>\`, so an update cannot overwrite
+them. Zip that folder into an issue or a PR and it works for everyone else playing that game, which
+is the whole point — one person setting a game up properly is enough.
+
+`profiles/_template/` is still there if you would rather write one by hand.
 
 **3. Tell me what broke.** It has been tested against one game on one machine. A bug report that
 says what you were playing, what you saw, and what the Diagnostics tab said is genuinely useful.

@@ -34,7 +34,7 @@ solution level it tries to force `net10.0` onto the Windows-only projects and fa
 dotnet test
 ```
 
-169 tests, all runnable on macOS and Linux.
+276 tests, all runnable on macOS and Linux.
 
 ```bash
 dotnet run --project tools/Replay -- --no-cache
@@ -134,6 +134,29 @@ the `{0}`-style placeholders match between the two — a translation carrying a 
 does not have throws `FormatException` at runtime, and only ever for the users this project exists
 for. Platform error text (Win32 messages, "Global hotkeys are Windows-only") is deliberately left
 untranslated; it comes from the OS.
+
+**Anything the user creates goes in `AppPaths.UserProfiles`, never in `profiles/`.** The app folder
+ships with the release and is replaced wholesale by an update — the release notes say so in both
+languages. A profile written there is deleted the first time the user updates, taking their capture
+regions, glossary and setup with it. `ProfileLibrary` merges the two roots, the user's copy always
+wins, and the shipped one is left underneath so it keeps improving with each release.
+
+**Deleting a bundled profile is a tombstone, not a delete.** Its files live in the app folder, so
+removing them works exactly until the next update restores them. `_removed.json` in the user's
+directory is what makes "delete Final Fantasy XIV because I don't play it" stay deleted. A corrupt
+tombstone file must fail open — showing a profile the user deleted beats starting with an empty
+list they cannot explain.
+
+**`general` is read-only and undeletable; everything else, including `ffxiv`, is not.** It is the
+screen-relative fallback that works on anything, and what the app falls back to when a game profile
+is removed. Deleting the last profile would leave nothing to translate against.
+
+**A display name becomes a folder name, so treat it as hostile.** `ProfileLibrary.SlugFor` strips
+everything but ASCII letters and digits, because that string arrives from a text box and is then
+joined onto a path. There are tests for `../`, absolute paths, drive letters and a leading
+underscore — the last one because `Discover` skips `_`-prefixed folders, so a name slugging to
+`_template` would create a profile that immediately vanished. Non-Latin names slug to nothing and
+fall back to `game`; the display name keeps the original text.
 
 **The update check notifies; it must never install.** `UpdateCheck` reads GitHub's public
 `releases/latest` and puts a notice in Settings. Do not extend it into a self-updater. Windows will

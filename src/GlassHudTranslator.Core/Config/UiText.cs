@@ -115,6 +115,53 @@ public sealed class UiText
     public required string Hits { get; init; }
     public required string Translating { get; init; }
 
+    // ── game profiles ──────────────────────────────────────────────────────────────────────
+    public required string AddGame { get; init; }
+    public required string EditProfile { get; init; }
+    public required string DeleteProfile { get; init; }
+    public required string NewGameTitle { get; init; }
+    public required string EditGameTitle { get; init; }
+    public required string GameName { get; init; }
+    public required string GameNameNote { get; init; }
+    public required string WhichWindow { get; init; }
+    public required string WhichWindowNote { get; init; }
+    public required string RefreshWindowList { get; init; }
+    public required string NoWindowsListed { get; init; }
+    public required string WindowListWindowsOnly { get; init; }
+    public required string AnythingOnScreen { get; init; }
+    public required string WindowTitleLabel { get; init; }
+    public required string ProgramNameLabel { get; init; }
+    public required string HowItReads { get; init; }
+    public required string HowItReadsNote { get; init; }
+    public required string StylePlain { get; init; }
+    public required string StyleEpic { get; init; }
+    public required string StyleModern { get; init; }
+    public required string StyleComic { get; init; }
+    public required string StyleTechnical { get; init; }
+    public required string StyleCustom { get; init; }
+    public required string StyleCustomNote { get; init; }
+    public required string SpeakerNamesLabel { get; init; }
+    public required string SpeakerNamesNote { get; init; }
+    public required string TermsSection { get; init; }
+    public required string TermsNote { get; init; }
+    public required string TermEnglish { get; init; }
+    public required string TermArabic { get; init; }
+    public required string AddTerm { get; init; }
+    public required string RemoveTerm { get; init; }
+    public required string SaveProfile { get; init; }
+    public required string CancelProfile { get; init; }
+    public required string NameRequired { get; init; }
+    public required string ProfileCreated { get; init; }
+    public required string ProfileUpdated { get; init; }
+    public required string ProfileDeleted { get; init; }
+    public required string ConfirmDeleteProfile { get; init; }
+    public required string ConfirmDelete { get; init; }
+    public required string KeepProfile { get; init; }
+    public required string ProfileReadOnly { get; init; }
+    public required string BundledProfileNote { get; init; }
+    public required string NextPickRegion { get; init; }
+    public required string ProfileSaveFailed { get; init; }
+
     // ── updates ────────────────────────────────────────────────────────────────────────────
     public required string UpdateAvailable { get; init; }
     public required string UpdateDownloadFile { get; init; }
@@ -299,6 +346,69 @@ public sealed class UiText
         Hits = "hits",
         Translating = "Translating...",
 
+        AddGame = "+ Add a game",
+        EditProfile = "Edit",
+        DeleteProfile = "Delete",
+        NewGameTitle = "Add a game",
+        EditGameTitle = "Edit {0}",
+        GameName = "Name",
+        GameNameNote = "Whatever you want to see in the list. It does not have to match anything.",
+        WhichWindow = "Which window?",
+        WhichWindowNote =
+            "Pick the game from the list of what is open. The region you drag is then measured "
+            + "against that window, so moving the window does not break it. Start the game first if "
+            + "it is not listed.",
+        RefreshWindowList = "Refresh the list",
+        NoWindowsListed = "Nothing found. Start the game, then refresh.",
+        WindowListWindowsOnly =
+            "Listing open windows works on Windows only. Type part of the window title instead.",
+        AnythingOnScreen = "Anything on screen (no particular window)",
+        WindowTitleLabel = "Window title",
+        ProgramNameLabel = "Program",
+        HowItReads = "How does it read?",
+        HowItReadsNote =
+            "This is the single biggest thing you can set. It tells the model what the writing is "
+            + "meant to sound like, which is what stops a solemn story being translated in the "
+            + "register of a shop sign.",
+        StylePlain = "Plain and accurate",
+        StyleEpic = "Serious fantasy",
+        StyleModern = "Modern and casual",
+        StyleComic = "Funny",
+        StyleTechnical = "Menus and numbers",
+        StyleCustom = "Describe it myself",
+        StyleCustomNote = "One or two sentences, in English — it goes to the model, not to you.",
+        SpeakerNamesLabel = "The game shows a speaker's name above the text",
+        SpeakerNamesNote =
+            "True for most story games with dialogue boxes. Turn it off for subtitles, menus, or "
+            + "anything where the first line is part of the sentence rather than a name.",
+        TermsSection = "Names and terms (optional)",
+        TermsNote =
+            "Proper nouns you want spelled the same way every time — characters, places, factions. "
+            + "You can skip this entirely and add them as you play: pressing the correction hotkey "
+            + "on a bad line pins the fix for good.",
+        TermEnglish = "In the game",
+        TermArabic = "In Arabic",
+        AddTerm = "+ Add a term",
+        RemoveTerm = "Remove",
+        SaveProfile = "Save",
+        CancelProfile = "Cancel",
+        NameRequired = "Give it a name first.",
+        ProfileCreated = "'{0}' added. Now show it where the text is.",
+        ProfileUpdated = "'{0}' saved.",
+        ProfileDeleted = "'{0}' deleted.",
+        ConfirmDeleteProfile =
+            "Delete '{0}'? Its capture regions, terms and settings go with it. This cannot be undone.",
+        ConfirmDelete = "Delete it",
+        KeepProfile = "Keep it",
+        ProfileReadOnly =
+            "This one reads whatever is on screen and cannot be edited or removed — it is the "
+            + "fallback that works on anything.",
+        BundledProfileNote =
+            "This profile ships with the app. Your changes are saved separately and survive updates; "
+            + "the original stays underneath.",
+        NextPickRegion = "Show it where the text is",
+        ProfileSaveFailed = "Could not save the profile:",
+
         UpdateAvailable = "Version {0} is available. You have {1}.",
         UpdateDownloadFile = "On the page that opens, under Assets, download:",
         UpdateSteps =
@@ -467,6 +577,66 @@ public sealed class UiText
         Corrected = "مصحَّحاً",
         Hits = "إصابة",
         Translating = "جارٍ الترجمة...",
+
+        AddGame = "+ أضف لعبة",
+        EditProfile = "تعديل",
+        DeleteProfile = "حذف",
+        NewGameTitle = "إضافة لعبة",
+        EditGameTitle = "تعديل {0}",
+        GameName = "الاسم",
+        GameNameNote = "ما تريد أن تراه في القائمة. لا يلزم أن يطابق شيئاً.",
+        WhichWindow = "أيّ نافذة؟",
+        WhichWindowNote =
+            "اختر اللعبة من قائمة ما هو مفتوح الآن. عندها تُقاس المنطقة التي ترسمها على تلك "
+            + "النافذة، فتحريكها لا يفسدها. وإن لم تجد اللعبة فشغّلها أولاً.",
+        RefreshWindowList = "حدّث القائمة",
+        NoWindowsListed = "لم يُعثر على شيء. شغّل اللعبة ثم حدّث القائمة.",
+        WindowListWindowsOnly =
+            "سرد النوافذ المفتوحة يعمل على ويندوز فقط. اكتب جزءاً من عنوان النافذة بدلاً من ذلك.",
+        AnythingOnScreen = "أي شيء على الشاشة (بلا نافذة محدّدة)",
+        WindowTitleLabel = "عنوان النافذة",
+        ProgramNameLabel = "البرنامج",
+        HowItReads = "كيف يُقرأ نصّها؟",
+        HowItReadsNote =
+            "هذا أهم ما تضبطه هنا. فهو يخبر النموذج بالنبرة المقصودة، وهو ما يمنع أن تُترجَم قصة "
+            + "جادّة بأسلوب لافتة محل.",
+        StylePlain = "بسيط ودقيق",
+        StyleEpic = "فانتازيا جادّة",
+        StyleModern = "عصري ودارج",
+        StyleComic = "طريف",
+        StyleTechnical = "قوائم وأرقام",
+        StyleCustom = "أصفها بنفسي",
+        StyleCustomNote = "جملة أو جملتان بالإنجليزية — فهي تذهب إلى النموذج لا إليك.",
+        SpeakerNamesLabel = "تعرض اللعبة اسم المتحدّث فوق النص",
+        SpeakerNamesNote =
+            "صحيح في معظم الألعاب القصصية ذات صناديق الحوار. أوقفه في الترجمات المصاحبة والقوائم، "
+            + "أو حيثما كان السطر الأول جزءاً من الجملة لا اسماً.",
+        TermsSection = "الأسماء والمصطلحات (اختياري)",
+        TermsNote =
+            "الأسماء التي تريدها مكتوبة بالطريقة نفسها في كل مرة — شخصيات وأماكن وجماعات. ويمكنك "
+            + "تخطّي هذا تماماً وإضافتها أثناء اللعب: فضغط اختصار التصحيح على سطر خاطئ يثبّت "
+            + "التصحيح نهائياً.",
+        TermEnglish = "في اللعبة",
+        TermArabic = "بالعربية",
+        AddTerm = "+ أضف مصطلحاً",
+        RemoveTerm = "إزالة",
+        SaveProfile = "احفظ",
+        CancelProfile = "إلغاء",
+        NameRequired = "ضع لها اسماً أولاً.",
+        ProfileCreated = "أُضيفت «{0}». والآن دلّها على موضع النص.",
+        ProfileUpdated = "حُفظت «{0}».",
+        ProfileDeleted = "حُذفت «{0}».",
+        ConfirmDeleteProfile =
+            "أتحذف «{0}»؟ ستذهب معها مناطق الالتقاط والمصطلحات والإعدادات. ولا يمكن التراجع.",
+        ConfirmDelete = "احذفها",
+        KeepProfile = "أبقِها",
+        ProfileReadOnly =
+            "هذه تقرأ أي شيء على الشاشة، ولا تُعدَّل ولا تُحذف — فهي البديل الذي يعمل مع كل شيء.",
+        BundledProfileNote =
+            "هذا الملف يأتي مع البرنامج. وتُحفظ تعديلاتك منفصلة عنه فتبقى بعد التحديثات، ويبقى "
+            + "الأصل تحتها.",
+        NextPickRegion = "دلّها على موضع النص",
+        ProfileSaveFailed = "تعذّر حفظ الملف:",
 
         UpdateAvailable = "صدرت النسخة {0}، ولديك {1}.",
         UpdateDownloadFile = "في الصفحة التي ستُفتح، تحت Assets، نزّل الملف:",

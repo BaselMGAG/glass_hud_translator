@@ -127,7 +127,7 @@ contribute to**, not a finished product.
 | Providers supported | 4 — two free (Google Gemini, Groq), two paid and opt-in (OpenAI, Anthropic Claude) |
 | Interface languages | 2 — English and Arabic, English by default |
 | Credit card needed | No |
-| Automated tests | 231 |
+| Automated tests | 276 |
 | Glossary | 86 Final Fantasy XIV proper nouns pinned so far |
 | Configurable hotkeys | 5 |
 | Licence | Apache 2.0 |
@@ -151,11 +151,18 @@ This is a real gap, not a manufactured one.
 memory reading, no modified files. It reads pixels, exactly like a screenshot. Nothing about it can
 put an account at risk, which is the first question any experienced player asks.
 
-**3. Adding a new game needs no programming.** A game profile is a folder with three text files:
-where the text sits on screen, the proper nouns and how they should be spelled in Arabic, and the
-tone the writing should have. Drop it in and restart. This is deliberately designed so the community
-can extend it — someone who knows a game well but has never written code can contribute the most
-valuable part.
+**3. Adding a new game needs no programming — and, now, no files either.** There is an **Add a
+game** button: pick your game from the windows you have open, choose how the writing should sound
+from a dropdown, drag a box over the text. That's the whole setup.
+
+This was the same blind spot as the English-only interface, one layer down. "No programming
+required" was true — a game profile is three text files — but *files* were still the interface, and
+the person this app exists for has never opened a config file and does not read English comfortably.
+"Anyone can add a game, they just have to write JSON" is not the same sentence as "anyone can add a
+game."
+
+What it produces is still a folder anyone can share, which is the part that matters for reach: one
+person setting up a game properly is enough for everyone else playing it.
 
 **4. It's not only for games.** The same overlay reads a browser, a PDF, a subtitle bar. The
 "gaming" framing is where it started, not the limit of what it does.

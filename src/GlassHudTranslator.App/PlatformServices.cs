@@ -8,6 +8,9 @@ namespace GlassHudTranslator.App;
 public sealed record GameWindowInfo(
     CaptureRegion ClientArea, string Title, double Scaling, bool CanCapture, string Message);
 
+/// <summary>A window the user could point a game profile at. Platform-neutral by design.</summary>
+public sealed record OpenWindowInfo(string Title, string ProcessName);
+
 /// <summary>
 /// The one file in this project allowed to contain <c>#if WINDOWS</c>.
 ///
@@ -142,12 +145,14 @@ public static class PlatformServices
     /// app's own Settings window at the moment a hotkey is pressed.
     /// </para>
     /// </summary>
-    public static GameWindowInfo? FindGameWindow(IReadOnlyList<string> titleFragments)
+    public static GameWindowInfo? FindGameWindow(
+        IReadOnlyList<string> titleFragments, IReadOnlyList<string>? processNames = null)
     {
 #if WINDOWS
-        if (titleFragments.Count == 0) return WholeScreen();
+        if (titleFragments.Count == 0 && (processNames is null || processNames.Count == 0))
+            return WholeScreen();
 
-        var window = Windows.GameWindowLocator.Find(titleFragments)
+        var window = Windows.GameWindowLocator.Find(titleFragments, processNames)
                      ?? Windows.GameWindowLocator.Foreground();
         if (window is null) return null;
 
@@ -156,7 +161,29 @@ public static class PlatformServices
             verdict.CanCapture, verdict.Message);
 #else
         _ = titleFragments;
+        _ = processNames;
         return null;
+#endif
+    }
+
+    /// <summary>
+    /// Visible windows the user could point a profile at.
+    ///
+    /// <para>
+    /// Empty off Windows, which is not a gap so much as the seam working: the profile editor is
+    /// built and tested on the Mac like everything else, and falls back to a text box for the
+    /// window title there. Only the convenience of picking from a list needs a Win32 call.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<OpenWindowInfo> ListOpenWindows()
+    {
+#if WINDOWS
+        return Windows.GameWindowLocator.ListOpen()
+            .Where(w => !w.ProcessName.Equals("GlassHudTranslator", StringComparison.OrdinalIgnoreCase))
+            .Select(w => new OpenWindowInfo(w.Title, w.ProcessName))
+            .ToList();
+#else
+        return [];
 #endif
     }
 

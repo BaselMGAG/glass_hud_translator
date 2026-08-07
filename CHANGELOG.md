@@ -3,6 +3,46 @@
 Notable changes. Started once the app was working end to end, so everything before the first entry
 is "the thing being described in the README".
 
+## v0.4.0 — 7 August 2026
+
+### Added
+
+- **Add a game from inside the app.** Settings → Translating → **+ Add a game**, with **Edit** and
+  **Delete** beside it. Adding a game used to mean copying a folder and writing three JSON files by
+  hand — a reasonable ask for whoever wrote them and an impossible one for the person this app is
+  built for, who does not read English comfortably and has never seen a config file.
+- **Pick the game from the windows you have open**, rather than typing a "window title". The list
+  shows each window with the program that owns it, so two windows called Settings are told apart.
+- **Profiles now bind to the program name as well as the title.** Titles change while a program
+  runs — a browser's is whatever page is open, and plenty of games append the zone or character
+  name — whereas `ffxiv_dx11.exe` never does. Either match is accepted, so profiles written before
+  this keep working on their title alone.
+- **A dropdown of writing styles** instead of a free-text prompt field: plain, serious fantasy,
+  modern and casual, funny, menus and numbers. This is the highest-value field in a profile and the
+  one least likely to be filled in by someone who has never seen a system prompt, so the app writes
+  the sentence. The free-text box is still there, folded away.
+- Saving a new profile goes straight into picking the capture region, because a profile without one
+  does nothing — and a new entry in a dropdown is not help.
+- An optional two-column table for proper nouns and their Arabic spellings, explicitly marked
+  optional: it is the part a non-technical user stalls on, and the correction hotkey fills it in
+  over time anyway.
+
+### Changed
+
+- **User-created profiles are stored under your Windows account, not in the app folder.** The app
+  folder is replaced wholesale by an update — the v0.3.0 release notes say so — so a profile written
+  there would have been deleted the first time someone updated, taking their capture regions and
+  glossary with it. Editing a bundled profile now saves your copy separately and leaves the shipped
+  one underneath, so it keeps improving with each release and your changes survive.
+- Deleting a bundled profile is recorded rather than performed, for the same reason: deleting the
+  files would work exactly until the next update restored them.
+- `Anything on screen` cannot be edited or deleted. It is the fallback that works on everything and
+  what the app falls back to when a game profile is removed. Everything else, including the shipped
+  Final Fantasy XIV profile, can be changed or removed.
+- The profile list refreshes in place, so adding a game no longer needs a restart.
+- Deleting a profile also forgets its capture regions, which live in the database rather than the
+  folder and would otherwise have been inherited by any later profile with the same generated id.
+
 ## v0.3.0 — 6 August 2026
 
 ### Added

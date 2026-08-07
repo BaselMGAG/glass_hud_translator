@@ -223,7 +223,7 @@ public sealed class TranslationSession : IDisposable
         var profile = await _services.Regions
             .LoadOrDefaultAsync(_services.Profile.Id, _settings.LastRegionProfile, ct).ConfigureAwait(false);
 
-        var window = PlatformServices.FindGameWindow(_services.Profile.WindowTitles);
+        var window = PlatformServices.FindGameWindow(_services.Profile.WindowTitles, _services.Profile.ProcessNames);
         if (window is null)
         {
             // No game window - either not running, or we are on macOS where the frame source

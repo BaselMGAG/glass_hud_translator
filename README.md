@@ -260,33 +260,52 @@ No key is embedded in the app. Bring your own.
 
 ## Adding your game
 
-A game profile is a folder — no code, no rebuild. Nothing in the pipeline is specific to any title;
-what differs is where the text sits, what the proper nouns are, and how the writing should sound.
+Settings → **Translating** → **+ Add a game**. No files, no restart.
+
+<div align="center">
+<img src="docs/images/add-game.png" alt="The Add a game window: a name field, a list of currently open windows to pick the game from, a dropdown of writing styles such as Plain and accurate or Serious fantasy, a checkbox for whether the game shows speaker names, and an optional table of names and their Arabic spellings" width="820">
+<br>
+<sub>Pick the game from the windows you have open. Everything else has a sensible default.</sub>
+</div>
+
+Three questions, and only the first two matter:
+
+**Which window.** Pick your game from the list of what's open — the region you drag is then measured
+against that window, so moving it doesn't break anything. It records the program name as well as the
+title, because titles change while a game runs and `ffxiv_dx11.exe` doesn't. Leave it on *anything on
+screen* for a browser or a video player.
+
+**How it reads.** A dropdown: plain, serious fantasy, modern and casual, funny, menus and numbers.
+This does more than it looks like it should — the same model produces very different Arabic for
+"terse military radio chatter" than for "formal medieval court speech". There's a free-text box if
+you want to write your own.
+
+**Names and terms**, which is optional and worth skipping at first. Proper nouns spelled the same
+way every time is the single biggest quality lever, but you don't have to think of them up front:
+press `Ctrl+Shift+F` on a line that got a name wrong and the fix is pinned for good.
+
+Saving takes you straight to picking the capture region, since a profile without one doesn't do
+anything yet.
+
+**Edit** and **Delete** sit next to it. Editing a profile that shipped with the app saves your copy
+separately, so an update can't overwrite your work and the original keeps improving underneath.
+*Anything on screen* is the one you can't remove — it's the fallback that works on everything.
+
+### Where it's kept, and sharing it
+
+A profile is still just a folder of three text files, which is what makes it shareable — one person
+setting up a game properly is enough for everyone else playing it:
 
 ```
-profiles/
-  ffxiv/            ← the reference profile, most complete
-    profile.json
-    glossary.json
-    ocr-corrections.json
-  _template/        ← copy this
+profile.json           the window to attach to, the voice, the starting rectangles
+glossary.json          proper nouns and their Arabic spellings
+ocr-corrections.json   characters the OCR reliably gets wrong in that game's font
 ```
 
-`profile.json` holds the window title to look for, the default text rectangles, and a `styleHint`
-that goes straight into the prompt. That hint does more than it looks like it should — "terse
-military radio chatter" and "formal medieval court speech" produce very different Arabic from the
-same model.
-
-`glossary.json` pins proper nouns, and it is the biggest quality lever available. Without it the
-model invents a new Arabic spelling of the same character's name every few lines, and inconsistent
-names are harder to read past than a slightly clumsy sentence. Only terms that appear in the current
-line get sent, so a long glossary costs nothing per request.
-
-`ocr-corrections.json` fixes characters the OCR reliably gets wrong in that game's font. Build it
-from the log rather than from guesswork — every raw OCR result is recorded, so the real misreads
-are obvious.
-
-Drop the folder in, restart, done. Profile contributions are very welcome.
+Yours live in `%APPDATA%\GlassHudTranslator\profiles\`, deliberately **not** in the app folder — that
+one gets replaced when you update, and your game setup would go with it. The ones bundled with the
+app are still under `profiles/`, and `profiles/_template/` is there if you'd rather write one by
+hand. Profile contributions are very welcome.
 
 ### It isn't only for games
 

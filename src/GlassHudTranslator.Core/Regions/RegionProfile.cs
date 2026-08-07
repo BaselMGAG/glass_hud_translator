@@ -97,4 +97,13 @@ public sealed class RegionProfileStore(AppDatabase db)
     /// <summary>True once the user has picked this region themselves rather than inheriting a default.</summary>
     public async Task<bool> HasAsync(string gameProfileId, string name, CancellationToken ct) =>
         await LoadAsync(gameProfileId, name, ct).ConfigureAwait(false) is not null;
+
+    /// <summary>
+    /// Forgets every rectangle belonging to one game profile. Called when a profile is deleted:
+    /// without it the rows outlive the profile, and a later profile that happened to slug to the
+    /// same id would silently inherit rectangles dragged for a different game.
+    /// </summary>
+    public Task DeleteAllAsync(string gameProfileId, CancellationToken ct) =>
+        db.ExecuteAsync("DELETE FROM region_profiles WHERE profile = $profile;", ct,
+            ("$profile", gameProfileId));
 }

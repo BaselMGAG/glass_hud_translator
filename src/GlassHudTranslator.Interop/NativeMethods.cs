@@ -58,6 +58,14 @@ public static partial class NativeMethods
     [LibraryImport(User32, EntryPoint = "GetWindowTextLengthW")]
     public static partial int GetWindowTextLength(IntPtr hWnd);
 
+    /// <summary>
+    /// Owning process id for a window, so a profile can be bound to an executable name rather than
+    /// to a title. Titles change while a program runs - a browser's is whatever page is open, and
+    /// games append the zone or character name - but ffxiv_dx11.exe is ffxiv_dx11.exe forever.
+    /// </summary>
+    [LibraryImport(User32, EntryPoint = "GetWindowThreadProcessId")]
+    public static partial uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
     [DllImport(User32, EntryPoint = "EnumWindows", SetLastError = true)]

@@ -144,7 +144,7 @@ public partial class App : Application
     ///
     /// <para>Run with --stub so it needs no API key and makes no network call.</para>
     /// </summary>
-    private static void CaptureSettingsShots(
+    private void CaptureSettingsShots(
         SettingsWindow window, IClassicDesktopStyleApplicationLifetime desktop)
     {
         var directory = Program.Option("--ui-shots-out") ?? Path.GetTempPath();
@@ -181,6 +181,39 @@ public partial class App : Application
                     {
                         Console.Error.WriteLine($"ui-shots: FAILED {name} - {e.Message}");
                     }
+                });
+            }
+
+            // The profile editor is the answer to "my game isn't in the list", so the documentation
+            // has to show it. Rendered from the same code path as the real window rather than
+            // photographed, for the same reason as every other shot here.
+            if (_services is not null)
+            {
+                var editor = new ProfileEditorWindow(
+                    UiText.For(AppSettings.Load().Language switch
+                    {
+                        _ when suffix == "-ar" => UiLanguage.Arabic,
+                        _ => UiLanguage.English,
+                    }),
+                    _services.Profiles);
+
+                editor.Show();
+                await Task.Delay(400);
+
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    var path = Path.Combine(directory, $"add-game{suffix}.png");
+                    try
+                    {
+                        editor.SaveSnapshot(path);
+                        Console.WriteLine($"ui-shots: wrote {path}");
+                    }
+                    catch (Exception e)
+                    {
+                        Console.Error.WriteLine($"ui-shots: FAILED add-game - {e.Message}");
+                    }
+
+                    editor.Close();
                 });
             }
 

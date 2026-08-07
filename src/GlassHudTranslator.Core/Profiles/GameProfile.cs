@@ -30,6 +30,18 @@ public sealed record GameProfile
     /// <summary>Substrings used to find the game's window. Case-insensitive.</summary>
     [JsonPropertyName("windowTitles")] public string[] WindowTitles { get; init; } = [];
 
+    /// <summary>
+    /// Executable names, without the extension, matched case-insensitively.
+    ///
+    /// <para>
+    /// More reliable than the title for anything that writes state into its own title bar - a
+    /// browser's title is whatever page is open, and plenty of games append the zone or character
+    /// name. <c>ffxiv_dx11</c> never changes. Checked before titles; either match is enough, so a
+    /// profile written before this field existed keeps working on its title alone.
+    /// </para>
+    /// </summary>
+    [JsonPropertyName("processNames")] public string[] ProcessNames { get; init; } = [];
+
     /// <summary>Tesseract language code for the game's on-screen text.</summary>
     [JsonPropertyName("sourceLanguage")] public string SourceLanguage { get; init; } = "eng";
 
@@ -49,6 +61,13 @@ public sealed record GameProfile
 
     [JsonIgnore] public GlossaryStore Glossary { get; init; } = GlossaryStore.Empty;
     [JsonIgnore] public OcrCorrections Corrections { get; init; } = OcrCorrections.Empty;
+
+    /// <summary>
+    /// True when this profile is bound to an application. A profile with neither a title nor a
+    /// process name is measured against the whole screen instead - which is what the general
+    /// profile is, and what anything the user points at a browser or a video player will be.
+    /// </summary>
+    [JsonIgnore] public bool IsWindowBound => WindowTitles.Length > 0 || ProcessNames.Length > 0;
 
     public RegionProfile RegionOrDefault(string name) =>
         Regions.TryGetValue(name, out var r)

@@ -72,9 +72,18 @@ public sealed class AppServices : IAsyncDisposable
     /// <summary>The active game profile - regions, glossary, OCR fixes and prompt voice.</summary>
     public GameProfile Profile { get; private set; }
 
-    public IReadOnlyList<string> AvailableProfiles { get; }
+    /// <summary>Refreshed in place, so adding a game does not need a restart to appear.</summary>
+    public IReadOnlyList<string> AvailableProfiles { get; private set; }
 
-    private string ProfilesDirectory { get; init; } = "";
+    /// <summary>
+    /// Bundled profiles plus the user's own. Owns creating, editing and deleting them, and the rule
+    /// that anything the user writes goes under their data directory rather than the app folder,
+    /// which an update replaces wholesale.
+    /// </summary>
+    public ProfileLibrary Profiles { get; private init; } = null!;
+
+    /// <summary>Re-reads both profile roots. Call after the profile editor writes anything.</summary>
+    public IReadOnlyList<string> RefreshProfiles() => AvailableProfiles = Profiles.Discover();
 
     /// <summary>
     /// Loads a different game profile and applies it immediately - glossary, OCR corrections,
@@ -85,11 +94,20 @@ public sealed class AppServices : IAsyncDisposable
     {
         if (id == Profile.Id) return false;
 
-        Profile = GameProfileStore.LoadOrFallback(ProfilesDirectory, id);
+        ReloadProfile(id);
+        return true;
+    }
+
+    /// <summary>
+    /// Loads a profile unconditionally, including one already active. Needed after the editor
+    /// writes: the id is unchanged but the name, voice, glossary and OCR fixes are not, and
+    /// <see cref="SwitchProfile"/> deliberately short-circuits on an unchanged id.
+    /// </summary>
+    public void ReloadProfile(string id)
+    {
+        Profile = Profiles.LoadOrFallback(id);
         Pipeline.UseProfile(Profile.DisplayName, Profile.StyleHint,
             new GlossaryMatcher(Profile.Glossary), Profile.Corrections);
-
-        return true;
     }
 
     public static async Task<AppServices> CreateAsync(
@@ -104,7 +122,8 @@ public sealed class AppServices : IAsyncDisposable
 
         var secrets = PlatformServices.CreateSecretStore();
         var models = ModelsConfig.Load(Path.Combine(dataDirectory, "models.json"));
-        var profile = GameProfileStore.LoadOrFallback(profilesDirectory, preferredProfileId);
+        var profiles = new ProfileLibrary(profilesDirectory, AppPaths.UserProfiles);
+        var profile = profiles.LoadOrFallback(preferredProfileId);
         var glossary = profile.Glossary;
         var corrections = profile.Corrections;
         var ocr = PlatformServices.CreateOcrEngine(profile.SourceLanguage);
@@ -132,9 +151,9 @@ public sealed class AppServices : IAsyncDisposable
         return new AppServices(db, http, cache, log, quota, regions, secrets, models, glossary,
             corrections, ocr, hotkeys, pipeline, routerLog,
             lanes.Select(l => l.Provider.Name).ToList(), profile,
-            GameProfileStore.Discover(profilesDirectory))
+            profiles.Discover())
         {
-            ProfilesDirectory = profilesDirectory,
+            Profiles = profiles,
         };
     }
 

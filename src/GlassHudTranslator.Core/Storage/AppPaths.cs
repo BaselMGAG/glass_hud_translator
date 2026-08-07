@@ -44,6 +44,19 @@ public static class AppPaths
 
     public static string Settings => Path.Combine(DataDirectory, "config.json");
 
+    /// <summary>
+    /// Game profiles the user created or edited.
+    ///
+    /// <para>
+    /// Deliberately here and not in the app's own <c>profiles/</c> folder. That folder ships with
+    /// the app and is replaced wholesale by an update - the release notes say as much - so a
+    /// profile written there would be deleted the first time the user updated, taking the regions,
+    /// glossary and setup with it. Here it sits beside their keys and database, which already
+    /// survive.
+    /// </para>
+    /// </summary>
+    public static string UserProfiles => Path.Combine(DataDirectory, "profiles");
+
     /// <summary>Dev-only secret file. Never written on Windows - see DpapiSecretStore.</summary>
     public static string DevSecrets => Path.Combine(DataDirectory, "secrets.dev.json");
 

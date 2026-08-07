@@ -1,6 +1,8 @@
+using System.Text.Json;
 using GlassHudTranslator.Core.Capture;
 using GlassHudTranslator.Core.Config;
 using GlassHudTranslator.Core.Platform;
+using GlassHudTranslator.Core.Profiles;
 using GlassHudTranslator.Core.Text;
 using GlassHudTranslator.Core.Regions;
 using GlassHudTranslator.Core.Storage;
@@ -310,36 +312,7 @@ public sealed class SettingsWindow : Window
     {
         if (_shellRoot is null) return;
 
-        var size = new PixelSize((int)Width, (int)Height);
-        using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(size, new Vector(96, 96));
-        bitmap.Render(_shellRoot);
-
-        if (!_text.IsRightToLeft)
-        {
-            bitmap.Save(path);
-            return;
-        }
-
-        // Rendering a right-to-left subtree on its own loses the compensating transform the window
-        // applies around it, so the bitmap comes out mirrored - letters and all - even though the
-        // window on screen is correct. Flipping it back is exact, because what was applied was a
-        // single flip of the whole surface. Documentation-only: nothing here affects the live UI.
-        using var buffer = new MemoryStream();
-        bitmap.Save(buffer);
-        buffer.Position = 0;
-
-        using var rendered = SkiaSharp.SKBitmap.Decode(buffer);
-        using var flipped = new SkiaSharp.SKBitmap(rendered.Width, rendered.Height);
-        using (var canvas = new SkiaSharp.SKCanvas(flipped))
-        {
-            canvas.Scale(-1, 1, rendered.Width / 2f, 0);
-            canvas.DrawBitmap(rendered, 0, 0);
-        }
-
-        using var image = SkiaSharp.SKImage.FromBitmap(flipped);
-        using var encoded = image.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
-        using var file = File.Create(path);
-        encoded.SaveTo(file);
+        WindowSnapshot.Save(_shellRoot, Width, Height, _text.IsRightToLeft, path);
     }
 
     // ── tabs ──────────────────────────────────────────────────────────────────────────────
@@ -479,6 +452,23 @@ public sealed class SettingsWindow : Window
             });
         };
         stack.Children.Add(Row(_text.Profile, profiles));
+
+        // Beside the list they add to, so they are found by someone already looking at the profile
+        // list and wondering why their game is not in it.
+        var profileActions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 0, 0, 4),
+        };
+        profileActions.Children.Add(Button(_text.AddGame, () => _ = EditProfileAsync(null)));
+        profileActions.Children.Add(Button(_text.EditProfile,
+            () => _ = EditProfileAsync(_services.Profile.Id)));
+        profileActions.Children.Add(Button(_text.DeleteProfile,
+            () => _ = DeleteProfileAsync(_services.Profile.Id)));
+        stack.Children.Add(profileActions);
+
+        if (ProfileLibrary.IsReadOnly(_services.Profile.Id))
+            stack.Children.Add(Note(_text.ProfileReadOnly));
+
         UpdateProfileNote();
         stack.Children.Add(_profileNote);
 
@@ -732,6 +722,162 @@ public sealed class SettingsWindow : Window
     }
 
     /// <summary>
+    /// Opens the profile editor. A null id creates; anything else edits that profile.
+    ///
+    /// <para>
+    /// Creating chains straight into picking a capture region, because a profile without one does
+    /// nothing — a user who is left looking at a new entry in a dropdown has not been helped.
+    /// </para>
+    /// </summary>
+    private async Task EditProfileAsync(string? id)
+    {
+        if (id is not null && ProfileLibrary.IsReadOnly(id))
+        {
+            _status.Text = _text.ProfileReadOnly;
+            return;
+        }
+
+        GameProfile? existing = null;
+        if (id is not null)
+        {
+            try
+            {
+                existing = _services.Profiles.Load(id);
+            }
+            catch (Exception e) when (e is IOException or FileNotFoundException
+                                          or InvalidDataException or JsonException)
+            {
+                _status.Text = $"{_text.ProfileSaveFailed} {e.Message}";
+                return;
+            }
+        }
+
+        var editor = new ProfileEditorWindow(_text, _services.Profiles, existing);
+        await editor.ShowDialog(this);
+
+        if (editor.SavedId is not { } savedId) return;
+
+        _services.RefreshProfiles();
+        _settings.ProfileId = savedId;
+        _settings.Save();
+
+        // Reload rather than switch: when editing, the id has not changed but the name, voice and
+        // glossary all have, and SwitchProfile short-circuits on an unchanged id.
+        _services.ReloadProfile(savedId);
+
+        Build(selectedTab: 1);
+
+        _status.Text = string.Format(
+            editor.WasCreated ? _text.ProfileCreated : _text.ProfileUpdated,
+            _services.Profile.DisplayName);
+
+        if (editor.WasCreated) await PickRegionAsync(RegionProfile.Names.Dialogue);
+    }
+
+    /// <summary>
+    /// Deletes a profile, after asking. Also forgets its capture regions, which live in the
+    /// database rather than the folder and would otherwise be inherited by any later profile whose
+    /// name happened to produce the same id.
+    /// </summary>
+    private async Task DeleteProfileAsync(string id)
+    {
+        if (!ProfileLibrary.CanDelete(id))
+        {
+            _status.Text = _text.ProfileReadOnly;
+            return;
+        }
+
+        var name = _services.Profile.DisplayName;
+        if (!await ConfirmAsync(string.Format(_text.ConfirmDeleteProfile, name),
+                _text.ConfirmDelete, _text.KeepProfile))
+            return;
+
+        try
+        {
+            _services.Profiles.Delete(id);
+            await _services.Regions.DeleteAllAsync(id, CancellationToken.None);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException
+                                      or InvalidOperationException)
+        {
+            _status.Text = $"{_text.ProfileSaveFailed} {e.Message}";
+            return;
+        }
+
+        var remaining = _services.RefreshProfiles();
+        var next = remaining.FirstOrDefault() ?? ProfileLibrary.GeneralProfileId;
+
+        _settings.ProfileId = next;
+        _settings.Save();
+        _services.SwitchProfile(next);
+
+        Build(selectedTab: 1);
+        _status.Text = string.Format(_text.ProfileDeleted, name);
+    }
+
+    /// <summary>
+    /// A yes/no dialog. Deleting a profile takes the user's capture regions and glossary with it,
+    /// which is not something a stray click should be able to do.
+    /// </summary>
+    private async Task<bool> ConfirmAsync(string question, string confirm, string cancel)
+    {
+        var answer = false;
+
+        var dialog = new Window
+        {
+            Title = _text.WindowTitle,
+            Width = 520,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            CanResize = false,
+            FlowDirection = _text.IsRightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight,
+            FontFamily = _text.IsRightToLeft ? Fonts.Arabic : FontFamily.Default,
+        };
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 16, 0, 0),
+        };
+
+        var yes = new Button { Content = confirm };
+        yes.Click += (_, _) => { answer = true; dialog.Close(); };
+        var no = new Button { Content = cancel, IsDefault = true };
+        no.Click += (_, _) => dialog.Close();
+
+        // Cancel first in reading order: the destructive choice should not be the one under the
+        // cursor, and Enter closes without deleting.
+        buttons.Children.Add(no);
+        buttons.Children.Add(yes);
+
+        dialog.Content = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#1e1e1e")),
+            Padding = new Thickness(24, 20),
+            Child = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = question,
+                        FontSize = 14,
+                        TextWrapping = TextWrapping.Wrap,
+                        LineSpacing = _text.IsRightToLeft ? 5 : 3,
+                    },
+                    buttons,
+                },
+            },
+        };
+
+        await dialog.ShowDialog(this);
+        return answer;
+    }
+
+    /// <summary>
     /// Rebuilt on every switch. Built once, it kept describing the previous profile while the
     /// dropdown showed the new one, which is worse than saying nothing.
     /// </summary>
@@ -808,7 +954,7 @@ public sealed class SettingsWindow : Window
 
         // Stored relative to the game's client area, not the screen, so the profile survives the
         // window being moved. Falls back to the screen when there is no game window to measure.
-        var game = PlatformServices.FindGameWindow(_services.Profile.WindowTitles);
+        var game = PlatformServices.FindGameWindow(_services.Profile.WindowTitles, _services.Profile.ProcessNames);
         var origin = game?.ClientArea ?? new CaptureRegion(0, 0,
             Screens.Primary?.Bounds.Width ?? 1920, Screens.Primary?.Bounds.Height ?? 1080);
 

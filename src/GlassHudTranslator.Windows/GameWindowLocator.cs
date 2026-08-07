@@ -4,6 +4,9 @@ using GlassHudTranslator.Interop;
 
 namespace GlassHudTranslator.Windows;
 
+/// <summary>One entry in the "which window is your game?" list.</summary>
+public sealed record OpenWindow(string Title, string ProcessName);
+
 public sealed record GameWindow(IntPtr Handle, string Title, CaptureRegion ClientArea, uint Dpi)
 {
     public double Scaling => Dpi / 96.0;
@@ -23,10 +26,16 @@ public sealed record GameWindow(IntPtr Handle, string Title, CaptureRegion Clien
 [SupportedOSPlatform("windows")]
 public static class GameWindowLocator
 {
-    /// <summary>Finds a visible, non-minimised window whose title contains any of the given fragments.</summary>
-    public static GameWindow? Find(IReadOnlyList<string> titleFragments)
+    /// <summary>
+    /// Finds a visible, non-minimised window matching any of the given executable names or title
+    /// fragments. Process names are checked first because they do not change while the program
+    /// runs; either kind of match is accepted, so a profile written before process names existed
+    /// still works on its title alone.
+    /// </summary>
+    public static GameWindow? Find(
+        IReadOnlyList<string> titleFragments, IReadOnlyList<string>? processNames = null)
     {
-        if (titleFragments.Count == 0) return null;
+        if (titleFragments.Count == 0 && (processNames is null || processNames.Count == 0)) return null;
 
         IntPtr found = IntPtr.Zero;
         string foundTitle = "";
@@ -38,20 +47,80 @@ public static class GameWindowLocator
             var title = TitleOf(handle);
             if (title.Length == 0) return true;
 
-            foreach (var fragment in titleFragments)
-            {
-                if (!title.Contains(fragment, StringComparison.OrdinalIgnoreCase)) continue;
+            var matches =
+                (processNames is { Count: > 0 } && Matches(processNames, ProcessNameOf(handle)))
+                || titleFragments.Any(f => title.Contains(f, StringComparison.OrdinalIgnoreCase));
 
-                found = handle;
-                foundTitle = title;
-                return false;   // stop enumerating
-            }
+            if (!matches) return true;
 
-            return true;
+            found = handle;
+            foundTitle = title;
+            return false;   // stop enumerating
         }, IntPtr.Zero);
 
         return found == IntPtr.Zero ? null : Describe(found, foundTitle);
+
+        static bool Matches(IReadOnlyList<string> wanted, string? actual) =>
+            actual is { Length: > 0 } &&
+            wanted.Any(w => string.Equals(Bare(w), actual, StringComparison.OrdinalIgnoreCase));
     }
+
+    /// <summary>
+    /// Every visible top-level window with a title, for the profile editor's "which window?" list.
+    /// Picking from a list beats asking someone to type a window title, which is a concept the
+    /// people this app is for have no reason to have met.
+    /// </summary>
+    public static IReadOnlyList<OpenWindow> ListOpen()
+    {
+        var windows = new List<OpenWindow>();
+
+        NativeMethods.EnumWindows((handle, _) =>
+        {
+            if (!NativeMethods.IsWindowVisible(handle) || NativeMethods.IsIconic(handle)) return true;
+
+            var title = TitleOf(handle);
+            if (title.Length == 0) return true;
+
+            // Skip anything without a client area worth capturing. Tool windows, tooltips and
+            // hidden shell windows all carry titles and would otherwise pad the list with entries
+            // that cannot possibly be the game.
+            if (!NativeMethods.GetClientRect(handle, out var client)) return true;
+            if (client.Width < 200 || client.Height < 200) return true;
+
+            windows.Add(new OpenWindow(title, ProcessNameOf(handle) ?? ""));
+            return true;
+        }, IntPtr.Zero);
+
+        return windows
+            .DistinctBy(w => (w.Title, w.ProcessName))
+            .OrderBy(w => w.Title, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+    }
+
+    private static string? ProcessNameOf(IntPtr handle)
+    {
+        try
+        {
+            NativeMethods.GetWindowThreadProcessId(handle, out var pid);
+            if (pid == 0) return null;
+
+            using var process = System.Diagnostics.Process.GetProcessById((int)pid);
+            return process.ProcessName;
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException
+                                      or System.ComponentModel.Win32Exception)
+        {
+            // The process can exit between enumerating the window and asking about it, and some
+            // system-owned windows refuse the query outright. Neither is worth failing the list for.
+            return null;
+        }
+    }
+
+    /// <summary>Accepts "ffxiv_dx11.exe" or "ffxiv_dx11" - Process.ProcessName has no extension.</summary>
+    private static string Bare(string processName) =>
+        processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            ? processName[..^4]
+            : processName;
 
     public static GameWindow? Foreground()
     {

@@ -293,6 +293,45 @@ public sealed class UiText {
 // backwards. Handled by FlowDirection on the control, never by Unicode isolates (U+2066…U+2069),
 // which are absent from the bundled font and break glyph fallback for the whole window.
 
+// ── Game profiles ──────────────────────────────────────────────────────────
+// Two roots, because the app folder is replaced by an update: bundled profiles ship under
+// profiles/, anything the user creates or edits is written to AppPaths.UserProfiles, and the
+// user's copy always wins. Deleting a bundled profile is a tombstone in the user root - deleting
+// the files would work only until the next release put them back. `general` is read-only and
+// undeletable; it is the screen-relative fallback and what a deletion falls back to.
+public enum ProfileOrigin { Bundled, User, Override }
+
+public sealed record GameProfileDraft {
+    public string? ExistingId { get; init; }            // null = create
+    public required string DisplayName { get; init; }
+    public string[] WindowTitles { get; init; }
+    public string[] ProcessNames { get; init; }         // stabler than titles; either match wins
+    public string? StyleHint { get; init; }
+    public bool HasSpeakerNames { get; init; }
+    public IReadOnlyList<GlossaryTerm> Terms { get; init; }
+}
+
+public sealed class ProfileLibrary(string bundledRoot, string userRoot) {
+    public const string GeneralProfileId = "general";
+    public IReadOnlyList<string> Discover();
+    public GameProfile Load(string id);
+    public GameProfile LoadOrFallback(string? preferredId);
+    public ProfileOrigin OriginOf(string id);
+    public static bool IsReadOnly(string id);
+    public static bool CanDelete(string id);
+    public string Save(GameProfileDraft draft);         // always writes to userRoot
+    public void Delete(string id);
+    public bool Reset(string id);                       // drop an override, back to shipped
+    public static string SlugFor(string displayName);   // becomes a path: ASCII only, no traversal
+}
+
+// Ready-made styleHint text, so setting up a game is not a prompt-writing exercise. Hints stay
+// English because the system prompt is; only the labels the user reads are translated.
+public sealed record StylePreset(string Id, string Hint) {
+    public static IReadOnlyList<StylePreset> All { get; }    // plain, epic, modern, comic, technical
+    public static StylePreset? Match(string? hint);          // null = hand-written, so "Custom"
+}
+
 // ── Updates ────────────────────────────────────────────────────────────────
 // Notifies only. No update server: GitHub's public releases/latest endpoint already sits next to
 // the download. Never throws - every failure is Unreachable, which is deliberately NOT UpToDate,

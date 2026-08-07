@@ -17,7 +17,7 @@
 ## What has changed since I wrote this
 
 This document is deliberately not rewritten as the code moves — it records what I decided and why,
-before I knew whether any of it would work. The decisions below all held. Six things have since
+before I knew whether any of it would work. The decisions below all held. Seven things have since
 been *added* that it does not mention, so read it with these in mind:
 
 | | |
@@ -26,6 +26,7 @@ been *added* that it does not mention, so read it with these in mind:
 | **The interface is available in Arabic.** | The single largest omission in this document. It specifies Arabic *output* in detail and never once asks what language the app's own buttons are in — for an app whose entire premise is that its user does not read English comfortably. English remains the default. |
 | **Settings is tabbed.** | Providers / Translating / Overlay / Hotkeys / Diagnostics, rather than the one long panel implied here. |
 | **Five hotkeys, not four.** | Show/hide overlay was added after the first real play session. §2.6's table lists four. |
+| **Games are added from inside the app.** | §8 treats a profile as a file to be authored, which is the same blind spot as the English-only interface: it assumes the person adding a game reads JSON. There is now an editor — pick the window from a list, choose a voice from a dropdown, drag a box. Two consequences this document could not have anticipated: profiles bind to the *process name* as well as the title, because titles change while a program runs; and anything the user writes goes under their own data directory, since the app folder is replaced by an update. |
 | **The app notices its own updates.** | This document assumes every outbound request is a translation, and that is no longer true: once a day it asks GitHub's public releases endpoint whether a newer version exists, and shows a notice naming the file and the steps. Nothing is sent with the request, it is switchable off, and it never installs anything — self-updating is refused on exactly the grounds §16 refuses `WH_KEYBOARD_LL`, that an unsigned binary doing it is an antivirus heuristic. |
 | **The Arabic interface needs a native reader, not a test.** | §6 is careful about the Arabic the app *produces* and says nothing about the Arabic it *displays*. The first review round found buttons reading `حدد dialogue`, a key field labelled "not set" where an instruction belonged, a linguist's term where a plain one belonged, and explanatory text sized as though nobody had to read it. None of it was reachable from a test — but two of the four are now, and reviewing interface strings is in [CONTRIBUTING.md](../CONTRIBUTING.md). |
 
