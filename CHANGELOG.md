@@ -3,6 +3,17 @@
 Notable changes. Started once the app was working end to end, so everything before the first entry
 is "the thing being described in the README".
 
+## v0.4.1 — 7 August 2026
+
+### Fixed
+
+- **Reworded the window-picking note in the Arabic Add a game screen**, on a native reader's
+  correction. "اختر اللعبة من قائمة ما هو مفتوح الآن" parses but is not how anyone writes Arabic;
+  "قائمة النوافذ المفتوحة حاليًا" is. The second half described the mechanism — that the region is
+  measured against the window — where it should have said what that means for the reader: move the
+  window and you will not have to pick the region again. The same sentence in `README.ar.md` was
+  carrying the earlier wording and now matches.
+
 ## v0.4.0 — 7 August 2026
 
 ### Added
