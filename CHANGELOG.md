@@ -3,6 +3,26 @@
 Notable changes. Started once the app was working end to end, so everything before the first entry
 is "the thing being described in the README".
 
+## v0.4.2 — 8 August 2026
+
+### Fixed
+
+- **The profile list showed folder names instead of the names people gave their games.** A profile
+  called "Baldur's Gate 3" was listed as `baldur-s-gate-3`. Tolerable while the only two shipped
+  with the app and called `ffxiv` and `general`; not tolerable once anyone can add one. Same defect
+  as building a button caption out of a stored key — an identifier where the user's own words
+  belong. The list now shows display names, and the id stays the stored value.
+
+### Added
+
+- **An Egyptian Arabic readme** — [`README.masri.md`](README.masri.md), written for players rather
+  than developers. The other two are the same document in two languages, both in the register I use
+  writing to other developers: architecture, contracts, what is unverified. That is the wrong
+  register for the person this exists for, who wants to know how to make the Arabic appear over the
+  game. It opens with why the program exists, spells out getting a free API key click by click, and
+  covers what actually goes wrong — fullscreen instead of borderless, running the game as
+  administrator, a capture box that grabbed too much.
+
 ## v0.4.1 — 7 August 2026
 
 ### Fixed
