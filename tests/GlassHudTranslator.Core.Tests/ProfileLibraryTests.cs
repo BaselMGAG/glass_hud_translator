@@ -224,6 +224,52 @@ public sealed class ProfileLibraryTests : IDisposable
     }
 
     [Fact]
+    public void TheProfileListCarriesDisplayNamesRatherThanFolderNames()
+    {
+        // What the user sees must be what they typed. The folder for "Baldur's Gate 3" is
+        // baldur-s-gate-3, and showing that in the picker is the same defect as building a button
+        // caption out of a stored key.
+        var library = Library();
+        library.Save(Draft("Baldur's Gate 3"));
+
+        var listed = library.List().Single();
+
+        Assert.Equal("baldur-s-gate-3", listed.Id);
+        Assert.Equal("Baldur's Gate 3", listed.DisplayName);
+    }
+
+    [Fact]
+    public void AnArabicNameSurvivesIntoTheProfileList()
+    {
+        var library = Library();
+        library.Save(Draft("لعبة عربية"));
+
+        Assert.Equal("لعبة عربية", library.List().Single().DisplayName);
+    }
+
+    [Fact]
+    public void AProfileWithAnUnreadableFileStillAppearsInTheList()
+    {
+        // Falling back to the id keeps it selectable and fixable. Dropping it from the list would
+        // leave the user with a profile that exists, is selected, and cannot be seen.
+        var broken = Path.Combine(_user, "broken");
+        Directory.CreateDirectory(broken);
+        File.WriteAllText(Path.Combine(broken, GameProfileStore.ProfileFileName), "{ not json");
+
+        Assert.Equal("broken", Library().List().Single().DisplayName);
+    }
+
+    [Fact]
+    public void AnEditedBundledProfileListsUnderItsNewName()
+    {
+        WriteBundled("ffxiv", "Final Fantasy XIV");
+        var library = Library();
+        library.Save(Draft("FF14", existingId: "ffxiv"));
+
+        Assert.Equal("FF14", library.List().Single().DisplayName);
+    }
+
+    [Fact]
     public void AnUnderscoreNameCannotProduceAHiddenProfile()
     {
         // Discover() skips "_"-prefixed folders, which is how _template stays out of the list. A

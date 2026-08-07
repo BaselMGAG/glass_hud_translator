@@ -426,15 +426,23 @@ public sealed class SettingsWindow : Window
         var stack = new StackPanel { Spacing = 12 };
 
         stack.Children.Add(Section(_text.WhatAreYouTranslating));
+        // Display names, not ids. The list used to show the folder name - "ffxiv", "general" - which
+        // was tolerable while both were shipped by us and is not now that a user-created profile
+        // shows up as "baldur-s-gate-3". Same defect as building a button caption out of a stored
+        // key: the identifier is not what the user called it.
+        var listed = _services.Profiles.List();
         var profiles = new ComboBox
         {
-            ItemsSource = _services.AvailableProfiles,
-            SelectedItem = _services.Profile.Id,
+            ItemsSource = listed.Select(p => p.DisplayName).ToList(),
+            SelectedIndex = Math.Max(0, listed.ToList().FindIndex(p => p.Id == _services.Profile.Id)),
             Width = 240,
         };
         profiles.SelectionChanged += (_, _) =>
         {
-            if (profiles.SelectedItem is not string id || id == _settings.ProfileId) return;
+            if (profiles.SelectedIndex < 0 || profiles.SelectedIndex >= listed.Count) return;
+
+            var id = listed[profiles.SelectedIndex].Id;
+            if (id == _settings.ProfileId) return;
 
             _settings.ProfileId = id;
             _settings.Save();

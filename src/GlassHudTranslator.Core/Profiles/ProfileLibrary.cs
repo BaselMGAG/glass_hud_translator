@@ -77,6 +77,41 @@ public sealed class ProfileLibrary(string bundledRoot, string userRoot)
             .ToList();
     }
 
+    /// <summary>
+    /// Every profile as (id, display name), for a list the user reads.
+    ///
+    /// <para>
+    /// Reads only <c>profile.json</c>, not the glossary beside it - this runs on every rebuild of
+    /// the settings window and has no business parsing a few hundred glossary terms to find one
+    /// string. A profile whose file will not parse falls back to its id rather than vanishing from
+    /// the list, because a profile you can see and re-pick beats one that silently is not there.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<(string Id, string DisplayName)> List() => Discover()
+        .Select(id => (id, DisplayNameOf(id)))
+        .ToList();
+
+    private string DisplayNameOf(string id)
+    {
+        var root = OriginOf(id) is ProfileOrigin.Bundled ? bundledRoot : userRoot;
+
+        try
+        {
+            using var stream = File.OpenRead(
+                Path.Combine(root, id, GameProfileStore.ProfileFileName));
+            using var document = JsonDocument.Parse(stream);
+
+            return document.RootElement.TryGetProperty("displayName", out var name)
+                   && name.GetString() is { Length: > 0 } text
+                ? text
+                : id;
+        }
+        catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException)
+        {
+            return id;
+        }
+    }
+
     public ProfileOrigin OriginOf(string id)
     {
         var inUser = File.Exists(Path.Combine(userRoot, id, GameProfileStore.ProfileFileName));

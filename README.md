@@ -6,7 +6,7 @@
 
 *Games Arabic AI translation — real-time, on screen, without touching the game.*
 
-[English](README.md) · [العربية](README.ar.md)
+[English](README.md) · [العربية](README.ar.md) · [مصري](README.masri.md)
 
 [![build](https://github.com/basel2000de/glass_hud_translator/actions/workflows/build.yml/badge.svg)](https://github.com/basel2000de/glass_hud_translator/actions/workflows/build.yml)
 [![licence](https://img.shields.io/badge/licence-Apache--2.0-blue.svg)](LICENSE)
