@@ -15,8 +15,8 @@ namespace GlassHudTranslator.Windows;
 /// </para>
 ///
 /// <para>
-/// The DC and bitmap are cached across calls and only rebuilt when the region size changes, since
-/// creating them is most of the cost. The pixel buffer is not cached - each call allocates a fresh
+/// The DC and bitmap are cached across calls and rebuilt when the region size changes or the
+/// display layout does, since creating them is most of the cost. The pixel buffer is not cached - each call allocates a fresh
 /// one, because <see cref="Frame"/> keeps the reference and reusing it would let the next capture
 /// mutate a frame someone is still reading.
 /// </para>
@@ -31,6 +31,7 @@ public sealed class Win32FrameSource : IFrameSource
     private IntPtr _bitmap;
     private int _bitmapWidth;
     private int _bitmapHeight;
+    private int _layout;
     private bool _disposed;
 
     public string LastFrameLabel { get; private set; } = "<none>";
@@ -60,7 +61,7 @@ public sealed class Win32FrameSource : IFrameSource
 
     private Frame? Capture(CaptureRegion region)
     {
-        EnsureResources(region.Width, region.Height);
+        if (!EnsureResources(region.Width, region.Height)) return null;
 
         var previous = NativeMethods.SelectObject(_memoryDc, _bitmap);
         try
@@ -103,22 +104,69 @@ public sealed class Win32FrameSource : IFrameSource
         }
     }
 
-    private void EnsureResources(int width, int height)
+    private bool EnsureResources(int width, int height)
     {
+        // The desktop DC is rebuilt when the display layout changes.
+        //
+        // It used to be acquired once and kept for the lifetime of the source. A DC obtained before
+        // a monitor was plugged in, unplugged, or had its resolution changed still describes the
+        // old desktop, so BitBlt reads from geometry that no longer exists - which returns black
+        // rather than failing. Black frames are the worst possible failure here, because the change
+        // detector sees a stable image and skips, so the app goes quiet and looks like it has
+        // simply stopped working. Re-acquiring costs a handful of microseconds and only happens
+        // when the layout actually differs from the one the current DC was taken under.
+        var layout = NativeMethods.GetSystemMetrics(NativeMethods.SmCxVirtualScreen) * 397
+                     ^ NativeMethods.GetSystemMetrics(NativeMethods.SmCyVirtualScreen) * 31
+                     ^ NativeMethods.GetSystemMetrics(NativeMethods.SmXVirtualScreen) * 7
+                     ^ NativeMethods.GetSystemMetrics(NativeMethods.SmYVirtualScreen);
+
+        if (_screenDc != IntPtr.Zero && layout != _layout) ReleaseDeviceContexts();
+
         if (_screenDc == IntPtr.Zero)
         {
-            // A null HWND gives the DC for the entire virtual screen.
+            // A null HWND gives the DC for the entire virtual screen, including monitors whose
+            // origin is negative - which is every layout with a display left of or above primary.
             _screenDc = NativeMethods.GetDC(IntPtr.Zero);
+            if (_screenDc == IntPtr.Zero) return false;
+
             _memoryDc = NativeMethods.CreateCompatibleDC(_screenDc);
+            if (_memoryDc == IntPtr.Zero)
+            {
+                ReleaseDeviceContexts();
+                return false;
+            }
+
+            _layout = layout;
         }
 
-        if (_bitmap != IntPtr.Zero && _bitmapWidth == width && _bitmapHeight == height) return;
+        if (_bitmap != IntPtr.Zero && _bitmapWidth == width && _bitmapHeight == height) return true;
 
         if (_bitmap != IntPtr.Zero) NativeMethods.DeleteObject(_bitmap);
 
+        // Unchecked before now. A failure here left a null handle that SelectObject would then be
+        // handed on every subsequent capture, so one transient GDI exhaustion became a permanent
+        // black screen for the rest of the session.
         _bitmap = NativeMethods.CreateCompatibleBitmap(_screenDc, width, height);
+        if (_bitmap == IntPtr.Zero)
+        {
+            _bitmapWidth = _bitmapHeight = 0;
+            return false;
+        }
+
         _bitmapWidth = width;
         _bitmapHeight = height;
+        return true;
+    }
+
+    private void ReleaseDeviceContexts()
+    {
+        // The bitmap is compatible with the DC it was created from, so it goes too.
+        if (_bitmap != IntPtr.Zero) NativeMethods.DeleteObject(_bitmap);
+        if (_memoryDc != IntPtr.Zero) NativeMethods.DeleteDC(_memoryDc);
+        if (_screenDc != IntPtr.Zero) NativeMethods.ReleaseDC(IntPtr.Zero, _screenDc);
+
+        _bitmap = _memoryDc = _screenDc = IntPtr.Zero;
+        _bitmapWidth = _bitmapHeight = 0;
     }
 
     public void Dispose()
@@ -128,11 +176,7 @@ public sealed class Win32FrameSource : IFrameSource
             if (_disposed) return;
             _disposed = true;
 
-            if (_bitmap != IntPtr.Zero) NativeMethods.DeleteObject(_bitmap);
-            if (_memoryDc != IntPtr.Zero) NativeMethods.DeleteDC(_memoryDc);
-            if (_screenDc != IntPtr.Zero) NativeMethods.ReleaseDC(IntPtr.Zero, _screenDc);
-
-            _bitmap = _memoryDc = _screenDc = IntPtr.Zero;
+            ReleaseDeviceContexts();
         }
     }
 }

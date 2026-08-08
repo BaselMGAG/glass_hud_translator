@@ -54,6 +54,12 @@ public sealed class UiText
     public required string TierPaid { get; init; }
     public required string TierLocal { get; init; }
     public required string PasteKeyHere { get; init; }
+    public required string TestKey { get; init; }
+    public required string TestingKey { get; init; }
+    public required string KeyWorks { get; init; }
+    public required string KeyRejected { get; init; }
+    public required string KeyUnknown { get; init; }
+    public required string TestKeysNote { get; init; }
     public required string NoLanes { get; init; }
     public required string NoKeySkipped { get; init; }
     public required string KeysCleared { get; init; }
@@ -300,6 +306,14 @@ public sealed class UiText
         TierPaid = "PAID — billed per line",
         TierLocal = "LOCAL",
         PasteKeyHere = "paste your key here",
+        TestKey = "Test",
+        TestingKey = "Testing...",
+        KeyWorks = "Works",
+        KeyRejected = "This key was refused",
+        KeyUnknown = "Could not check right now",
+        TestKeysNote =
+            "Testing sends one very short line to be translated, so you find out here rather than "
+            + "in the middle of a game. It costs one request.",
         NoLanes = "No lanes configured. Translation will fall back to showing the English.",
         NoKeySkipped = "no key, skipped",
         KeysCleared = "All keys cleared. Nothing will be translated until one is entered.",
@@ -549,6 +563,14 @@ public sealed class UiText
         TierPaid = "مدفوع — يُحاسَب على كل سطر",
         TierLocal = "محلّي",
         PasteKeyHere = "الصق المفتاح هنا",
+        TestKey = "جرّبه",
+        TestingKey = "جارٍ التجربة...",
+        KeyWorks = "يعمل",
+        KeyRejected = "رُفض هذا المفتاح",
+        KeyUnknown = "تعذّر التحقّق الآن",
+        TestKeysNote =
+            "التجربة ترسل سطراً قصيراً جداً ليُترجَم، فتعرف النتيجة هنا بدل أن تكتشفها وأنت في وسط "
+            + "اللعب. وتكلّف طلباً واحداً.",
         NoLanes = "لا توجد مسارات مضبوطة. ستُعرض الإنجليزية بدل الترجمة.",
         NoKeySkipped = "بلا مفتاح، متجاوَز",
         KeysCleared = "مُسحت كل المفاتيح. لن تتم أي ترجمة حتى تُدخل مفتاحاً.",

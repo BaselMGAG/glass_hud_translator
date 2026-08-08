@@ -372,6 +372,8 @@ public sealed class SettingsWindow : Window
         if (_services.Models.Providers.Any(p => !p.IsPaid && p.Secret is not null))
             stack.Children.Add(Note(_text.FreeProvidersNote));
 
+        stack.Children.Add(Note(_text.TestKeysNote));
+
         stack.Children.Add(Button(_text.SaveKeys, SaveSecrets));
         stack.Children.Add(Section(_text.ActiveLanes));
         stack.Children.Add(_laneSummary);
@@ -384,9 +386,23 @@ public sealed class SettingsWindow : Window
         var box = KeyBox(_text.PasteKeyHere);
         _keyBoxes[provider.Secret!] = box;
 
+        // The verdict goes beside the box it is about, not on the shared status line. A user
+        // testing four keys in a row needs to see which one answered what, and a single status line
+        // only ever remembers the last.
+        var verdict = new TextBlock
+        {
+            Text = "",
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var test = Button(_text.TestKey, () => _ = TestKeyAsync(provider, verdict));
+
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
         row.Children.Add(box);
+        row.Children.Add(test);
         row.Children.Add(TierBadge(provider, _text));
+        row.Children.Add(verdict);
 
         var stack = new StackPanel { Spacing = 4 };
         stack.Children.Add(row);
@@ -397,6 +413,74 @@ public sealed class SettingsWindow : Window
         stack.Children.Add(Note(
             $"{_text.ModelsInOrder} {string.Join(" → ", provider.Models)}", machine: true));
         return stack;
+    }
+
+    /// <summary>
+    /// Answers "does this key work?" before the user is in a game.
+    ///
+    /// <para>
+    /// A mistyped or expired key was previously indistinguishable from a correct one right up to
+    /// the first translation, where the symptom is English on the overlay and the real reason in an
+    /// English router log — not a diagnosable failure for the person this app is for. The key in
+    /// the box is used rather than the saved one, so testing works before saving, which is the
+    /// order people actually do it in.
+    /// </para>
+    /// </summary>
+    private async Task TestKeyAsync(ProviderConfig provider, TextBlock verdict)
+    {
+        var typed = _keyBoxes.TryGetValue(provider.Secret!, out var box) ? box.Text?.Trim() : null;
+
+        if (string.IsNullOrWhiteSpace(typed))
+        {
+            Paint(verdict, _text.PasteKeyHere, "#9aa0a6");
+            return;
+        }
+
+        Paint(verdict, _text.TestingKey, "#9aa0a6");
+
+        var result = await Task.Run(() => KeyProbe.TestAsync(
+            ProviderFactory.Create(provider, _services.Http, new SingleKeyStore(provider.Secret!, typed)),
+            TimeSpan.FromSeconds(20),
+            CancellationToken.None));
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            var (message, colour) = result.Status switch
+            {
+                KeyStatus.Working => (_text.KeyWorks, "#81c995"),
+                KeyStatus.Rejected => (_text.KeyRejected, "#f28b82"),
+                KeyStatus.NotSet => (_text.PasteKeyHere, "#9aa0a6"),
+                _ => (_text.KeyUnknown, "#fdd663"),
+            };
+
+            Paint(verdict, message, colour);
+
+            // The provider's own words go to the status line, not into the badge: they are English,
+            // machine-shaped, and often long. The badge stays a word the user can read at a glance.
+            if (result.Detail is { Length: > 0 } detail && result.Status != KeyStatus.Working)
+                _status.Text = $"{provider.Label}: {detail}";
+        });
+    }
+
+    private static void Paint(TextBlock target, string text, string colour)
+    {
+        target.Text = text;
+        target.Foreground = new SolidColorBrush(Color.Parse(colour));
+    }
+
+    /// <summary>
+    /// Presents one just-typed key to the provider factory without saving it. Testing before saving
+    /// is the order people actually work in, and a key that fails should not have been persisted.
+    /// </summary>
+    private sealed class SingleKeyStore(string name, string value) : ISecretStore
+    {
+        public string? Get(string secretName) => secretName == name ? value : null;
+
+        public bool Has(string secretName) => secretName == name;
+
+        public void Set(string secretName, string secretValue) { }
+
+        public void Delete(string secretName) { }
     }
 
     /// <summary>

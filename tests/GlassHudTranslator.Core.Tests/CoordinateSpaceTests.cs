@@ -125,17 +125,81 @@ public class CoordinateSpaceTests
     {
         // Picker pixels -> desktop -> window-relative -> fractions -> back to window pixels. This is
         // the whole chain, and it is the one that produced a rectangle nothing would accept.
+        //
+        // Asserted against literals rather than against the value the chain produced. Comparing
+        // `resolved` to `relative` alone would pass even if every step were consistently wrong by
+        // the same offset - the failure this test exists to catch.
         var desktop = LeftHandSetup;
         var gameWindow = new CaptureRegion(-1920, 0, 1920, 1080);
         var picked = new CaptureRegion(420, 756, 1075, 216);
 
-        var relative = picked.Translate(desktop.X, desktop.Y).RelativeTo(gameWindow);
+        var onDesktop = picked.Translate(desktop.X, desktop.Y);
+        Assert.Equal(new CaptureRegion(-1500, 756, 1075, 216), onDesktop);
+
+        var relative = onDesktop.RelativeTo(gameWindow);
+        Assert.Equal(new CaptureRegion(420, 756, 1075, 216), relative);
+
         var stored = RegionProfile.FromPixels("dialogue", relative,
             gameWindow.Width, gameWindow.Height, 1.0);
-        var resolved = stored.Resolve(gameWindow.Width, gameWindow.Height);
+        Assert.Equal(420 / 1920.0, stored.RelX, 6);
+        Assert.Equal(756 / 1080.0, stored.RelY, 6);
+        Assert.Equal(1075 / 1920.0, stored.RelWidth, 6);
 
-        Assert.Equal(relative, resolved);
+        // Provenance records the window it was drawn against, not the desktop.
+        Assert.Equal("1920x1080", stored.Resolution);
+
+        var resolved = stored.Resolve(gameWindow.Width, gameWindow.Height);
+        Assert.Equal(new CaptureRegion(420, 756, 1075, 216), resolved);
         Assert.True(resolved.FitsWithin(gameWindow.Width, gameWindow.Height));
+
+        // And back to where it started on the desktop.
+        Assert.Equal(onDesktop, resolved.Translate(gameWindow.X, gameWindow.Y));
+    }
+
+    [Fact]
+    public void ADesktopNegativeOnBothAxesRoundTrips()
+    {
+        // A monitor up and to the left - the layout that makes every sign error visible at once.
+        var desktop = new CaptureRegion(-1920, -1080, 3840, 2160);
+        var gameWindow = new CaptureRegion(-1920, -1080, 1920, 1080);
+        var picked = new CaptureRegion(420, 756, 1075, 216);
+
+        var onDesktop = picked.Translate(desktop.X, desktop.Y);
+        Assert.Equal(new CaptureRegion(-1500, -324, 1075, 216), onDesktop);
+        Assert.True(desktop.Contains(onDesktop));
+
+        var relative = onDesktop.RelativeTo(gameWindow);
+        Assert.Equal(new CaptureRegion(420, 756, 1075, 216), relative);
+        Assert.True(relative.FitsWithin(gameWindow.Width, gameWindow.Height));
+    }
+
+    [Theory]
+    [InlineData(0, 0)]           // single monitor
+    [InlineData(-1920, 0)]       // second screen left
+    [InlineData(1920, 0)]        // second screen right, primary is the left one
+    [InlineData(0, -1080)]       // second screen above
+    [InlineData(-1920, -1080)]   // up and to the left
+    public void TranslationIsInvertibleForEveryLayoutPolarity(int originX, int originY)
+    {
+        var origin = new CaptureRegion(originX, originY, 1920, 1080);
+        var region = new CaptureRegion(originX + 400, originY + 700, 1000, 200);
+
+        Assert.Equal(region, region.RelativeTo(origin).Translate(origin.X, origin.Y));
+        Assert.True(origin.Contains(region));
+    }
+
+    [Fact]
+    public void ProvenanceRecordsTheWindowItWasMeasuredAgainst()
+    {
+        // FromPixels must describe the client rect, not the desktop and not the region itself -
+        // otherwise MatchesLayout compares against the wrong thing and reports a permanent false
+        // mismatch on every launch.
+        var stored = RegionProfile.FromPixels("dialogue",
+            new CaptureRegion(420, 756, 1075, 216), 2560, 1440, 1.25);
+
+        Assert.Equal(RegionProfile.DescribeLayout(2560, 1440), stored.Resolution);
+        Assert.Equal(1.25, stored.UiScale, 6);
+        Assert.True(stored.HasProvenance);
     }
 
     /// <summary>
