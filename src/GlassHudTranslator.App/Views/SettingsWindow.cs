@@ -683,10 +683,14 @@ public sealed class SettingsWindow : Window
             OverlayPlacementChanged?.Invoke();
         };
 
-        stack.Children.Add(Row(_text.FontSize, _fontSize));
-        stack.Children.Add(Row(_text.PanelOpacity, _opacity));
-        stack.Children.Add(Row(_text.OverlayVerticalPosition, vertical));
-        stack.Children.Add(Row(_text.OverlayHorizontalPosition, horizontal));
+        // A wider label column here, so the four sliders still line up under each other now that
+        // two of the labels are sentences rather than words.
+        const double OverlayLabels = 180;
+
+        stack.Children.Add(Row(_text.FontSize, _fontSize, OverlayLabels));
+        stack.Children.Add(Row(_text.PanelOpacity, _opacity, OverlayLabels));
+        stack.Children.Add(Row(_text.OverlayVerticalPosition, vertical, OverlayLabels));
+        stack.Children.Add(Row(_text.OverlayHorizontalPosition, horizontal, OverlayLabels));
         stack.Children.Add(Note(_text.OverlayPositionNote));
         stack.Children.Add(Note(_text.OverlayNote));
 
@@ -1418,13 +1422,21 @@ public sealed class SettingsWindow : Window
         return button;
     }
 
+    /// <summary>
+    /// <paramref name="labelWidth"/> is a MINIMUM, not a width. As a fixed width it silently
+    /// truncated any label longer than it: "Position, top to bo", and in Arabic
+    /// «الموضع من أعلى إلى أسفل» clipped to «ع من أعلى إلى أسفل», which is not a word. Alignment
+    /// across rows is worth having, but never at the price of a label that lies - a translated
+    /// string is longer than its English original often enough that a fixed width is a trap set
+    /// for whichever language is not the one being looked at.
+    /// </summary>
     private static Control Row(string label, Control control, double labelWidth = 110) => new StackPanel
     {
         Orientation = Orientation.Horizontal,
         Spacing = 12,
         Children =
         {
-            new TextBlock { Text = label, Width = labelWidth, VerticalAlignment = VerticalAlignment.Center },
+            new TextBlock { Text = label, MinWidth = labelWidth, VerticalAlignment = VerticalAlignment.Center },
             control,
         },
     };
