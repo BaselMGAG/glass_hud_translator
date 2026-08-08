@@ -210,14 +210,17 @@ Early, but working.
 | Screen capture, OCR, global hotkeys | **working on Windows** |
 | Overlay drawn over a running game | **working** |
 | End-to-end translation in game | **working** — about 1 second per line |
+| Checking an API key from Settings | working |
+| A game on a second monitor | written, not yet verified on hardware |
 | Click-through, 125%/150% display scaling | not yet verified |
 
 Tested against **Final Fantasy XIV** on Windows: capture, OCR, hotkeys, the overlay and the full
 round trip all run against the live game at roughly a second a line.
 
-Expect rough edges. Click-through and display scaling above 100% are unverified, the glossary is a
-first draft, and OCR accuracy against a real game font hasn't been measured properly. I develop on
-macOS and test on a borrowed Windows laptop, so Windows fixes arrive in batches.
+Expect rough edges. Click-through, display scaling above 100% and anything involving a second
+monitor are unverified, the glossary is a first draft, and OCR accuracy against a real game font
+hasn't been measured properly. I develop on macOS and test on a borrowed Windows laptop, so Windows
+fixes arrive in batches — which is also why "written" and "verified" are separate rows above.
 
 ## How it works
 

@@ -312,8 +312,16 @@ Every part of it was written on macOS without ever running it, so that is worth 
 things expected to break — the `BITMAPINFOHEADER` layout in `GetDIBits` and Avalonia's window-handle
 timing for the overlay styles — both turned out fine.
 
-Still unverified: click-through, display scaling above 100%, auto-watch under sustained load, and
-cache hit rate over a real session.
+**That verification covers v0.4.2 and nothing after it.** Everything since — the multi-monitor
+coordinate work, the overlay following the game, the DC rebuild on display change, and the schema
+migration to version 3 — was written on macOS and has not been run on Windows. The migration is the
+one to check first, against a real populated database rather than a fresh one, because it is the
+only change in that batch that can cost a user something they cannot get back. It is also the one
+with a safety net: migrations are additive, so an older release re-unzipped over a version 3
+database opens it without complaint.
+
+Still unverified: click-through, display scaling above 100%, auto-watch under sustained load,
+cache hit rate over a real session, and multi-monitor behaviour of any kind.
 
 ### What has actually gone wrong
 
