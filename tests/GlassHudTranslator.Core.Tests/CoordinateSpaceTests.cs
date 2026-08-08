@@ -183,6 +183,60 @@ public class CoordinateSpaceTests
             "The region should straddle the monitor seam - that is the bug being guarded against.");
     }
 
+    // ── clamping to a layout that changed underneath ──────────────────────────────────────
+
+    [Fact]
+    public void ARegionHangingOffTheEdgeIsTrimmedRatherThanUsedWhole()
+    {
+        // Unplug the second monitor and a region stored against it now runs past the edge of what
+        // is left. Capturing it whole BitBlts undefined pixels into OCR, which surfaces as garbage
+        // text and reads as the model getting worse, not as a geometry problem.
+        var afterUnplug = new CaptureRegion(0, 0, 1920, 1080);
+        var stored = new CaptureRegion(1600, 700, 800, 200);   // 480px past the right edge
+
+        var trimmed = stored.ClampTo(afterUnplug);
+
+        Assert.Equal(new CaptureRegion(1600, 700, 320, 200), trimmed);
+        Assert.True(afterUnplug.Contains(trimmed));
+    }
+
+    [Fact]
+    public void ARegionEntirelyOffScreenClampsToNothing()
+    {
+        // The whole second monitor is gone. There is no honest rectangle to read, so the caller
+        // must be told rather than handed a sliver.
+        var afterUnplug = new CaptureRegion(0, 0, 1920, 1080);
+        var onTheVanishedMonitor = new CaptureRegion(-1500, 700, 900, 200);
+
+        Assert.True(onTheVanishedMonitor.ClampTo(afterUnplug).IsEmpty);
+    }
+
+    [Fact]
+    public void ClampingSomethingAlreadyInsideChangesNothing()
+    {
+        var region = new CaptureRegion(400, 700, 1000, 200);
+
+        Assert.Equal(region, region.ClampTo(new CaptureRegion(0, 0, 1920, 1080)));
+    }
+
+    [Fact]
+    public void ClampingWorksAcrossANegativeOrigin()
+    {
+        // The case a naive implementation gets wrong: both the region and the bounds start left of
+        // zero, so anything comparing against 0 rather than against the bounds is broken here.
+        var trimmed = new CaptureRegion(-2200, 0, 900, 200).ClampTo(LeftHandSetup);
+
+        Assert.Equal(new CaptureRegion(-1920, 0, 620, 200), trimmed);
+    }
+
+    [Theory]
+    [InlineData(0, 0, 0, 0)]
+    [InlineData(10, 10, 0, 50)]
+    public void ClampingAgainstNothingYieldsNothing(int x, int y, int w, int h)
+    {
+        Assert.True(new CaptureRegion(0, 0, 100, 100).ClampTo(new CaptureRegion(x, y, w, h)).IsEmpty);
+    }
+
     [Fact]
     public void TranslatingByTheOriginAndBackIsIdentity()
     {

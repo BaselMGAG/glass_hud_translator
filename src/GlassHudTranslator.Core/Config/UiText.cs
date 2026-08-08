@@ -115,6 +115,23 @@ public sealed class UiText
     public required string Hits { get; init; }
     public required string Translating { get; init; }
 
+    // ── the live session ───────────────────────────────────────────────────────────────────
+    // Everything the translation loop says while the user is in a game. These were English
+    // literals inside TranslationSession until the Arabic interface's own overlay started
+    // answering in English at the exact moment something had gone wrong.
+    public required string NothingCaptured { get; init; }
+    public required string TranslationFailed { get; init; }
+    public required string AutoWatchOff { get; init; }
+    public required string AutoWatchOn { get; init; }
+    public required string AutoWatchExpired { get; init; }
+    public required string AutoWatchStopped { get; init; }
+    public required string NoTextInRegion { get; init; }
+    public required string TooShortToTranslate { get; init; }
+    public required string GameWindowNotFound { get; init; }
+    public required string CouldNotSaveFrame { get; init; }
+    public required string RegionLayoutChanged { get; init; }
+    public required string RegionOffScreenTrimmed { get; init; }
+
     // ── game profiles ──────────────────────────────────────────────────────────────────────
     public required string AddGame { get; init; }
     public required string EditProfile { get; init; }
@@ -345,6 +362,23 @@ public sealed class UiText
         Corrected = "corrected",
         Hits = "hits",
         Translating = "Translating...",
+
+        NothingCaptured = "Nothing was captured. Is the game running in Borderless Windowed mode?",
+        TranslationFailed = "Translation failed: {0}",
+        AutoWatchOff = "Auto-watch off.",
+        AutoWatchOn = "Auto-watch on. It stops itself after {0} seconds with no new text.",
+        AutoWatchExpired = "Auto-watch stopped after {0} seconds with no new text.",
+        AutoWatchStopped = "Auto-watch stopped: {0}",
+        NoTextInRegion = "No text in the capture region. Is a dialogue box actually on screen?",
+        TooShortToTranslate = "Only \"{0}\" found — too short to be dialogue.",
+        GameWindowNotFound = "Could not find a window for {0}. Is the game running, and not minimised?",
+        CouldNotSaveFrame = "Could not save the frame: {0}",
+        RegionLayoutChanged =
+            "This capture region was drawn on a differently sized window, so it may not line up. "
+            + "Press the pick-region hotkey to redraw it.",
+        RegionOffScreenTrimmed =
+            "Part of the capture region is off screen and was skipped. The display layout has "
+            + "changed since it was drawn.",
 
         AddGame = "+ Add a game",
         EditProfile = "Edit",
@@ -577,6 +611,22 @@ public sealed class UiText
         Corrected = "مصحَّحاً",
         Hits = "إصابة",
         Translating = "جارٍ الترجمة...",
+
+        NothingCaptured = "لم يُلتقط شيء. هل اللعبة شغّالة بوضع النافذة بلا إطار؟",
+        TranslationFailed = "أخفقت الترجمة: {0}",
+        AutoWatchOff = "أُوقفت المتابعة التلقائية.",
+        AutoWatchOn = "المتابعة التلقائية شغّالة. وتتوقّف وحدها بعد {0} ثانية بلا نص جديد.",
+        AutoWatchExpired = "توقّفت المتابعة التلقائية بعد {0} ثانية بلا نص جديد.",
+        AutoWatchStopped = "توقّفت المتابعة التلقائية: {0}",
+        NoTextInRegion = "لا نصّ في منطقة الالتقاط. هل يظهر صندوق حوار على الشاشة فعلاً؟",
+        TooShortToTranslate = "لم يُقرأ سوى «{0}» — أقصر من أن يكون حواراً.",
+        GameWindowNotFound = "لم يُعثر على نافذة لـ {0}. هل اللعبة شغّالة وغير مصغَّرة؟",
+        CouldNotSaveFrame = "تعذّر حفظ الإطار: {0}",
+        RegionLayoutChanged =
+            "رُسمت منطقة الالتقاط هذه على نافذة بمقاس مختلف، فقد لا تنطبق عليها. اضغط اختصار تحديد "
+            + "المنطقة لإعادة رسمها.",
+        RegionOffScreenTrimmed =
+            "جزء من منطقة الالتقاط خارج الشاشة فتُخُطّي. تغيّر ترتيب الشاشات منذ رُسمت.",
 
         AddGame = "+ أضف لعبة",
         EditProfile = "تعديل",

@@ -42,6 +42,32 @@ public readonly record struct CaptureRegion(int X, int Y, int Width, int Height)
     public CaptureRegion Translate(int dx, int dy) => this with { X = X + dx, Y = Y + dy };
 
     /// <summary>
+    /// Trims this rectangle to the part that lies inside <paramref name="bounds"/>, or
+    /// <see cref="Empty"/> if none of it does.
+    ///
+    /// <para>
+    /// The display layout can change under a stored region — a monitor is unplugged, the game moves
+    /// to a smaller screen, resolution changes — and a rectangle that now hangs off the edge is not
+    /// a reason to give up. Capturing it whole would BitBlt undefined pixels into OCR, which
+    /// surfaces as garbage text and reads as the model getting worse rather than as a geometry
+    /// problem. Trimming reads the part that is really there.
+    /// </para>
+    /// </summary>
+    public CaptureRegion ClampTo(CaptureRegion bounds)
+    {
+        if (IsEmpty || bounds.IsEmpty) return Empty;
+
+        var left = Math.Max(X, bounds.X);
+        var top = Math.Max(Y, bounds.Y);
+        var right = Math.Min(X + Width, bounds.X + bounds.Width);
+        var bottom = Math.Min(Y + Height, bounds.Y + bounds.Height);
+
+        return right <= left || bottom <= top
+            ? Empty
+            : new CaptureRegion(left, top, right - left, bottom - top);
+    }
+
+    /// <summary>
     /// Re-expresses a screen rectangle in the coordinates of a buffer captured from
     /// <paramref name="origin"/>. This is the conversion that has to happen between "where it is on
     /// the desktop" and "where it is in the frame we grabbed", and doing it implicitly by assuming

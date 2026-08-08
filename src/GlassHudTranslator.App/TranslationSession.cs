@@ -26,6 +26,13 @@ public sealed class TranslationSession : IDisposable
     private readonly AppSettings _settings;
 
     private readonly IFrameSource _frames;
+
+    /// <summary>
+    /// Re-read from settings on every use rather than captured once: the interface language can be
+    /// switched while a session is live, and the overlay is the one surface where an English
+    /// sentence at the moment something breaks is worst - it is what the user is looking at.
+    /// </summary>
+    private UiText Text => UiText.For(_settings.Language);
     private CancellationTokenSource? _autoWatch;
     private FrameSignature? _lastSignature;
     private string? _lastSourceText;
@@ -72,7 +79,7 @@ public sealed class TranslationSession : IDisposable
             var frame = await _frames.GetFrameAsync(region.Value, ct).ConfigureAwait(false);
             if (frame is null)
             {
-                Fail("Nothing was captured. Is the game running in Borderless Windowed mode?");
+                Fail(Text.NothingCaptured);
                 return;
             }
 
@@ -86,7 +93,7 @@ public sealed class TranslationSession : IDisposable
         {
             // Every exit path has to leave the overlay in a defined state. Reporting only to the
             // Settings status line left it showing "loading" forever, which reads as a hang.
-            Fail($"Translation failed: {e.Message}");
+            Fail(string.Format(Text.TranslationFailed, e.Message));
         }
         finally
         {
@@ -98,7 +105,7 @@ public sealed class TranslationSession : IDisposable
     {
         if (_autoWatch is not null)
         {
-            StopAutoWatch("Auto-watch off.");
+            StopAutoWatch(Text.AutoWatchOff);
             return;
         }
 
@@ -116,8 +123,7 @@ public sealed class TranslationSession : IDisposable
         };
         worker.Start();
 
-        Report($"Auto-watch on, {_settings.AutoWatchFps:0.#} fps. " +
-               $"Stops itself after {_settings.AutoWatchExpirySeconds}s with no new text.");
+        Report(string.Format(Text.AutoWatchOn, _settings.AutoWatchExpirySeconds));
     }
 
     private void AutoWatchLoop(CancellationToken ct)
@@ -137,7 +143,7 @@ public sealed class TranslationSession : IDisposable
                 // is not optional.
                 if (Stopwatch.GetElapsedTime(lastChange) > expiry)
                 {
-                    StopAutoWatch($"Auto-watch stopped after {expiry.TotalSeconds:0}s with no new text.");
+                    StopAutoWatch(string.Format(Text.AutoWatchExpired, expiry.TotalSeconds.ToString("0")));
                     return;
                 }
 
@@ -173,7 +179,7 @@ public sealed class TranslationSession : IDisposable
         }
         catch (Exception e)
         {
-            StopAutoWatch($"Auto-watch stopped: {e.Message}");
+            StopAutoWatch(string.Format(Text.AutoWatchStopped, e.Message));
         }
     }
 
@@ -197,8 +203,8 @@ public sealed class TranslationSession : IDisposable
         if (outcome.Body.Trim().Length < _settings.MinimumCharactersToTranslate)
         {
             Fail(outcome.Body.Trim().Length == 0
-                ? "No text in the capture region. Is a dialogue box actually on screen?"
-                : $"Only \"{outcome.Body.Trim()}\" found - too short to be dialogue.");
+                ? Text.NoTextInRegion
+                : string.Format(Text.TooShortToTranslate, outcome.Body.Trim()));
             return;
         }
 
@@ -230,8 +236,7 @@ public sealed class TranslationSession : IDisposable
             // replays recorded PNGs and ignores the region anyway.
             if (!PlatformServices.IsWindows) return CaptureRegion.Empty;
 
-            Fail($"Could not find a window for {_services.Profile.DisplayName}. " +
-                 "Is the game running, and not minimised?");
+            Fail(string.Format(Text.GameWindowNotFound, _services.Profile.DisplayName));
             return null;
         }
 
@@ -242,9 +247,73 @@ public sealed class TranslationSession : IDisposable
         }
 
         var client = window.ClientArea;
+
+        // The overlay follows the game. Raised only on a change, because auto-watch resolves a
+        // region twice a second and moving a window on every tick would fight the compositor.
+        if (_lastAnchor != client)
+        {
+            _lastAnchor = client;
+            GameWindowLocated?.Invoke(client);
+        }
+
+        // Said once per (profile, region, layout) rather than every frame - auto-watch runs at 2 fps
+        // and a warning repeated 120 times a minute is noise the user learns to ignore.
+        if (!profile.MatchesLayout(client.Width, client.Height, window.Scaling)
+            && _layoutWarnedFor != LayoutKey(profile, client))
+        {
+            _layoutWarnedFor = LayoutKey(profile, client);
+            Report(Text.RegionLayoutChanged);
+        }
+
         var relative = profile.Resolve(client.Width, client.Height);
-        return new CaptureRegion(client.X + relative.X, client.Y + relative.Y, relative.Width, relative.Height);
+        var region = relative.Translate(client.X, client.Y);
+
+        // The display layout can change under a stored region - a monitor unplugged, the game moved
+        // to a smaller screen. Capturing the overhang would BitBlt undefined pixels into OCR, which
+        // surfaces as garbage text and reads as the model getting worse.
+        var desktop = PlatformServices.VirtualDesktop();
+        if (desktop.IsEmpty || desktop.Contains(region)) return region;
+
+        var trimmed = region.ClampTo(desktop);
+        if (trimmed.IsEmpty)
+        {
+            Fail(Text.RegionOffScreenTrimmed);
+            return null;
+        }
+
+        if (_trimmedWarnedFor != LayoutKey(profile, client))
+        {
+            _trimmedWarnedFor = LayoutKey(profile, client);
+            Report(Text.RegionOffScreenTrimmed);
+        }
+
+        return trimmed;
     }
+
+    /// <summary>Identifies one region drawn against one window size, for once-only warnings.</summary>
+    private string LayoutKey(RegionProfile profile, CaptureRegion client) =>
+        $"{_services.Profile.Id}/{profile.Name}/{client.Width}x{client.Height}";
+
+    private string? _layoutWarnedFor;
+    private string? _trimmedWarnedFor;
+
+    /// <summary>
+    /// Raised when the game's window is located and has moved or resized since last time, so the
+    /// overlay can follow it. Marshalled to the UI thread by the subscriber, like <see cref="Status"/>:
+    /// auto-watch resolves regions on a background thread.
+    /// </summary>
+    public event Action<CaptureRegion>? GameWindowLocated;
+
+    /// <summary>Where the overlay should sit, or null when there is no game window to follow.</summary>
+    public CaptureRegion? OverlayAnchor()
+    {
+        var window = PlatformServices.FindGameWindow(
+            _services.Profile.WindowTitles, _services.Profile.ProcessNames);
+
+        return window?.ClientArea is { Width: > 0, Height: > 0 } client ? client : null;
+    }
+
+    private CaptureRegion? _lastAnchor;
 
     private void SaveFrameIfRequested(Frame frame)
     {
@@ -259,7 +328,7 @@ public sealed class TranslationSession : IDisposable
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             // Collecting frames is a convenience; never let it take down a play session.
-            Report($"Could not save frame: {e.Message}");
+            Report(string.Format(Text.CouldNotSaveFrame, e.Message));
         }
     }
 

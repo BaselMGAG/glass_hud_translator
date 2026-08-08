@@ -96,7 +96,13 @@ public partial class App : Application
 
         BindHotkeys(settings, settingsWindow);
 
-        settingsWindow.Opened += (_, _) => PositionOverlay(overlay);
+        settingsWindow.Opened += (_, _) => PositionOverlay(overlay, _session);
+
+        // The overlay follows the game window wherever it is, including onto a second monitor.
+        _session.GameWindowLocated += game => Dispatcher.UIThread.Post(() =>
+            overlay.Position = new PixelPoint(
+                game.X + (game.Width - (int)overlay.Width) / 2,
+                game.Y + (int)(game.Height * 0.72)));
         return settingsWindow;
     }
 
@@ -127,9 +133,10 @@ public partial class App : Application
                     _ = settingsWindow.CorrectCurrentAsync();
                     break;
                 case HotkeyAction.ToggleOverlay:
+                    var text = UiText.For(settings.Language);
                     settingsWindow.ReportStatus(overlay.ToggleHidden()
-                        ? "Overlay shown."
-                        : "Overlay hidden. Translation carries on in the background.");
+                        ? text.OverlayShown
+                        : text.OverlayHidden);
                     break;
             }
         });
@@ -259,9 +266,29 @@ public partial class App : Application
     /// Bottom-centre, roughly where a dialogue box sits. On Windows the saved region profile takes
     /// over once one exists.
     /// </summary>
-    private static void PositionOverlay(OverlayWindow overlay)
+    /// <summary>
+    /// Puts the overlay near the bottom of the game's window, falling back to the primary monitor
+    /// when there is no game to find.
+    ///
+    /// <para>
+    /// It was pinned to the primary monitor for the lifetime of the process. That was survivable
+    /// only while screen capture was also primary-only — both halves were wrong together, so a
+    /// player on a second display got nothing and knew it. Now that capture follows the game, an
+    /// overlay left behind is the worse failure: the translation happens, the quota is spent, and
+    /// the Arabic appears on a screen nobody is looking at.
+    /// </para>
+    /// </summary>
+    private static void PositionOverlay(OverlayWindow overlay, TranslationSession? session)
     {
         overlay.Show();
+
+        if (session?.OverlayAnchor() is { } game)
+        {
+            overlay.Position = new PixelPoint(
+                game.X + (game.Width - (int)overlay.Width) / 2,
+                game.Y + (int)(game.Height * 0.72));
+            return;
+        }
 
         if (overlay.Screens.Primary is not { } screen) return;
 

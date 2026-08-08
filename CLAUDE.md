@@ -34,7 +34,7 @@ solution level it tries to force `net10.0` onto the Windows-only projects and fa
 dotnet test
 ```
 
-333 tests, all runnable on macOS and Linux.
+339 tests, all runnable on macOS and Linux.
 
 ```bash
 dotnet run --project tools/Replay -- --no-cache
@@ -154,6 +154,28 @@ the `{0}`-style placeholders match between the two — a translation carrying a 
 does not have throws `FormatException` at runtime, and only ever for the users this project exists
 for. Platform error text (Win32 messages, "Global hotkeys are Windows-only") is deliberately left
 untranslated; it comes from the OS.
+
+**The primary monitor is not the screen.** Every "whole screen" call used to be
+`GetSystemMetrics(SM_CXSCREEN)`, which is the primary display alone — so a game on a second monitor
+was outside every captured frame. Worse, a monitor left of or above the primary starts at a
+*negative* coordinate, and `CaptureRegion.FitsWithin` requires a non-negative origin, so such a
+rectangle was actively refused three layers down in Core. Two questions, two methods: `FitsWithin`
+asks "is this inside a pixel buffer" (origin must be ≥ 0, there is no pixel at −1); `Contains` asks
+"is this on the desktop" against an origin that is wherever the monitors put it. `ClampTo` trims a
+region the layout has moved under, because capturing the overhang BitBlts undefined pixels into OCR
+and that reads as the model getting worse.
+
+**But the client area a region is measured against must stay one monitor wide.** Regions are stored
+as fractions of it, so widening it to the union of every display silently relocates every region
+already saved — "22% from the left, 56% wide" becomes a band straddling the seam between two
+screens, half of it reading the wrong display. `WholeScreen()` follows the monitor under the
+foreground window for exactly this reason. `CaptureFullScreen()` is the opposite case and genuinely
+wants the whole virtual desktop, because the picker has to be able to show you every screen.
+
+**The overlay follows the game window.** It was pinned to the primary monitor, which was survivable
+only while capture was primary-only — both halves were wrong together, so a player on a second
+display got nothing and knew it. Once capture follows the game, an overlay left behind is worse: the
+translation happens, the quota is spent, and the Arabic appears on a screen nobody is looking at.
 
 **Anything the user creates goes in `AppPaths.UserProfiles`, never in `profiles/`.** The app folder
 ships with the release and is replaced wholesale by an update — the release notes say so in both
