@@ -590,7 +590,9 @@ public sealed class UiText
         TestKey = "جرّبه",
         TestingKey = "جارٍ التجربة...",
         KeyWorks = "يعمل",
-        KeyWorksSaved = "يعمل — حُفِظ المفتاح",
+        // No em dash: it is not in the bundled font (checked against the cmap), and this is the
+        // one line that has to be legible - it is the confirmation that setup actually took.
+        KeyWorksSaved = "يعمل، وحُفِظ المفتاح",
         KeyRejected = "رُفض هذا المفتاح",
         KeyUnknown = "تعذّر التحقّق الآن",
         TestKeysNote =
