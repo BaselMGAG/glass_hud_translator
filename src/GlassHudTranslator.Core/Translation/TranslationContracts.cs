@@ -85,8 +85,16 @@ public enum ProviderFailure
     /// <summary>429. Stop using this provider for a while and move to the next lane.</summary>
     RateLimited,
 
-    /// <summary>5xx, timeout, socket error. Worth a bounded retry.</summary>
+    /// <summary>5xx, socket error. Worth a bounded retry — the next attempt may genuinely differ.</summary>
     Transient,
+
+    /// <summary>
+    /// The per-attempt cap fired. Distinct from <see cref="Transient"/> because the right response
+    /// is the opposite: a 500 is worth the same model again, but a model that could not answer in
+    /// ten seconds will not answer in the next ten either, and retrying it turns one slow model
+    /// into half a minute of overlay silence. Move to the next model.
+    /// </summary>
+    Timeout,
 
     /// <summary>Bad or missing key, malformed request. Retrying cannot help.</summary>
     Fatal,

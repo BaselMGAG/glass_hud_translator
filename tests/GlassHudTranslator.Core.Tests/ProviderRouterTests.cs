@@ -419,6 +419,84 @@ internal sealed class HangingProvider(string name) : ITranslationProvider
     }
 }
 
+public class ProviderTimeoutTests
+{
+    private static readonly RouterOptions FastRetries = new()
+    {
+        RetryBaseDelay = TimeSpan.FromMilliseconds(1),
+    };
+
+    [Fact]
+    public async Task ATimeoutMovesToTheNextModelInsteadOfRetryingTheSameOne()
+    {
+        // The free lanes run reasoning models now, and a model that spent the whole window
+        // thinking will spend the next window the same way. Retrying used to triple the wait:
+        // three ten-second attempts on a model that was never going to answer, while the overlay
+        // showed nothing. One try, next model.
+        var provider = new FakeProvider("gemini", "slow", "fast");
+        provider.Fails(ProviderFailure.Timeout).Returns("ترجمة");
+        var router = new ProviderRouter([(provider, 600)], FastRetries);
+
+        var result = await router.TranslateAsync(
+            new TranslationRequest("Come with me.", RequestedAt: DateTimeOffset.UtcNow),
+            CancellationToken.None);
+
+        Assert.Equal("ترجمة", result.Text);
+        Assert.Equal(2, provider.Calls.Count);
+        Assert.Equal("slow", provider.Calls[0].Model);
+        Assert.Equal("fast", provider.Calls[1].Model);
+    }
+
+    [Fact]
+    public async Task EveryModelTimingOutStillEndsInEnglishFallbackNotAnException()
+    {
+        var provider = new FakeProvider("gemini", "m1", "m2");
+        provider.Fails(ProviderFailure.Timeout, times: 2);
+        var router = new ProviderRouter([(provider, 600)], FastRetries);
+
+        var result = await router.TranslateAsync(
+            new TranslationRequest("Come with me.", RequestedAt: DateTimeOffset.UtcNow),
+            CancellationToken.None);
+
+        Assert.True(result.IsFallbackEnglish);
+        Assert.Equal(2, provider.Calls.Count);   // one attempt per model, no retries
+    }
+}
+
+public class InlineReasoningTests
+{
+    [Fact]
+    public void ReasoningAheadOfTheAnswerIsStripped()
+    {
+        // Qwen-family models on these endpoints put their chain of thought inline, before the
+        // answer. Unstripped, the overlay shows paragraphs of English deliberation with the Arabic
+        // at the bottom - and the cache stores all of it forever under that line's key.
+        var content = "<think>The user wants Arabic. Let me consider tone...</think>\nتعال معي.";
+
+        Assert.Equal("\nتعال معي.", OpenAiCompatibleProvider.StripInlineReasoning(content));
+    }
+
+    [Fact]
+    public void AnUnterminatedThinkBlockIsNoAnswerAtAll()
+    {
+        // The model ran out of tokens mid-thought. Half a chain of thought must not ship as a
+        // translation; null routes it into the empty-completion failure, which is the truth.
+        Assert.Null(OpenAiCompatibleProvider.StripInlineReasoning(
+            "<think>First, the aetheryte. The word aether comes from"));
+    }
+
+    [Fact]
+    public void OrdinaryAnswersPassThroughUntouched()
+    {
+        Assert.Equal("تعال معي.", OpenAiCompatibleProvider.StripInlineReasoning("تعال معي."));
+        Assert.Null(OpenAiCompatibleProvider.StripInlineReasoning(null));
+
+        // A think tag mid-answer is content, not a wrapper - only a LEADING block is reasoning.
+        var mentions = "الكلمة <think> تعني التفكير.";
+        Assert.Equal(mentions, OpenAiCompatibleProvider.StripInlineReasoning(mentions));
+    }
+}
+
 public class StubProviderTests
 {
     [Fact]

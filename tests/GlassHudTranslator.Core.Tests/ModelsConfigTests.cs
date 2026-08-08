@@ -139,6 +139,24 @@ public class ShippedModelsFileTests
     }
 
     [Fact]
+    public void EveryShippedLaneBudgetsForReasoningModels()
+    {
+        // The config default of 300 tokens was sized for models that answer immediately. The free
+        // catalogues are reasoning models now, and their thinking spends max_tokens before one
+        // word of output exists - at 300 every completion came back empty, on every model of both
+        // free lanes at once, while the key test passed because "Hello." needs no thought. A lane
+        // relying on the default is one catalogue churn away from the same silent death, so every
+        // shipped lane must state a budget with room to think.
+        foreach (var lane in Shipped().Providers)
+        {
+            Assert.True(lane.MaxOutputTokens >= 1024,
+                $"Lane '{lane.Name}' has maxOutputTokens {lane.MaxOutputTokens}. A reasoning "
+                + "model burns that on thinking and returns an empty completion - set it to 1024 "
+                + "or more in data/models.json.");
+        }
+    }
+
+    [Fact]
     public void EveryPaidLaneNamesWhereToGetItsKey()
     {
         foreach (var paid in Shipped().Providers.Where(p => p.IsPaid))

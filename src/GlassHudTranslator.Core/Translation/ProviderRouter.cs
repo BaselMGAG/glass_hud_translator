@@ -11,8 +11,17 @@ public sealed record RouterOptions
     /// </summary>
     public TimeSpan StaleAfter { get; init; } = TimeSpan.FromSeconds(6);
 
-    /// <summary>Hard cap per attempt. Same reasoning as <see cref="StaleAfter"/>.</summary>
-    public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(4);
+    /// <summary>
+    /// Hard cap per attempt. Ten seconds, up from four, and the four was not wrong when it was
+    /// written: the free models of early 2026 answered a one-line translation in about a second,
+    /// so four seconds was generous. Their replacements are reasoning models - they think before
+    /// they answer, the thinking takes seconds, and it happens on the provider's clock. Under the
+    /// old cap every attempt on such a model timed out by construction: the key test passed (its
+    /// budget is 20 s) while every real translation died, which reads as "the API works but the
+    /// app is broken". The stale gate below still drops requests that queued too long; this cap
+    /// governs how long one attempt may run once it has started, and those are different budgets.
+    /// </summary>
+    public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(10);
 
     /// <summary>How long a 429 sidelines a provider before it is tried again.</summary>
     public TimeSpan RateLimitCooldown { get; init; } = TimeSpan.FromSeconds(60);
@@ -158,6 +167,14 @@ public sealed class ProviderRouter(
                             _log($"router: {lane.Provider.Name} rate limited, cooling down " +
                                  $"{_options.RateLimitCooldown.TotalSeconds:F0}s");
                             return null;
+
+                        case ProviderFailure.Timeout:
+                            // Next model, no retry. Retrying a timeout re-runs the exact thing
+                            // that just spent the whole window, and with reasoning models in the
+                            // free lanes a "retry" is ten more seconds of overlay silence for a
+                            // near-certain identical result.
+                            _log($"router: {lane.Provider.Name}/{model} timed out, next model");
+                            goto nextModel;
 
                         case ProviderFailure.Fatal:
                             _log($"router: {lane.Provider.Name} fatal - {detail}");

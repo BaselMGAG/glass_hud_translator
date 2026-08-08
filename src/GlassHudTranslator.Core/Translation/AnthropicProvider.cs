@@ -73,7 +73,9 @@ public sealed class AnthropicProvider(
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            throw new ProviderException(Name, model, ProviderFailure.Transient, "Request timed out.");
+            // Same contract as OpenAiCompatibleProvider: a timeout moves to the next model rather
+            // than being retried on this one.
+            throw new ProviderException(Name, model, ProviderFailure.Timeout, "Request timed out.");
         }
         catch (AnthropicNotFoundException e)
         {

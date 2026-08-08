@@ -60,9 +60,10 @@ public sealed class OpenAiCompatibleProvider(
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            // The 4-second cap fired. Past that the dialogue has advanced and the answer is
-            // worthless, so this is a transient failure to be moved past, not waited on.
-            throw new ProviderException(Name, model, ProviderFailure.Transient, "Request timed out.");
+            // The per-attempt cap fired. Timeout, not Transient: the router retries transients on
+            // the same model, and a model that spent the whole window thinking will do it again -
+            // the useful next step is the next model, immediately.
+            throw new ProviderException(Name, model, ProviderFailure.Timeout, "Request timed out.");
         }
         catch (HttpRequestException e)
         {
@@ -75,13 +76,33 @@ public sealed class OpenAiCompatibleProvider(
                 throw await FailureFor(response, model, ct).ConfigureAwait(false);
 
             var body = await response.Content.ReadFromJsonAsync<ChatResponse>(Json, ct).ConfigureAwait(false);
-            var text = body?.Choices?.FirstOrDefault()?.Message?.Content?.Trim();
+            var text = StripInlineReasoning(body?.Choices?.FirstOrDefault()?.Message?.Content)?.Trim();
 
             if (string.IsNullOrWhiteSpace(text))
                 throw new ProviderException(Name, model, ProviderFailure.Transient, "Empty completion.");
 
             return text;
         }
+    }
+
+    /// <summary>
+    /// Removes a leading <c>&lt;think&gt;...&lt;/think&gt;</c> block. Qwen-family models on
+    /// OpenAI-compatible endpoints put their reasoning inline in the content, ahead of the answer
+    /// — left alone, the overlay would show paragraphs of English deliberation with the Arabic at
+    /// the bottom, and the cache would store all of it forever. An unterminated block means the
+    /// model ran out of tokens mid-thought and never answered at all; returning null lets the
+    /// empty-completion check below say so, rather than shipping half a chain of thought as a
+    /// "translation".
+    /// </summary>
+    internal static string? StripInlineReasoning(string? content)
+    {
+        if (content is null) return null;
+
+        var trimmed = content.TrimStart();
+        if (!trimmed.StartsWith("<think>", StringComparison.OrdinalIgnoreCase)) return content;
+
+        var end = trimmed.IndexOf("</think>", StringComparison.OrdinalIgnoreCase);
+        return end < 0 ? null : trimmed[(end + "</think>".Length)..];
     }
 
     private async Task<ProviderException> FailureFor(HttpResponseMessage response, string model, CancellationToken ct)

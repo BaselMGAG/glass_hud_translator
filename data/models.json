@@ -40,6 +40,22 @@
     "rare event, it is the normal end of a free model's life, and it arrives without warning. Check",
     "both lanes against each provider's own /models endpoint before blaming anything else.",
     "",
+    "maxOutputTokens on the free lanes is 4096 and MUST stay large. The replacement free models are",
+    "REASONING models: they think before answering, and on these endpoints the thinking spends the",
+    "max_tokens budget before one word of output exists. At the old default of 300 every completion",
+    "came back empty - deterministically, on every model of both lanes at once - while the key test",
+    "passed, because 'Hello.' needs almost no thought. Tokens cost nothing that matters here (the",
+    "workload is request-limited, see docs/BRIEF.md section 5); silent empty answers cost the whole",
+    "app.",
+    "",
+    "Verified-working models sit FIRST in each lane, newest do not. gemini-2.5-flash and",
+    "llama-3.3-70b-versatile are the two that demonstrably answered on real keys on 8 August; both",
+    "are scheduled to die (October / 'during August'), and when they do the router logs MODEL GONE",
+    "and falls through to the successors already listed behind them. A dead model costs one fast",
+    "404 per line; an unverified model placed first risks costing the whole lane. gemini-3.6-flash",
+    "was dropped entirely: unconfirmed free-tier status, and after the timeout lesson every extra",
+    "maybe-model in the walk is worst-case latency, not safety.",
+    "",
     "Order within the lane is preference, and it is deliberately NOT newest-first. 3.5-flash and",
     "3.1-flash-lite are the two Google was listing on the free tier in July 2026; 3.6-flash is newer",
     "but its free-tier status is unconfirmed, and a paid-only model at the top of this list costs",
@@ -63,7 +79,8 @@
       "secret": "GeminiApiKey",
       "rpm": 13,
       "rpd": 1000,
-      "models": ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.6-flash", "gemini-2.5-flash"]
+      "maxOutputTokens": 4096,
+      "models": ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite"]
     },
     {
       "name": "groq",
@@ -74,7 +91,8 @@
       "secret": "GroqApiKey",
       "rpm": 28,
       "rpd": 14400,
-      "models": ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]
+      "maxOutputTokens": 4096,
+      "models": ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "openai/gpt-oss-20b"]
     },
     {
       "name": "openai",
@@ -110,6 +128,7 @@
       "rpm": 120,
       "rpd": 1000000,
       "devOnly": true,
+      "maxOutputTokens": 4096,
       "models": ["qwen3:8b"]
     }
   ]
