@@ -240,6 +240,23 @@ public sealed class StableOcrReader {
     public Task<string> ReadStableAsync(Func<Task<Frame>> grab, CancellationToken ct);
 }
 
+// ── Region proposal ────────────────────────────────────────────────────────
+// Pure geometry over OCR word boxes: no capture, no OCR, no I/O, so the ranking is testable
+// against layouts written by hand rather than against whatever the frame generator draws.
+public enum TextRegionKind { Unknown, Dialogue, Subtitle, SidePanel }
+
+public sealed record RegionCandidate(
+    CaptureRegion Bounds, TextRegionKind Kind,
+    int WordCount, int LineCount, float MeanConfidence,
+    double Score);                               // orders candidates within ONE call. Not a
+                                                 // probability; never show it as a percentage.
+public static class RegionFinder {
+    public static IReadOnlyList<RegionCandidate> Propose(   // ranked best first; EMPTY when the
+        IReadOnlyList<OcrWord> words,                       // evidence is weak, because a wrong
+        int frameWidth, int frameHeight,                    // first proposal costs the user's
+        RegionFinderOptions? options = null);               // trust in every later one
+}
+
 // ── Text ───────────────────────────────────────────────────────────────────
 public static class TextNormalizer {
     public static string Normalize(string raw, IReadOnlyDictionary<string,string> corrections);

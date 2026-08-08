@@ -34,7 +34,7 @@ solution level it tries to force `net10.0` onto the Windows-only projects and fa
 dotnet test
 ```
 
-391 tests, all runnable on macOS and Linux.
+406 tests, all runnable on macOS and Linux.
 
 ```bash
 dotnet run --project tools/Replay -- --no-cache
@@ -144,6 +144,23 @@ and divides back down; both engines pass their own. Forget it and the boxes are 
 name. The unit test on the arithmetic cannot catch a caller that simply omits the argument, so
 there is a second test that reads one frame at 1x and at 2x and requires the words to land in the
 same place. It has been mutation-checked. Any new engine returning geometry owes the same mapping.
+
+**A region proposal returns nothing rather than a weak guess.** `RegionFinder` is offered to
+someone who cannot check the rectangle against the English, at the first moment they use the app.
+One confident box drawn around a health bar teaches them the suggestions here are not to be
+trusted, and nothing offered afterwards recovers that — so below three accepted words it returns an
+empty list, and a block whose shape says nothing is `Unknown` rather than a guessed kind. The
+integration test asserts that a dialogue *crop* classifies as `Unknown`, because a crop has no
+bottom third: if that ever starts returning `Dialogue`, the classifier has learned to pattern-match
+on nothing. Rejected words never contribute — a UI border read as `|~` at confidence 8 is exactly
+what invents a text region where there is no text.
+
+**The proposal heuristics have never seen a real game frame.** They are tested against layouts
+written out by hand, deliberately: `test-frames/` is synthetic, so tuning the ranking against
+rendered frames would measure `SyntheticFrames` rather than the ranking. Hand-built geometry at
+least states the layout each rule claims to handle. This is the highest-value thing a real capture
+corpus would fix, and until then treat any threshold in `RegionFinderOptions` as a guess with a
+rationale, not as a measurement.
 
 **Don't raise `MinWordConfidence` back to 40.** At 40 it silently deleted the word "linkpearl",
 which Tesseract had actually read perfectly at confidence 39.2. Tesseract scores unusual proper
