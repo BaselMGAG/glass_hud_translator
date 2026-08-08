@@ -18,6 +18,9 @@ internal sealed class FakeProvider(string name, params string[] models) : ITrans
 
     public List<(string Model, int Attempt)> Calls { get; } = [];
 
+    /// <summary>Every request as received, so tests can assert on context, glossary and speaker.</summary>
+    public List<TranslationRequest> Requests { get; } = [];
+
     public FakeProvider Returns(string text)
     {
         _script.Enqueue(_ => text);
@@ -34,6 +37,7 @@ internal sealed class FakeProvider(string name, params string[] models) : ITrans
     public Task<string> TranslateAsync(TranslationRequest request, string model, CancellationToken ct)
     {
         Calls.Add((model, Calls.Count));
+        Requests.Add(request);
         if (_script.Count == 0) throw new ProviderException(Name, model, ProviderFailure.Fatal, "script exhausted");
         return Task.FromResult(_script.Dequeue()(model));
     }
@@ -355,12 +359,31 @@ public class PromptBuilderTests
     [Fact]
     public void CarriesOneLineOfContextForPronounAgreement()
     {
-        var request = new TranslationRequest("And then?", PreviousLine: "She went to Limsa Lominsa.");
+        var request = new TranslationRequest("And then?", PreviousLines: ["She went to Limsa Lominsa."]);
 
         var (_, user) = PromptBuilder.Build(request);
 
         Assert.Contains("Previous line:", user);
         Assert.Contains("She went to Limsa Lominsa.", user);
+    }
+
+    [Fact]
+    public void RendersAContextWindowOldestFirst()
+    {
+        var request = new TranslationRequest("And then?", PreviousLines:
+            ["First this was said.", "Then this.", "And finally this."]);
+
+        var (_, user) = PromptBuilder.Build(request);
+
+        // The header says which end is which, because the model has no other way to know - and a
+        // window read newest-first inverts who "she" was two lines ago.
+        Assert.Contains("Previous lines, oldest first:", user);
+        Assert.True(
+            user.IndexOf("First this was said.", StringComparison.Ordinal)
+                < user.IndexOf("Then this.", StringComparison.Ordinal)
+            && user.IndexOf("Then this.", StringComparison.Ordinal)
+                < user.IndexOf("And finally this.", StringComparison.Ordinal),
+            "Context lines rendered out of order.");
     }
 
     [Theory]

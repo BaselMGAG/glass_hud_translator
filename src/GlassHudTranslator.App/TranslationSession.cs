@@ -2,6 +2,7 @@ using System.Diagnostics;
 using GlassHudTranslator.App.Views;
 using GlassHudTranslator.Core.Capture;
 using GlassHudTranslator.Core.Config;
+using GlassHudTranslator.Core.Pipeline;
 using GlassHudTranslator.Core.Platform;
 using GlassHudTranslator.Core.Regions;
 using GlassHudTranslator.Core.Translation;
@@ -196,11 +197,18 @@ public sealed class TranslationSession : IDisposable
         SaveFrameIfRequested(frame);
         _services.Pipeline.Register = _settings.Register;
 
-        var outcome = await _services.Pipeline.ProcessAsync(frame, ct).ConfigureAwait(false);
+        // In the pipeline rather than checked here afterwards: it used to be an after-the-fact
+        // guard, which meant the "too short to translate" line had already been translated, paid
+        // for, and cached by the time it was discarded.
+        _services.Pipeline.MinimumBodyCharacters = _settings.MinimumCharactersToTranslate;
 
-        // Guards against burning a request on an empty dialogue box: a stray glyph or a UI border
-        // can OCR to one or two characters, which is not dialogue.
-        if (outcome.Body.Trim().Length < _settings.MinimumCharactersToTranslate)
+        var outcome = await _services.Pipeline
+            .ProcessAsync(frame, _settings.LastRegionProfile, SourceKind.Screen, ct)
+            .ConfigureAwait(false);
+
+        // Null result: nothing was attempted - an empty dialogue box, or a stray glyph or UI
+        // border that OCR'd to a character or two, which is not dialogue.
+        if (outcome.Result is not { } result)
         {
             Fail(outcome.Body.Trim().Length == 0
                 ? Text.NoTextInRegion
@@ -209,14 +217,14 @@ public sealed class TranslationSession : IDisposable
         }
 
         _lastSourceText = outcome.Body;
-        _lastArabic = outcome.Result.Text;
+        _lastArabic = result.Text;
 
-        if (outcome.Result.IsFallbackEnglish)
-            _overlay.ShowFallbackEnglish(outcome.Speaker, outcome.Result.Text);
+        if (result.IsFallbackEnglish)
+            _overlay.ShowFallbackEnglish(outcome.Speaker, result.Text);
         else
-            _overlay.ShowTranslation(outcome.Speaker, outcome.Result.Text);
+            _overlay.ShowTranslation(outcome.Speaker, result.Text);
 
-        var source = outcome.Result.FromCache ? "cache" : $"{outcome.Result.Provider}/{outcome.Result.Model}";
+        var source = result.FromCache ? "cache" : $"{result.Provider}/{result.Model}";
         Report($"{source} · {outcome.Total.TotalMilliseconds:F0} ms · OCR confidence {outcome.OcrConfidence:F0}");
     }
 

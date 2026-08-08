@@ -119,6 +119,27 @@ public class TesseractTsvParsingTests
 
         Assert.Equal("Come with", result.RawText);
         Assert.Equal(2, result.WordCount);
+        Assert.Equal(1, result.RejectedWordCount);
+    }
+
+    [Fact]
+    public void AnIllegibleFrameIsNotReportedAsAnEmptyOne()
+    {
+        // Both produce empty text, and they call for opposite responses: an empty region has
+        // nothing to do, an illegible one is the case a better OCR engine exists for. The reject
+        // count is the only number that can tell them apart - confidence cannot, because it is
+        // averaged over the words that survived the filter.
+        var tsv = string.Join('\n', [
+            Header,
+            Row(1, 1, 1, 1, 20f, "sm~ared"),
+            Row(1, 1, 1, 2, 15f, "t3xt"),
+        ]);
+
+        var illegible = TesseractCliEngine.ParseTsv(tsv, minWordConfidence: 40f);
+
+        Assert.True(illegible.IsEmpty);
+        Assert.Equal(2, illegible.RejectedWordCount);
+        Assert.Equal(0, TesseractCliEngine.ParseTsv(Header, 40f).RejectedWordCount);
     }
 
     [Fact]

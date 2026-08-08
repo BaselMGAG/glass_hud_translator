@@ -150,6 +150,7 @@ public sealed class TesseractCliEngine(TesseractOptions? options = null) : IOcrE
         var lines = new Dictionary<(int Block, int Par, int Line), List<string>>();
         var order = new List<(int Block, int Par, int Line)>();
         var confidences = new List<float>();
+        var rejected = 0;
 
         foreach (var row in tsv.Split('\n'))
         {
@@ -161,7 +162,15 @@ public sealed class TesseractCliEngine(TesseractOptions? options = null) : IOcrE
             if (text.Length == 0) continue;
 
             if (!float.TryParse(columns[10], CultureInfo.InvariantCulture, out var confidence)) continue;
-            if (confidence < minWordConfidence) continue;
+            if (confidence < minWordConfidence)
+            {
+                // Counted, not just dropped. The reject count is what tells an empty region apart
+                // from an illegible one, and it is the per-region signal a future second OCR engine
+                // would be chosen by - mean confidence cannot serve there, because it is averaged
+                // over the words that survived this very filter.
+                rejected++;
+                continue;
+            }
 
             var key = (block, int.Parse(columns[3], CultureInfo.InvariantCulture),
                 int.Parse(columns[4], CultureInfo.InvariantCulture));
@@ -176,7 +185,10 @@ public sealed class TesseractCliEngine(TesseractOptions? options = null) : IOcrE
             confidences.Add(confidence);
         }
 
-        if (order.Count == 0) return OcrResult.Empty;
+        // Not the shared Empty when words were seen and all distrusted: that frame is illegible,
+        // not blank, and collapsing the two was hiding exactly the frames a better engine is for.
+        if (order.Count == 0)
+            return rejected == 0 ? OcrResult.Empty : new OcrResult(string.Empty, 0, 0, rejected);
 
         var builder = new StringBuilder();
         foreach (var key in order)
@@ -185,7 +197,7 @@ public sealed class TesseractCliEngine(TesseractOptions? options = null) : IOcrE
             builder.Append(string.Join(' ', lines[key]));
         }
 
-        return new OcrResult(builder.ToString(), confidences.Average(), confidences.Count);
+        return new OcrResult(builder.ToString(), confidences.Average(), confidences.Count, rejected);
     }
 
     public void Dispose() { }

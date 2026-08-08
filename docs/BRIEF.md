@@ -242,7 +242,7 @@ So even after outgrowing free tiers, the LLM path stays ~16× cheaper *and* prod
 
 ## 5. Quota mathematics
 
-**Per request:** ~200 input tokens (system prompt + glossary subset + speaker + previous line + current line) + ~80 output tokens ≈ 280 tokens.
+**Per request:** ~250 input tokens (system prompt + glossary subset + speaker + up to three previous lines + current line) + ~80 output tokens ≈ 330 tokens.
 
 **Conclusion: the workload is request-limited, not token-limited.** Tokens never approach any ceiling. Design around RPM and RPD only.
 

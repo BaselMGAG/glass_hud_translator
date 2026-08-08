@@ -63,7 +63,7 @@ public static class KeyProbe
         timeout.CancelAfter(budget);
 
         var request = new TranslationRequest(
-            Probe, Speaker: null, Glossary: [], PreviousLine: null,
+            Probe, Speaker: null, Glossary: [], PreviousLines: null,
             Register: ArabicRegister.ModernStandard, RequestedAt: DateTimeOffset.UtcNow);
 
         // Walk the model list exactly as the router does. A provider whose first model has been

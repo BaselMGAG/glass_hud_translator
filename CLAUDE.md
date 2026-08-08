@@ -34,7 +34,7 @@ solution level it tries to force `net10.0` onto the Windows-only projects and fa
 dotnet test
 ```
 
-368 tests, all runnable on macOS and Linux.
+383 tests, all runnable on macOS and Linux.
 
 ```bash
 dotnet run --project tools/Replay -- --no-cache
@@ -112,6 +112,29 @@ complaint. That is only safe while nothing it knew about has moved.
 case-preserved text for the prompt; `CacheKey` lowercases on its way into SHA-256. Casing is real
 signal to the model — "limsa lominsa" translates worse than "Limsa Lominsa". And the realistic way
 to exhaust a daily API quota isn't long sessions, it's one line hashing two different ways.
+
+**Context reaches the prompt and never the cache key, and that is a decision, not an oversight.**
+The prompt already carries the game, the style hint, the glossary, the speaker and now three
+previous lines; the key hashes the body alone. So the same English line in two games returns one
+cached Arabic translation — a real limitation, accepted knowingly, because hit rate is the entire
+quota argument and a context digest in the key would shred it. What keeps that tolerable is
+`TranslationPipeline.ContextWindow` staying small: a cache hit replays with *no* context at all, so
+the wider the window, the worse a hit is relative to a live translation. Three lines is the cap.
+Widening it is not a tuning change — it is a change to how wrong cached lines are allowed to be,
+and `translations.source` is what makes re-keying later a migration rather than data loss.
+
+**The too-short guard belongs before the cache lookup, not after the translation.** It used to run
+in `TranslationSession` on the returned outcome, which is to say after the line had been hashed,
+looked up, sent to a provider, paid for, cached and pushed into context — every side effect the
+guard exists to prevent had already happened, and only the display was suppressed. It is
+`TranslationPipeline.MinimumBodyCharacters` now. Any future "don't translate this" rule goes in the
+same place, ahead of `cache.TryGetAsync`, or it is decoration.
+
+**`PipelineOutcome.Result` is null when nothing was attempted.** An empty region and a two-character
+misread are not failed translations, and they used to be reported as one — a fabricated
+`TranslationResult` carrying the `stale` outcome, which read to every consumer as "the provider let
+us down". Null says the truth. Every consumer must branch on it; there is one in the App, one in
+Settings and one in Replay.
 
 **Don't raise `MinWordConfidence` back to 40.** At 40 it silently deleted the word "linkpearl",
 which Tesseract had actually read perfectly at confidence 39.2. Tesseract scores unusual proper

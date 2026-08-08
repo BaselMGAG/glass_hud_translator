@@ -17,13 +17,21 @@ public sealed record TranslationRequest(
     string Body,
     string? Speaker = null,
     IReadOnlyList<GlossaryTerm>? Glossary = null,
-    string? PreviousLine = null,
+    IReadOnlyList<string>? PreviousLines = null,
     ArabicRegister Register = ArabicRegister.ModernStandard,
     DateTimeOffset RequestedAt = default,
     string GameName = "a video game",
     string? StyleHint = null)
 {
     public IReadOnlyList<GlossaryTerm> GlossaryTerms => Glossary ?? [];
+
+    /// <summary>
+    /// Oldest first. The pipeline caps this at <see cref="Pipeline.TranslationPipeline.ContextWindow"/>
+    /// lines; it must stay small, because cached translations replay WITHOUT this context - the
+    /// cache key deliberately hashes the body alone - and the window is what keeps that
+    /// approximation tolerable.
+    /// </summary>
+    public IReadOnlyList<string> ContextLines => PreviousLines ?? [];
 
     public DateTimeOffset Requested => RequestedAt == default ? DateTimeOffset.UtcNow : RequestedAt;
 }

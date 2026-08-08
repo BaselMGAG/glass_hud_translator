@@ -255,10 +255,11 @@ public sealed class GlossaryMatcher {                   // longest-first, word-b
 public enum ArabicRegister { ModernStandard, Egyptian }
 public sealed record TranslationRequest(
     string Body, string? Speaker,
-    IReadOnlyList<GlossaryTerm> Glossary,
-    string? PreviousLine,
+    IReadOnlyList<GlossaryTerm>? Glossary,
+    IReadOnlyList<string>? PreviousLines,               // oldest first, capped at ContextWindow (3)
     ArabicRegister Register,
-    DateTimeOffset RequestedAt);                        // for the >6 s staleness drop
+    DateTimeOffset RequestedAt,                         // for the >6 s staleness drop
+    string GameName, string? StyleHint);                // from the active profile
 
 public sealed record TranslationResult(
     string Arabic, string Provider, string Model,
@@ -381,15 +382,20 @@ public interface ITranslationCache {
 //
 //   Core/Pipeline/TranslationPipeline  - frame in, PipelineOutcome out. Owns OCR, normalisation,
 //                                        parsing, cache, glossary and the router call. Holds
-//                                        mutable per-profile state (glossary, corrections, style,
-//                                        previous line) swapped by UseProfile, so it is NOT safe to
-//                                        call concurrently. Anything adding a second source has to
-//                                        settle that first.
+//                                        mutable per-profile state (glossary, corrections, style)
+//                                        swapped by UseProfile; that state is still NOT safe to
+//                                        swap concurrently, though the rolling context queue is
+//                                        now lock-guarded because three threads reach it.
 //   App/TranslationSession             - owns the loop: hotkeys, auto-watch (2 fps, 90 s
 //                                        self-expiry), change detection, overlay updates, status.
+public enum SourceKind { Screen, RecordedFrame }
+
 public sealed record PipelineOutcome(
     string RawOcr, string Normalized, string? Speaker, string Body,
-    TranslationResult Result, TimeSpan Ocr, TimeSpan Total, bool Skipped);
+    IReadOnlyList<GlossaryTerm> GlossaryHits,
+    TranslationResult? Result,              // null = nothing attempted: empty region, or too short
+    float OcrConfidence, TimeSpan Total,
+    string? RegionKey, SourceKind Source, int RejectedWordCount);
 ```
 
 ---
@@ -466,7 +472,7 @@ Two things this shape is load-bearing for, both learned the hard way:
 
 ### SQLite — one file, `%APPDATA%\GlassHudTranslator\glasshud.db`, WAL
 
-`AppDatabase.SchemaVersion` is **2**. Migrations are additive **forever**: never rename a column,
+`AppDatabase.SchemaVersion` is **3**. Migrations are additive **forever**: never rename a column,
 never drop one. There is deliberately no self-updater, so re-unzipping an older release is a
 supported recovery, and an older build opening a newer database proceeds without complaint.
 
@@ -497,7 +503,9 @@ CREATE TABLE translation_log (         -- brief §12: the correction/analysis da
   arabic      TEXT,
   latency_ms  INTEGER,
   from_cache  INTEGER NOT NULL,
-  outcome     TEXT NOT NULL            -- ok | stale | fallback_english | error:<kind>
+  outcome     TEXT NOT NULL,           -- ok | stale | fallback_english | error:<kind>
+  game        TEXT,                    -- v3. NULL on rows written before the column existed:
+  region      TEXT                     -- unknown provenance, not a game named nothing.
 );
 
 CREATE TABLE quota (

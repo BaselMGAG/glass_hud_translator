@@ -62,12 +62,17 @@ public static class PromptBuilder
             builder.AppendLine();
         }
 
-        // One line of context, not a transcript: it disambiguates pronouns and gender agreement
-        // without pushing the request size up on every call.
-        if (!string.IsNullOrWhiteSpace(request.PreviousLine))
+        // A few lines of context, not a transcript: they disambiguate pronouns and gender
+        // agreement without pushing the request size up on every call. The pipeline caps the
+        // window at three - anything wider buys little and widens the gap between a live
+        // translation and a cache hit, which carries no context at all.
+        if (request.ContextLines.Count > 0)
         {
-            builder.AppendLine("Previous line:");
-            builder.AppendLine(request.PreviousLine);
+            builder.AppendLine(request.ContextLines.Count == 1
+                ? "Previous line:"
+                : "Previous lines, oldest first:");
+            foreach (var line in request.ContextLines)
+                builder.AppendLine(line);
             builder.AppendLine();
         }
 

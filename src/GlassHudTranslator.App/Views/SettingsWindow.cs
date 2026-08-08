@@ -1194,16 +1194,30 @@ public sealed class SettingsWindow : Window
             var frame = Core.Diagnostics.SyntheticFrames.Render(
                 new Core.Diagnostics.SyntheticLine("Y'shtola", "Come, the aether here grows unstable."));
 
-            var outcome = await _services.Pipeline.ProcessAsync(frame, CancellationToken.None);
+            // Not the live screen, so it does not claim to be. A rendered frame with a known-good
+            // line: if nothing comes back the pipeline is broken, not the capture region.
+            var outcome = await _services.Pipeline.ProcessAsync(frame, regionKey: null,
+                Core.Pipeline.SourceKind.RecordedFrame, CancellationToken.None);
 
-            if (outcome.Result.IsFallbackEnglish)
-                _overlay.ShowFallbackEnglish(outcome.Speaker, outcome.Result.Text);
+            if (outcome.Result is not { } result)
+            {
+                // ShowError, not just a status line. The overlay is showing "جارٍ الترجمة" from
+                // line one of this method and nothing else will ever clear it - which is the
+                // v0.1.0 bug in CLAUDE.md exactly: a failure reported only to the Settings status
+                // line, leaving the overlay stuck on "translating", which reads as a hang.
+                _overlay.ShowError(_text.NoTextInRegion);
+                _status.Text = $"{_text.TestFailed} {_text.NoTextInRegion}";
+                return;
+            }
+
+            if (result.IsFallbackEnglish)
+                _overlay.ShowFallbackEnglish(outcome.Speaker, result.Text);
             else
-                _overlay.ShowTranslation(outcome.Speaker, outcome.Result.Text);
+                _overlay.ShowTranslation(outcome.Speaker, result.Text);
 
             _status.Text = string.Format(_text.TestResult,
-                outcome.Result.Provider, outcome.Result.Model,
-                outcome.Total.TotalMilliseconds.ToString("F0"), outcome.Result.Outcome);
+                result.Provider, result.Model,
+                outcome.Total.TotalMilliseconds.ToString("F0"), result.Outcome);
         }
         catch (Exception e)
         {

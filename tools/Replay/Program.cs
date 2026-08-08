@@ -103,7 +103,8 @@ while (await frames.GetFrameAsync(CaptureRegion.Empty, CancellationToken.None) i
     previous = signature;
     processed++;
 
-    var outcome = await pipeline.ProcessAsync(frame, CancellationToken.None);
+    var outcome = await pipeline.ProcessAsync(frame, regionKey: null,
+        SourceKind.RecordedFrame, CancellationToken.None);
     Print(label, outcome);
 }
 
@@ -132,7 +133,12 @@ static void Print(string label, PipelineOutcome outcome)
     if (outcome.GlossaryHits.Count > 0)
         Console.WriteLine($"   glossary   {string.Join(", ", outcome.GlossaryHits.Select(g => g.En))}");
 
-    var result = outcome.Result;
+    if (outcome.Result is not { } result)
+    {
+        Console.WriteLine($"   -> (nothing to translate)   {outcome.Total.TotalMilliseconds:F0}ms\n");
+        return;
+    }
+
     var source = result.FromCache ? "CACHE" : $"{result.Provider}/{result.Model}";
     Console.WriteLine($"   -> {result.Text}");
     Console.WriteLine($"   {source}   {result.Outcome}   {outcome.Total.TotalMilliseconds:F0}ms\n");

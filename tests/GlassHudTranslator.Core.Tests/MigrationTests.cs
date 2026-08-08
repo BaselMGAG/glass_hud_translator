@@ -26,7 +26,7 @@ public class MigrationTests
         {
             await using (await AppDatabase.OpenAsync(path, CancellationToken.None)) { }
 
-            Assert.Equal(2, await UserVersion(path));
+            Assert.Equal(3, await UserVersion(path));
 
             foreach (var table in new[]
                      { "translations", "translation_log", "quota", "region_profiles", "counters" })
@@ -45,7 +45,7 @@ public class MigrationTests
 
             await using (await AppDatabase.OpenAsync(path, CancellationToken.None)) { }
 
-            Assert.Equal(2, await UserVersion(path));
+            Assert.Equal(3, await UserVersion(path));
             Assert.Equal(1L, await Count(path, "translations"));
         });
     }
@@ -73,7 +73,7 @@ public class MigrationTests
 
             await using (await AppDatabase.OpenAsync(path, CancellationToken.None)) { }
 
-            Assert.Equal(2, await UserVersion(path));
+            Assert.Equal(3, await UserVersion(path));
         });
     }
 
@@ -90,7 +90,7 @@ public class MigrationTests
             await Execute(path, "PRAGMA user_version=0;");
             await using (await AppDatabase.OpenAsync(path, CancellationToken.None)) { }
 
-            Assert.Equal(2, await UserVersion(path));
+            Assert.Equal(3, await UserVersion(path));
         });
     }
 
@@ -136,7 +136,7 @@ public class MigrationTests
 
             await using (await AppDatabase.OpenAsync(path, CancellationToken.None)) { }
 
-            Assert.Equal(2, await UserVersion(path));
+            Assert.Equal(3, await UserVersion(path));
             Assert.Equal(2L, await Count(path, "region_profiles"));
             Assert.Equal(2L, await Scalar(path,
                 "SELECT COUNT(*) FROM region_profiles WHERE profile='ffxiv';"));
@@ -168,6 +168,98 @@ public class MigrationTests
 
             Assert.True(await TableExists(path, "counters"));
             Assert.True(await TableExists(path, "translations"));
+        });
+    }
+
+    // ── the v2 → v3 log provenance migration ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task AV2LogGainsProvenanceColumnsAndKeepsItsRows()
+    {
+        // The first migration to ride the ladder rather than motivate it. A v2 file has a
+        // translation_log without game/region; upgrading must add the columns, leave the existing
+        // rows readable with NULL provenance, and land on version 3.
+        await WithTempDatabase(async path =>
+        {
+            await Execute(path, """
+                CREATE TABLE translation_log (
+                  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                  at          INTEGER NOT NULL,
+                  raw_ocr     TEXT NOT NULL,
+                  normalized  TEXT NOT NULL,
+                  speaker     TEXT,
+                  provider    TEXT,
+                  model       TEXT,
+                  arabic      TEXT,
+                  latency_ms  INTEGER,
+                  from_cache  INTEGER NOT NULL,
+                  outcome     TEXT NOT NULL
+                );
+                INSERT INTO translation_log
+                  (at, raw_ocr, normalized, speaker, provider, model, arabic, latency_ms, from_cache, outcome)
+                VALUES (1723100000, 'Come wlth me.', 'Come with me.', NULL,
+                        'gemini', 'm', 'تعال معي.', 640, 0, 'ok');
+                PRAGMA user_version=2;
+                """);
+
+            await using (var db = await AppDatabase.OpenAsync(path, CancellationToken.None))
+            {
+                // A new build must be able to write provenance into the upgraded table at once.
+                await new TranslationLog(db).AppendAsync(new TranslationLogEntry(
+                    DateTimeOffset.UtcNow, "raw", "normalized", null, "groq", "m2", "نص",
+                    TimeSpan.FromMilliseconds(500), false, "ok",
+                    Game: "Final Fantasy XIV", Region: "dialogue"), CancellationToken.None);
+            }
+
+            Assert.Equal(3, await UserVersion(path));
+            Assert.Equal(2L, await Count(path, "translation_log"));
+
+            // The pre-migration row reads back with unknown provenance, not an invented one.
+            Assert.Equal(DBNull.Value, await Scalar(path,
+                "SELECT game FROM translation_log WHERE provider='gemini';"));
+            Assert.Equal("Final Fantasy XIV", await Scalar(path,
+                "SELECT game FROM translation_log WHERE provider='groq';"));
+        });
+    }
+
+    [Fact]
+    public async Task AnInterruptedV3MigrationFinishesOnTheNextLaunch()
+    {
+        // The narrow window with the permanent consequence: killed between the two ALTERs, so
+        // `game` exists, `region` does not, and user_version is still 2. A single guard reading
+        // `game` would see it, return satisfied, and bump to 3 with `region` absent forever -
+        // after which every log INSERT throws inside ProcessAsync and every translation fails.
+        await WithTempDatabase(async path =>
+        {
+            await Execute(path, """
+                CREATE TABLE translation_log (
+                  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                  at          INTEGER NOT NULL,
+                  raw_ocr     TEXT NOT NULL,
+                  normalized  TEXT NOT NULL,
+                  speaker     TEXT,
+                  provider    TEXT,
+                  model       TEXT,
+                  arabic      TEXT,
+                  latency_ms  INTEGER,
+                  from_cache  INTEGER NOT NULL,
+                  outcome     TEXT NOT NULL
+                );
+                ALTER TABLE translation_log ADD COLUMN game TEXT;
+                PRAGMA user_version=2;
+                """);
+
+            await using (var db = await AppDatabase.OpenAsync(path, CancellationToken.None))
+            {
+                // The proof is that a write succeeds, not that a PRAGMA looks right.
+                await new TranslationLog(db).AppendAsync(new TranslationLogEntry(
+                    DateTimeOffset.UtcNow, "raw", "normalized", null, "gemini", "m", "نص",
+                    TimeSpan.FromMilliseconds(500), false, "ok",
+                    Game: "Final Fantasy XIV", Region: "dialogue"), CancellationToken.None);
+            }
+
+            Assert.Equal(3, await UserVersion(path));
+            Assert.Equal("dialogue", await Scalar(path, "SELECT region FROM translation_log LIMIT 1;"));
         });
     }
 

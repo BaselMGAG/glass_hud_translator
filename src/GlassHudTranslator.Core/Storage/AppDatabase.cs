@@ -13,7 +13,7 @@ namespace GlassHudTranslator.Core.Storage;
 /// </summary>
 public sealed class AppDatabase : IAsyncDisposable
 {
-    private const int SchemaVersion = 2;
+    private const int SchemaVersion = 3;
 
     private readonly SqliteConnection _connection;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -82,6 +82,9 @@ public sealed class AppDatabase : IAsyncDisposable
 
         // 1 → 2: capture regions gain a game profile column.
         MigrateRegionsToV2Async,
+
+        // 2 → 3: the log gains provenance - which game and which region produced each row.
+        MigrateLogToV3Async,
     ];
 
     private async Task InitialiseAsync(CancellationToken ct)
@@ -141,7 +144,9 @@ public sealed class AppDatabase : IAsyncDisposable
           arabic      TEXT,
           latency_ms  INTEGER,
           from_cache  INTEGER NOT NULL,
-          outcome     TEXT NOT NULL
+          outcome     TEXT NOT NULL,
+          game        TEXT,
+          region      TEXT
         );
         CREATE INDEX IF NOT EXISTS ix_log_at ON translation_log(at);
         CREATE INDEX IF NOT EXISTS ix_log_outcome ON translation_log(outcome);
@@ -207,6 +212,47 @@ public sealed class AppDatabase : IAsyncDisposable
             DROP TABLE region_profiles_v1;
             """, ct).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Adds nullable provenance columns to translation_log. Existing rows keep NULL - there is no
+    /// way to know which game produced them, and inventing one would poison the statistics the
+    /// column exists for. Guarded per column, because on a fresh database the base schema has
+    /// already created the table in its final shape by the time this step runs.
+    ///
+    /// <para>
+    /// Per column, and not one guard for both: SQLite has no multi-statement DDL transaction here,
+    /// so a process killed between the two ALTERs leaves <c>game</c> present and <c>region</c>
+    /// absent with <c>user_version</c> still at 2. A single guard reading <c>game</c> would then
+    /// see the column, return satisfied, and let the ladder bump to 3 - and <c>region</c> would
+    /// never exist. Every log INSERT after that throws "no such column", inside ProcessAsync,
+    /// which means every translation fails, permanently, with no way back. Idempotence has to be
+    /// per statement or it is not idempotence.
+    /// </para>
+    /// </summary>
+    private async Task MigrateLogToV3Async(CancellationToken ct)
+    {
+        await AddColumnIfMissingAsync("translation_log", "game", "TEXT", ct).ConfigureAwait(false);
+        await AddColumnIfMissingAsync("translation_log", "region", "TEXT", ct).ConfigureAwait(false);
+    }
+
+    private async Task AddColumnIfMissingAsync(string table, string column, string type, CancellationToken ct)
+    {
+        if (await HasColumnAsync(table, column, ct).ConfigureAwait(false)) return;
+        await ExecuteAsync($"ALTER TABLE {table} ADD COLUMN {column} {type};", ct).ConfigureAwait(false);
+    }
+
+    private Task<bool> HasColumnAsync(string table, string column, CancellationToken ct) =>
+        WithConnectionAsync(async (connection, token) =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"PRAGMA table_info({table});";
+            await using var reader = await command.ExecuteReaderAsync(token).ConfigureAwait(false);
+
+            while (await reader.ReadAsync(token).ConfigureAwait(false))
+                if (reader.GetString(1) == column) return true;
+
+            return false;
+        }, ct);
 
     internal async Task<T> WithConnectionAsync<T>(
         Func<SqliteConnection, CancellationToken, Task<T>> work, CancellationToken ct)

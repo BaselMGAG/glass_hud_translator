@@ -19,8 +19,8 @@ public sealed class TranslationLog(AppDatabase db)
 
         return db.ExecuteAsync("""
             INSERT INTO translation_log
-              (at, raw_ocr, normalized, speaker, provider, model, arabic, latency_ms, from_cache, outcome)
-            VALUES ($at, $raw, $norm, $speaker, $provider, $model, $arabic, $latency, $cache, $outcome);
+              (at, raw_ocr, normalized, speaker, provider, model, arabic, latency_ms, from_cache, outcome, game, region)
+            VALUES ($at, $raw, $norm, $speaker, $provider, $model, $arabic, $latency, $cache, $outcome, $game, $region);
             """, ct,
             ("$at", entry.At.ToUnixTimeSeconds()),
             ("$raw", entry.RawOcr),
@@ -31,13 +31,20 @@ public sealed class TranslationLog(AppDatabase db)
             ("$arabic", entry.Arabic),
             ("$latency", (long)entry.Latency.TotalMilliseconds),
             ("$cache", entry.FromCache ? 1 : 0),
-            ("$outcome", entry.Outcome));
+            ("$outcome", entry.Outcome),
+            ("$game", entry.Game),
+            ("$region", entry.Region));
     }
 
     public async Task<long> CountAsync(CancellationToken ct) =>
         Convert.ToInt64(await db.ScalarAsync("SELECT COUNT(*) FROM translation_log;", ct).ConfigureAwait(false));
 }
 
+/// <summary>
+/// <paramref name="Game"/> and <paramref name="Region"/> are provenance, added for the history
+/// view and for per-region diagnostics; rows from before v3 carry null in both, which readers must
+/// treat as "unknown", not as a game named nothing.
+/// </summary>
 public sealed record TranslationLogEntry(
     DateTimeOffset At,
     string RawOcr,
@@ -48,4 +55,6 @@ public sealed record TranslationLogEntry(
     string? Arabic,
     TimeSpan Latency,
     bool FromCache,
-    string Outcome);
+    string Outcome,
+    string? Game = null,
+    string? Region = null);
