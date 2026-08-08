@@ -5,13 +5,27 @@ using Microsoft.Data.Sqlite;
 namespace GlassHudTranslator.Core.Regions;
 
 /// <summary>
-/// A capture rectangle stored as fractions of the FFXIV client rect, keyed to the resolution and
-/// UI scale it was drawn at (brief 8).
+/// A capture rectangle stored as fractions of the game's client rect (brief 8), alongside the
+/// resolution and UI scale it was drawn at.
 ///
 /// <para>
-/// Fractions rather than desktop coordinates so the profile survives the window being moved, and
-/// keyed to (resolution, UI scale) because the dialogue box does not sit at the same relative
-/// position when either changes.
+/// Fractions rather than desktop coordinates, so the profile survives the window being moved. That
+/// part works.
+/// </para>
+///
+/// <para>
+/// <b>Resolution and UI scale are provenance, not a key.</b> This type's documentation used to say
+/// the rectangle was "keyed to" them, and <c>CLAUDE.md</c> repeated it — neither was true. Both
+/// values were written on save, read back into the record, and consulted by nothing, so a rectangle
+/// dragged at 2560×1440 / 125% was silently reused at 1920×1080 / 100%. When it lands slightly off,
+/// the symptom is truncated OCR, which reads to the user as "the translation got worse" rather than
+/// "my region is stale".
+/// </para>
+///
+/// <para>
+/// They are deliberately still not part of the key. Making them so would silently discard a user's
+/// region the moment they changed resolution, which is worse than a region that needs nudging. The
+/// fix is to notice and say so: see <see cref="MatchesLayout"/>.
 /// </para>
 /// </summary>
 public sealed record RegionProfile(
@@ -32,6 +46,41 @@ public sealed record RegionProfile(
 
         public static readonly string[] All = [Dialogue, Subtitle, Quest];
     }
+
+    /// <summary>How this rectangle was captured, for comparison against how it is being used.</summary>
+    public static string DescribeLayout(int clientWidth, int clientHeight) =>
+        $"{clientWidth}x{clientHeight}";
+
+    /// <summary>
+    /// Whether the window this region is about to be resolved against looks like the one it was
+    /// drawn on.
+    ///
+    /// <para>
+    /// A mismatch is not an error and must not discard anything — the fractions are still the user's
+    /// best guess and are usually close. It is a prompt: the app can say the region was drawn at a
+    /// different size and offer to re-pick, which is a far better experience than silently reading
+    /// half a dialogue box and appearing to translate badly.
+    /// </para>
+    ///
+    /// <para>
+    /// UI scale is compared with a tolerance because it arrives as a DPI ratio (96ths) and will not
+    /// round-trip exactly through the database as a double.
+    /// </para>
+    /// </summary>
+    public bool MatchesLayout(int clientWidth, int clientHeight, double uiScale)
+    {
+        // Provenance is all or nothing. "unknown" is what a starting rectangle from a profile.json
+        // carries - it was never captured at any particular size, and its UiScale of 1.0 is a
+        // placeholder rather than a measurement. Comparing that placeholder against a real scale
+        // would report a mismatch on the first run of every bundled profile on a scaled display.
+        if (!HasProvenance) return true;
+
+        return Resolution == DescribeLayout(clientWidth, clientHeight)
+               && Math.Abs(UiScale - uiScale) < 0.01;
+    }
+
+    /// <summary>False for a shipped starting rectangle, true once a user has dragged their own.</summary>
+    public bool HasProvenance => Resolution is not ("unknown" or "");
 
     public CaptureRegion Resolve(int clientWidth, int clientHeight) => new(
         (int)Math.Round(RelX * clientWidth),

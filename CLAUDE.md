@@ -34,7 +34,7 @@ solution level it tries to force `net10.0` onto the Windows-only projects and fa
 dotnet test
 ```
 
-310 tests, all runnable on macOS and Linux.
+333 tests, all runnable on macOS and Linux.
 
 ```bash
 dotnet run --project tools/Replay -- --no-cache

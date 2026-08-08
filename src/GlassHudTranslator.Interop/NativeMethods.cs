@@ -250,4 +250,43 @@ public static partial class NativeMethods
 
     public const int SmCxScreen = 0;
     public const int SmCyScreen = 1;
+
+    /// <summary>
+    /// The virtual desktop: the bounding box of every monitor, not just the primary one.
+    ///
+    /// <para>
+    /// Its origin is frequently negative — a monitor placed to the left of or above the primary
+    /// starts at a negative coordinate, because the primary monitor's top-left is always (0,0).
+    /// Anything that asks for "the screen" with <see cref="SmCxScreen"/> silently means "the
+    /// primary monitor", which is why a game on a second display could not be captured at all.
+    /// </para>
+    /// </summary>
+    public const int SmXVirtualScreen = 76;
+    public const int SmYVirtualScreen = 77;
+    public const int SmCxVirtualScreen = 78;
+    public const int SmCyVirtualScreen = 79;
+
+    public const uint MonitorDefaultToNearest = 0x00000002;
+
+    /// <summary>
+    /// The monitor a window is on. Needed wherever "the screen" means the one display in question
+    /// rather than the union of all of them — a game's fullscreen check, and the client area the
+    /// screen-relative profile measures against. Using the union for either turns a rectangle into
+    /// a band spanning the seam between two monitors.
+    /// </summary>
+    [LibraryImport(User32, EntryPoint = "MonitorFromWindow")]
+    public static partial IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MonitorInfo
+    {
+        public uint Size;
+        public Rect Monitor;
+        public Rect Work;
+        public uint Flags;
+    }
+
+    [LibraryImport(User32, EntryPoint = "GetMonitorInfoW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool GetMonitorInfo(IntPtr hMonitor, ref MonitorInfo info);
 }

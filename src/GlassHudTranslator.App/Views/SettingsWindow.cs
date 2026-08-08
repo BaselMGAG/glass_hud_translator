@@ -949,25 +949,42 @@ public sealed class SettingsWindow : Window
         // hide our own overlay so it cannot end up inside the captured region.
         _overlay.Clear();
         await Task.Delay(120);
+
+        // The frozen still now covers every monitor, so its top-left is the virtual desktop's
+        // origin rather than (0,0) - negative when a screen sits left of or above the primary.
+        var desktop = PlatformServices.VirtualDesktop();
         var screenshot = PlatformServices.CaptureFullScreen();
 
         var picker = new RegionPickerWindow(profileName, screenshot, TestRegionAsync, _text);
         await picker.ShowDialog(this);
 
-        if (picker.Result is not { } region)
+        if (picker.Result is not { } picked)
         {
             _status.Text = string.Format(_text.RegionUnchanged, _text.RegionName(profileName));
             return;
         }
 
-        // Stored relative to the game's client area, not the screen, so the profile survives the
-        // window being moved. Falls back to the screen when there is no game window to measure.
-        var game = PlatformServices.FindGameWindow(_services.Profile.WindowTitles, _services.Profile.ProcessNames);
-        var origin = game?.ClientArea ?? new CaptureRegion(0, 0,
-            Screens.Primary?.Bounds.Width ?? 1920, Screens.Primary?.Bounds.Height ?? 1080);
+        // The picker works in the still's pixels; everything below works in desktop coordinates.
+        // Converting here rather than inside the picker keeps the picker ignorant of monitors.
+        //
+        // Only when there IS a still. With no screenshot the picker falls back to scaling its own
+        // window coordinates, which are already desktop coordinates for the monitor it opened on -
+        // translating those by the desktop origin would move them by a screen's width on any layout
+        // with a monitor left of the primary. The offset belongs to the frame, so it may only be
+        // applied to a rectangle picked on that frame.
+        var region = screenshot is null ? picked : picked.Translate(desktop.X, desktop.Y);
 
-        var relative = new CaptureRegion(
-            region.X - origin.X, region.Y - origin.Y, region.Width, region.Height);
+        // Stored relative to the game's client area, not the screen, so the profile survives the
+        // window being moved. Falls back to the whole desktop when there is no game window.
+        var game = PlatformServices.FindGameWindow(_services.Profile.WindowTitles, _services.Profile.ProcessNames);
+        var origin = game?.ClientArea
+                     ?? (desktop.IsEmpty
+                         ? new CaptureRegion(0, 0,
+                             Screens.Primary?.Bounds.Width ?? 1920,
+                             Screens.Primary?.Bounds.Height ?? 1080)
+                         : desktop);
+
+        var relative = region.RelativeTo(origin);
 
         var profile = RegionProfile.FromPixels(profileName, relative,
             origin.Width, origin.Height, game?.Scaling ?? 1.0);

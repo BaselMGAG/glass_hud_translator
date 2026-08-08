@@ -186,7 +186,20 @@ public sealed class RegionPickerWindow : Window
                 break;
 
             case Key.Enter when _selection.IsVisible:
-                Result = ToScreenPixels(CurrentRect());
+                var candidate = ToScreenPixels(CurrentRect());
+
+                // The still can be wider than the monitor this window opened on - it covers every
+                // screen - so Stretch.Uniform letterboxes it, and a drag that starts in the black
+                // band maps outside the image entirely. Saving that produces a negative fraction
+                // and a region that resolves to nothing, with no way for the user to tell why.
+                if (_screenshot is not null
+                    && !candidate.FitsWithin(_screenshot.Width, _screenshot.Height))
+                {
+                    _readout.Text = _text.SelectionOffScreen;
+                    break;
+                }
+
+                Result = candidate;
                 Close();
                 break;
 

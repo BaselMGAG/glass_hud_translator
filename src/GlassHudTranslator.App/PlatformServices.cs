@@ -66,15 +66,47 @@ public static class PlatformServices
     public static Frame? CaptureFullScreen()
     {
 #if WINDOWS
-        var width = Interop.NativeMethods.GetSystemMetrics(Interop.NativeMethods.SmCxScreen);
-        var height = Interop.NativeMethods.GetSystemMetrics(Interop.NativeMethods.SmCyScreen);
-        if (width <= 0 || height <= 0) return null;
+        var desktop = VirtualDesktop();
+        if (desktop.IsEmpty) return null;
 
         using var source = new Windows.Win32FrameSource();
-        return source.GetFrameAsync(new CaptureRegion(0, 0, width, height), CancellationToken.None)
-            .GetAwaiter().GetResult();
+        return source.GetFrameAsync(desktop, CancellationToken.None).GetAwaiter().GetResult();
 #else
         return null;
+#endif
+    }
+
+    /// <summary>
+    /// The bounding box of every monitor, in desktop coordinates — so its origin is negative when a
+    /// monitor sits left of or above the primary one.
+    ///
+    /// <para>
+    /// Everything used to ask for <c>SM_CXSCREEN</c>, which is the primary monitor and nothing else.
+    /// A game on a second display was therefore outside every frame the app grabbed, and a rectangle
+    /// on a left-hand monitor was rejected outright by the buffer-bounds check three layers down in
+    /// Core. Off Windows this is empty and callers fall back as they did before.
+    /// </para>
+    /// </summary>
+    public static CaptureRegion VirtualDesktop()
+    {
+#if WINDOWS
+        var x = Interop.NativeMethods.GetSystemMetrics(Interop.NativeMethods.SmXVirtualScreen);
+        var y = Interop.NativeMethods.GetSystemMetrics(Interop.NativeMethods.SmYVirtualScreen);
+        var width = Interop.NativeMethods.GetSystemMetrics(Interop.NativeMethods.SmCxVirtualScreen);
+        var height = Interop.NativeMethods.GetSystemMetrics(Interop.NativeMethods.SmCyVirtualScreen);
+
+        // The virtual metrics are zero on some remote-session and single-adapter configurations.
+        // Falling back to the primary monitor is exactly the old behaviour, which is correct there.
+        if (width <= 0 || height <= 0)
+        {
+            width = Interop.NativeMethods.GetSystemMetrics(Interop.NativeMethods.SmCxScreen);
+            height = Interop.NativeMethods.GetSystemMetrics(Interop.NativeMethods.SmCyScreen);
+            return width > 0 && height > 0 ? new CaptureRegion(0, 0, width, height) : CaptureRegion.Empty;
+        }
+
+        return new CaptureRegion(x, y, width, height);
+#else
+        return CaptureRegion.Empty;
 #endif
     }
 
@@ -188,14 +220,49 @@ public static class PlatformServices
     }
 
 #if WINDOWS
+    /// <summary>
+    /// The client area the screen-relative profile measures against: ONE monitor — the one the user
+    /// is looking at — not the union of all of them.
+    ///
+    /// <para>
+    /// This deliberately does not return the virtual desktop, and the distinction is not academic.
+    /// Regions are stored as fractions of whatever is returned here, so widening it to the bounding
+    /// box would silently relocate every region a user has already saved: a rectangle stored as
+    /// "22% from the left, 56% wide" against a 1920-wide screen becomes a 2150px band straddling
+    /// the seam between two monitors, half of it reading the wrong display. Following the
+    /// foreground window keeps the frame one monitor wide, so existing fractions stay valid and a
+    /// browser on the second display works — which was the point.
+    /// </para>
+    /// </summary>
     private static GameWindowInfo? WholeScreen()
     {
-        var width = Interop.NativeMethods.GetSystemMetrics(Interop.NativeMethods.SmCxScreen);
-        var height = Interop.NativeMethods.GetSystemMetrics(Interop.NativeMethods.SmCyScreen);
-        if (width <= 0 || height <= 0) return null;
+        var monitor = MonitorUnderForegroundWindow() ?? VirtualDesktop();
+        if (monitor.IsEmpty) return null;
 
-        return new GameWindowInfo(new CaptureRegion(0, 0, width, height), "Whole screen", 1.0,
-            true, $"Whole screen — {width}x{height}");
+        return new GameWindowInfo(monitor, "Whole screen", 1.0, true,
+            $"Whole screen — {monitor.Width}x{monitor.Height} at {monitor.X},{monitor.Y}");
+    }
+
+    private static CaptureRegion? MonitorUnderForegroundWindow()
+    {
+        var window = Interop.NativeMethods.GetForegroundWindow();
+        if (window == IntPtr.Zero) return null;
+
+        var handle = Interop.NativeMethods.MonitorFromWindow(
+            window, Interop.NativeMethods.MonitorDefaultToNearest);
+        if (handle == IntPtr.Zero) return null;
+
+        var info = new Interop.NativeMethods.MonitorInfo
+        {
+            Size = (uint)System.Runtime.InteropServices.Marshal.SizeOf<Interop.NativeMethods.MonitorInfo>(),
+        };
+
+        if (!Interop.NativeMethods.GetMonitorInfo(handle, ref info)) return null;
+
+        var bounds = info.Monitor;
+        return bounds.Width <= 0 || bounds.Height <= 0
+            ? null
+            : new CaptureRegion(bounds.Left, bounds.Top, bounds.Width, bounds.Height);
     }
 #endif
 }

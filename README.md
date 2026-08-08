@@ -203,7 +203,7 @@ Early, but working.
 
 | | |
 |---|---|
-| Translation pipeline (OCR → normalise → cache → LLM → render) | working, 310 tests |
+| Translation pipeline (OCR → normalise → cache → LLM → render) | working, 333 tests |
 | Arabic rendering, shaping, bidi, diacritics | working and verified |
 | Game profiles, glossary, OCR corrections | working |
 | Provider failover, quota tracking, caching | working |

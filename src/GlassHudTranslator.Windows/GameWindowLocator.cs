@@ -171,13 +171,39 @@ public sealed record DisplayModeVerdict(bool CanCapture, string Message);
 [SupportedOSPlatform("windows")]
 public static class DisplayModeGuard
 {
+    /// <summary>
+    /// The bounds of the monitor a window sits on, falling back to the primary when the query
+    /// fails — which is the behaviour this had before monitors were considered at all.
+    /// </summary>
+    private static (int Width, int Height) MonitorSizeFor(IntPtr window)
+    {
+        var handle = NativeMethods.MonitorFromWindow(window, NativeMethods.MonitorDefaultToNearest);
+        if (handle != IntPtr.Zero)
+        {
+            var info = new NativeMethods.MonitorInfo
+            {
+                Size = (uint)System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.MonitorInfo>(),
+            };
+
+            if (NativeMethods.GetMonitorInfo(handle, ref info)
+                && info.Monitor is { Width: > 0, Height: > 0 })
+                return (info.Monitor.Width, info.Monitor.Height);
+        }
+
+        return (NativeMethods.GetSystemMetrics(NativeMethods.SmCxScreen),
+            NativeMethods.GetSystemMetrics(NativeMethods.SmCyScreen));
+    }
+
     public static DisplayModeVerdict Check(GameWindow window)
     {
         if (!NativeMethods.GetWindowRect(window.Handle, out var windowRect))
             return new DisplayModeVerdict(false, "Could not read the game window's position.");
 
-        var screenWidth = NativeMethods.GetSystemMetrics(NativeMethods.SmCxScreen);
-        var screenHeight = NativeMethods.GetSystemMetrics(NativeMethods.SmCyScreen);
+        // The monitor the game is actually on, not the primary one. Comparing a 1920x1080 game on a
+        // secondary display against a 3840x2160 primary makes coversScreen false, so the one check
+        // that catches exclusive fullscreen never fires - and the user gets black frames with no
+        // explanation, in exactly the multi-monitor setup this whole area is meant to support.
+        var (screenWidth, screenHeight) = MonitorSizeFor(window.Handle);
 
         // Borderless windowed also covers the screen exactly, so geometry alone cannot separate the
         // two modes. What it can do is catch the case worth catching: a window claiming the whole
