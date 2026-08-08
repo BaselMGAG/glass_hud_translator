@@ -208,9 +208,23 @@ public sealed class FrameSignature {
 }
 
 // ── OCR ────────────────────────────────────────────────────────────────────
-public sealed record OcrResult(string RawText, float Confidence, int WordCount) {
-    public static readonly OcrResult Empty;      // NOTE: a shared static - an empty region and a
-    public bool IsEmpty { get; }                 // wholly illegible one are indistinguishable today
+// Boxes are in the coordinate space of the FRAME, not of the image the engine read. OCR runs on an
+// upscaled copy (2× by default), so each engine divides back down before returning - a box left in
+// the upscaled space is wrong by 100% and still looks like a box. See CLAUDE.md.
+public readonly record struct OcrBox(int Left, int Top, int Width, int Height) {
+    public int Right { get; } public int Bottom { get; } public bool IsEmpty { get; }
+}
+public sealed record OcrWord(string Text, OcrBox Box, float Confidence, bool Accepted);
+
+public sealed record OcrResult(
+    string RawText, float Confidence, int WordCount, int RejectedWordCount = 0) {
+    public static readonly OcrResult Empty;      // returned ONLY for a genuinely blank read: a
+    public bool IsEmpty { get; }                 // frame whose every word was rejected reports
+                                                 // empty text WITH a reject count, because "no
+                                                 // dialogue here" and "this is unreadable" call
+                                                 // for opposite responses.
+    public IReadOnlyList<OcrWord> Words { get; init; } = [];   // optional; empty is valid, since an
+    public IEnumerable<OcrWord> AcceptedWords { get; }         // engine may have no geometry to give
 }
 public interface IOcrEngine : IDisposable {
     string Name { get; }
@@ -218,8 +232,8 @@ public interface IOcrEngine : IDisposable {
     Task<OcrResult> RecognizeAsync(Frame frame, CancellationToken ct);
 }
 public static class OcrPreprocessor {
-    public static Frame Prepare(Frame f);               // greyscale → contrast → 2× → threshold
-}
+    public static Frame Prepare(Frame f, OcrPreprocessOptions? o = null);  // greyscale → contrast →
+}                                                                          // 2× → optional threshold
 // The typewriter fix, brief §7 — OCR is free, API calls are not:
 public sealed class StableOcrReader {
     public StableOcrReader(IOcrEngine ocr, TimeSpan interval, TimeSpan cap);  // 150 ms, 1.5 s
@@ -396,6 +410,19 @@ public sealed record PipelineOutcome(
     TranslationResult? Result,              // null = nothing attempted: empty region, or too short
     float OcrConfidence, TimeSpan Total,
     string? RegionKey, SourceKind Source, int RejectedWordCount);
+
+public sealed class TranslationPipeline {
+    public const int ContextWindow = 3;          // previous lines sent; a CAP, not a tuning knob -
+                                                 // cache hits replay with no context at all
+    public TimeSpan ContextTtl { get; set; }     // 2 min; past that it is a different scene
+    public int MinimumBodyCharacters { get; set; }   // guard sits BEFORE the cache lookup
+
+    public Task<PipelineOutcome> ProcessAsync(Frame frame, string? regionKey = null,
+        SourceKind source = SourceKind.Screen, CancellationToken ct = default);
+
+    public void UseProfile(string game, string? style, GlossaryMatcher g, OcrCorrections c);
+    public void ResetContext();
+}
 ```
 
 ---
