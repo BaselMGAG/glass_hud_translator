@@ -510,8 +510,8 @@ CREATE TABLE quota (
 CREATE TABLE region_profiles (
   profile     TEXT NOT NULL,           -- game profile id; added in schema v2
   name        TEXT NOT NULL,           -- 'dialogue' | 'subtitle' | 'quest'
-  resolution  TEXT NOT NULL,           -- '2560x1440'  -- WRITTEN BUT NEVER READ
-  ui_scale    REAL NOT NULL,           --               -- WRITTEN BUT NEVER READ
+  resolution  TEXT NOT NULL,           -- '2560x1440'. Provenance, not part of the key: compared
+  ui_scale    REAL NOT NULL,           -- on load by RegionProfile.MatchesLayout, which warns once
   rel_x REAL NOT NULL, rel_y REAL NOT NULL, rel_w REAL NOT NULL, rel_h REAL NOT NULL,
   PRIMARY KEY (profile, name)
 );
@@ -520,12 +520,12 @@ CREATE TABLE region_profiles (
 Regions stored as **fractions of the client rect** (brief §8) so they survive window moves and
 resolution changes.
 
-**`resolution` and `ui_scale` are provenance, not a key.** Both are written on save and read back
-into the record, and no code anywhere consults either — so a rectangle dragged at 2560×1440 / 125%
-is silently reused at 1920×1080 / 100%. `RegionProfile`'s own doc comment claims it is "keyed to
-the resolution and UI scale it was drawn at". It is not. Making them part of the primary key would
-be worse — a user changing resolution would lose the region entirely — so the fix is to compare on
-load and say something, not to key on them.
+**`resolution` and `ui_scale` are provenance, not a key.** They record what the rectangle was drawn
+against. `RegionProfile.MatchesLayout` compares them on load and warns once per (profile, region,
+layout); it never discards anything, because the fractions remain the user's best guess and are
+usually close. Making them part of the primary key would be worse — a user changing resolution
+would lose the region outright. Provenance is all-or-nothing: a shipped starting rectangle carries
+`"unknown"` and a placeholder scale, and must never report a mismatch.
 
 ---
 
