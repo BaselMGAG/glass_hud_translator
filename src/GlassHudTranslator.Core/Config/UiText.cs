@@ -57,6 +57,13 @@ public sealed class UiText
     public required string TestKey { get; init; }
     public required string TestingKey { get; init; }
     public required string KeyWorks { get; init; }
+
+    /// <summary>
+    /// The verdict after a successful test, which now also stores the key. It says both because
+    /// the two used to be separate and the gap was invisible: the badge said the key worked while
+    /// nothing had been written, and the app went on to report no key at all.
+    /// </summary>
+    public required string KeyWorksSaved { get; init; }
     public required string KeyRejected { get; init; }
     public required string KeyUnknown { get; init; }
     public required string TestKeysNote { get; init; }
@@ -314,6 +321,7 @@ public sealed class UiText
         TestKey = "Test",
         TestingKey = "Testing...",
         KeyWorks = "Works",
+        KeyWorksSaved = "Works — key saved",
         KeyRejected = "This key was refused",
         KeyUnknown = "Could not check right now",
         TestKeysNote =
@@ -582,6 +590,7 @@ public sealed class UiText
         TestKey = "جرّبه",
         TestingKey = "جارٍ التجربة...",
         KeyWorks = "يعمل",
+        KeyWorksSaved = "يعمل — حُفِظ المفتاح",
         KeyRejected = "رُفض هذا المفتاح",
         KeyUnknown = "تعذّر التحقّق الآن",
         TestKeysNote =

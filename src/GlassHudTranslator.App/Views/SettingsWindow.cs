@@ -374,7 +374,15 @@ public sealed class SettingsWindow : Window
 
         stack.Children.Add(Note(_text.TestKeysNote));
 
+        // Kept, but no longer load-bearing: keys now persist when a box loses focus and when a
+        // test passes. It sits below four provider blocks and two paragraphs, so relying on
+        // someone scrolling to it - past a Test button that had just told them the key works -
+        // was the reason a fully configured-looking app had no keys at all.
         stack.Children.Add(Button(_text.SaveKeys, SaveSecrets));
+
+        // Directly beneath, because this is the only readout on the screen that reports what the
+        // ROUTER will see rather than what a text box contains. Those two disagreeing silently is
+        // the entire bug this section now exists to make visible.
         stack.Children.Add(Section(_text.ActiveLanes));
         stack.Children.Add(_laneSummary);
 
@@ -385,6 +393,14 @@ public sealed class SettingsWindow : Window
     {
         var box = KeyBox(_text.PasteKeyHere);
         _keyBoxes[provider.Secret!] = box;
+
+        // Persist as soon as the user leaves the box. The explicit Save button remains, but it can
+        // no longer be the ONLY way a key reaches the store: it sits at the bottom of this tab
+        // below four provider blocks, while the Test button is right here saying the key works.
+        // A user who pastes a key, tests it, sees «يعمل» and starts a game has done everything the
+        // interface asked of them - and got "no API key for gemini, groq" in the router log,
+        // because a positive verdict from an adjacent button reads as "you are set up".
+        box.LostFocus += (_, _) => PersistKey(provider.Secret!, box.Text);
 
         // The verdict goes beside the box it is about, not on the shared status line. A user
         // testing four keys in a row needs to see which one answered what, and a single status line
@@ -445,9 +461,15 @@ public sealed class SettingsWindow : Window
 
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
+            // A key that has just proved it works is a key worth keeping. Not saving here was the
+            // whole defect: the verdict said «يعمل» while the store stayed empty, so the app the
+            // user then went and played with had no key at all. A key that FAILED is still not
+            // persisted - there is no value in storing something known to be refused.
+            if (result.Status == KeyStatus.Working) PersistKey(provider.Secret!, typed);
+
             var (message, colour) = result.Status switch
             {
-                KeyStatus.Working => (_text.KeyWorks, "#81c995"),
+                KeyStatus.Working => (_text.KeyWorksSaved, "#81c995"),
                 KeyStatus.Rejected => (_text.KeyRejected, "#f28b82"),
                 KeyStatus.NotSet => (_text.PasteKeyHere, "#9aa0a6"),
                 _ => (_text.KeyUnknown, "#fdd663"),
@@ -1045,20 +1067,40 @@ public sealed class SettingsWindow : Window
             box.Text = _services.Secrets.Get(name) ?? "";
     }
 
+    /// <summary>
+    /// The single way a key reaches the store, used by the Save button, by leaving a key box, and
+    /// by a successful test. Writing it three ways would be three chances for one of them to be
+    /// the path nobody took.
+    ///
+    /// <para>
+    /// The lane summary is refreshed on every write, because it is the only thing on this screen
+    /// that reports what the ROUTER will see rather than what the text box contains - and those
+    /// were exactly the two things that disagreed.
+    /// </para>
+    /// </summary>
+    private bool PersistKey(string name, string? text)
+    {
+        var trimmed = text?.Trim();
+        var stored = _services.Secrets.Get(name);
+
+        // Nothing changed. Skip the work: every write is a DPAPI encrypt and a file rewrite, and
+        // this now runs on every focus change rather than on a button press.
+        if (string.Equals(stored ?? "", trimmed ?? "", StringComparison.Ordinal)) return false;
+
+        if (string.IsNullOrWhiteSpace(trimmed)) _services.Secrets.Delete(name);
+        else _services.Secrets.Set(name, trimmed);
+
+        UpdateLaneSummary();
+        return true;
+    }
+
     private void SaveSecrets()
     {
         var saved = 0;
         foreach (var (name, box) in _keyBoxes)
         {
-            if (string.IsNullOrWhiteSpace(box.Text))
-            {
-                _services.Secrets.Delete(name);
-            }
-            else
-            {
-                _services.Secrets.Set(name, box.Text.Trim());
-                saved++;
-            }
+            PersistKey(name, box.Text);
+            if (!string.IsNullOrWhiteSpace(box.Text)) saved++;
         }
 
         UpdateLaneSummary();
