@@ -3,6 +3,62 @@
 Notable changes. Started once the app was working end to end, so everything before the first entry
 is "the thing being described in the README".
 
+## v0.5.0 — 8 August 2026
+
+The first release verified against a real game since v0.1.0, and the first where the app can tell
+you your key works before you are in a cutscene finding out that it does not.
+
+### Added
+
+- **You can move the overlay.** Settings → Overlay has two sliders, top-to-bottom and
+  left-to-right, and the panel moves while you drag them. Its position was two constants tuned
+  against one dialogue box in one game, and there was no way to change it — the overlay is
+  click-through by design, so it cannot be dragged, and it has no Alt-Tab entry to grab. The
+  position is measured inside the game's window, so it stays where you put it when the game moves
+  or changes monitor, and the panel can no longer be pushed off the edge.
+- **A button that tells you whether your API key works**, next to each key box. Three answers, and
+  the difference between the last two matters: the key works, the key was refused, or it could not
+  be checked right now — because telling someone their key is wrong when their wifi is down sends
+  them to regenerate a key that was never the problem. A key that passes is saved on the spot.
+- **The translator remembers the last three lines.** Pronouns and gender agreement have context to
+  work from now instead of one line. The window clears itself after two minutes, so a conversation
+  from earlier in the session cannot steer the one you are in.
+- **Multi-monitor.** Capture follows the game to whichever screen it is on, and the overlay follows
+  it there. A monitor placed to the left of or above the main one was previously not merely
+  unsupported but actively refused, three layers down.
+- **The translation history records which game and which capture region produced each line.**
+
+### Fixed
+
+- **Arabic error messages on the overlay were laid out as though they were English** — left to
+  right, left aligned. The flag was correct while those messages were English literals and was
+  never updated when they were translated.
+- **The overlay could read its own output.** It is excluded from screen capture, but that feature
+  is unavailable on Windows builds before version 2004, and the app knew when it had failed and
+  said nothing. It now warns, in the Overlay tab, only when it actually happened.
+- **Model catalogues.** Both free providers retired every model this app shipped with, within weeks
+  of each other. The lists are current, and the app now names all of a provider's dead models
+  instead of only the last one it tried.
+- **Reasoning models returned nothing.** The replacement free models think before they answer, and
+  the per-answer token budget was sized for models that do not — the thinking consumed it and every
+  completion came back empty. The budget and the per-attempt timeout both suit a model that pauses
+  to think, and a timed-out model is skipped rather than retried.
+- **Region rectangles that no longer fit the screen are trimmed rather than captured whole**, which
+  used to read undefined pixels into OCR and looked like the model getting worse.
+- Settings labels no longer truncate themselves. «الموضع من أعلى إلى أسفل» was rendering as
+  «ع من أعلى إلى أسفل».
+
+### Changed
+
+- The interface is unchanged in shape, but the Providers tab now lists the lanes that will actually
+  be tried, in order, marking any that will be skipped for want of a key.
+
+### Internal
+
+- 427 automated tests, up from 368. The cache key is pinned by golden vectors; schema migrations
+  are a ladder that can be extended safely; OCR now reports where on screen it saw each word, which
+  is the groundwork for proposing a capture region for you rather than asking you to drag one.
+
 ## v0.4.2 — 8 August 2026
 
 ### Fixed

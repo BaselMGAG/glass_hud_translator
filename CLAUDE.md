@@ -338,16 +338,37 @@ Every part of it was written on macOS without ever running it, so that is worth 
 things expected to break — the `BITMAPINFOHEADER` layout in `GetDIBits` and Avalonia's window-handle
 timing for the overlay styles — both turned out fine.
 
-**That verification covers v0.4.2 and nothing after it.** Everything since — the multi-monitor
-coordinate work, the overlay following the game, the DC rebuild on display change, and the schema
-migration to version 3 — was written on macOS and has not been run on Windows. The migration is the
-one to check first, against a real populated database rather than a fresh one, because it is the
-only change in that batch that can cost a user something they cannot get back. It is also the one
-with a safety net: migrations are additive, so an older release re-unzipped over a version 3
-database opens it without complaint.
+**v0.5.0 was verified on Windows too**, against a real populated database: the v2→v3 migration ran,
+the cache survived, translation worked, keys persisted across a restart, and the overlay position
+sliders moved the panel over a running game.
 
 Still unverified: click-through, display scaling above 100%, auto-watch under sustained load,
 cache hit rate over a real session, and multi-monitor behaviour of any kind.
+
+### What a day of real use cost, and what it taught
+
+v0.5.0 shipped after four rounds of chasing the wrong cause, and the sequence is worth keeping
+because every step was a reasonable-looking mistake.
+
+The symptom was always the same sentence on the overlay: «تعذّرت الترجمة». The first cause was real
+— Gemini's whole model list had died. So was the second: Groq's had too, in the same week. The
+third was mine, introduced by fixing the first two, because the replacement models reason before
+answering and the token budget and timeout were both sized for models that do not. **The fourth was
+the actual one, and it had been in the very first log line I was sent**: `No API key for: gemini,
+groq` — the app had no key at all, because the Test button next to the key box validated the text
+without saving it while the Save button sat off-screen below four provider sections.
+
+Three lessons, in order of how much they cost:
+
+- **Read the log literally before theorising.** "No API key" meant no API key. I read it as a
+  symptom of the provider problem I had just been fixing, twice.
+- **A positive confirmation next to a control is a promise about that control.** A Test button that
+  says «يعمل» and does not persist is worse than no button, because it converts a user's uncertainty
+  into false confidence. Any button that validates something should also commit it.
+- **Verify against the real thing before changing config in response to a report.** Removing
+  `llama-3.3-70b-versatile` on the strength of a deprecation notice — against the evidence of a
+  probe that had just passed on it — broke a working lane. `tools/Replay` with real keys settles in
+  one minute what documentation gets wrong; both providers' own docs were wrong on the same day.
 
 ### What has actually gone wrong
 

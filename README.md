@@ -106,6 +106,15 @@ Ctrl+F13        →  Translate what is on screen now   (in Settings → Hotkeys)
 
 ### Tips
 
+**Check the key before you play.** Each key box has a **Test** button beside it. It sends one very
+short line through that provider, so you find out here rather than in a cutscene. It distinguishes
+"the key was refused" from "I could not check right now" — those need opposite responses, and only
+the first means you need a new key. A key that passes is saved immediately.
+
+**Move the overlay if it covers something.** Settings → **Overlay** has two position sliders and
+the panel moves as you drag them. Its position is measured inside the game's window, so it stays
+put when the game moves or changes monitor.
+
 **Auto-watch for cutscenes.** Manual triggering is the default because each line costs a request.
 During a long cutscene, `Ctrl+Shift+A` lets it follow along by itself. It stops after 90 seconds
 with no new text, so leaving it on while you're away can't quietly drain your quota.
@@ -210,7 +219,8 @@ Early, but working.
 | Screen capture, OCR, global hotkeys | **working on Windows** |
 | Overlay drawn over a running game | **working** |
 | End-to-end translation in game | **working** — about 1 second per line |
-| Checking an API key from Settings | written, not yet verified on hardware |
+| Checking an API key from Settings | **working** |
+| Moving the overlay where you want it | **working** |
 | A game on a second monitor | written, not yet verified on hardware |
 | Click-through, 125%/150% display scaling | not yet verified |
 
@@ -221,6 +231,11 @@ Expect rough edges. Click-through, display scaling above 100% and anything invol
 monitor are unverified, the glossary is a first draft, and OCR accuracy against a real game font
 hasn't been measured properly. I develop on macOS and test on a borrowed Windows laptop, so Windows
 fixes arrive in batches — which is also why "written" and "verified" are separate rows above.
+
+**Free models retire without warning, and both providers did it in the same week.** Model names
+live in [`data/models.json`](data/models.json), never in code, so when a provider drops one the fix
+is editing a text file rather than waiting for a release. If translation stops and the Diagnostics
+tab says `MODEL GONE`, that is what happened.
 
 ## How it works
 

@@ -88,6 +88,12 @@ Practical features:
 - **Region picking on a frozen screenshot**, so the dialogue doesn't advance while you aim, with a
   button that shows exactly what the text recognition reads from your selection before you commit.
 - **Corrections stick.** Fix a character's name once and that correction is used from then on.
+- **A button that checks your API key**, beside the box you paste it into, so you find out before
+  you are in a cutscene. It distinguishes "the key was refused" from "I could not check right now",
+  which need opposite responses — only the first means you need a new key.
+- **The overlay goes where you want it.** Two sliders move the translation panel, and it moves while
+  you drag. The position is held relative to the game's window, so it survives the game moving.
+- **It remembers the last three lines**, so pronouns and gender agreement have context to work from.
 - **Works on anything on screen**, not only games — a browser, a PDF, a video player.
 - **It tells you when a new version is out**, with the filename and the steps, and never installs
   anything by itself. One request a day to GitHub's public releases page, nothing sent with it,
@@ -108,10 +114,14 @@ hotkeys, the overlay and the full translation round trip all run against the liv
 **It is early.** Specifically:
 
 - Click-through (clicking through the overlay to the game) hasn't been verified yet.
-- Display scaling above 100% hasn't been tested.
+- Display scaling above 100% hasn't been tested, and neither has a game on a second monitor.
 - The Final Fantasy XIV glossary is a first draft and needs review by a native Arabic speaker.
 - Text-recognition accuracy against real game fonts hasn't been measured properly yet.
 - Only one game has a profile so far.
+- **Free AI models are withdrawn without warning** — both free providers retired every model this
+  app shipped with during one week in August 2026. Model names live in a text file rather than in
+  code precisely so that the fix is an edit rather than a release, but it does mean an installation
+  left alone for months may need that file refreshed.
 
 Anyone writing about this should present it as **a working early release that people can try and
 contribute to**, not a finished product.
@@ -224,6 +234,10 @@ All in the repository under `docs/images/`:
 | `settings-providers-ar.png` | The same tab with the interface in Arabic, mirrored right-to-left. **Pairs with the one above as a before/after — the strongest image for the localisation angle.** |
 | `settings-translating.png` | The Translating tab: which game, which Arabic dialect, where the text sits |
 | `settings-translating-ar.png` | The same, in Arabic |
+| `settings-overlay.png` | The Overlay tab: font size, opacity, and the two sliders that move the panel |
+| `settings-overlay-ar.png` | The same, in Arabic |
+| `settings-hotkeys.png` / `-ar.png` | The five rebindable hotkeys |
+| `add-game.png` / `-ar.png` | Adding a game that has no profile yet, without touching a file |
 | `diagnostics.png` | The diagnostics panel, including the moment it caught a model being retired |
 | `overlay.png` | The overlay's three states, cleanly rendered — good for a graphic |
 
