@@ -31,6 +31,17 @@ public sealed record AppSettings
 
     [JsonPropertyName("overlayOpacity")] public double OverlayOpacity { get; set; } = 0.82;
 
+    /// <summary>
+    /// Where the panel sits inside the game window, each 0 to 1 across the space the panel does
+    /// not occupy. See <see cref="Capture.OverlayPlacement"/>; the defaults are centred and low,
+    /// which is where a dialogue box usually is and where this used to be nailed down.
+    /// </summary>
+    [JsonPropertyName("overlayHorizontal")]
+    public double OverlayHorizontal { get; set; } = Capture.OverlayPlacement.DefaultHorizontal;
+
+    [JsonPropertyName("overlayVertical")]
+    public double OverlayVertical { get; set; } = Capture.OverlayPlacement.DefaultVertical;
+
     /// <summary>Auto-watch poll rate. 2 fps rather than 3 keeps headroom on weak hardware.</summary>
     [JsonPropertyName("autoWatchFps")] public double AutoWatchFps { get; set; } = 2;
 

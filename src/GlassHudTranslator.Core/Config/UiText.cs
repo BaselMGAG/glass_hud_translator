@@ -98,6 +98,11 @@ public sealed class UiText
     public required string OverlayNote { get; init; }
     public required string PreviewOverlay { get; init; }
     public required string ShowHideOverlay { get; init; }
+    public required string OverlayVerticalPosition { get; init; }
+    public required string OverlayHorizontalPosition { get; init; }
+    public required string OverlayPositionNote { get; init; }
+    public required string ResetOverlayPosition { get; init; }
+    public required string OverlayCaptureWarning { get; init; }
 
     // ── hotkeys ────────────────────────────────────────────────────────────────────────────
     public required string HotkeysNoteWindows { get; init; }
@@ -351,6 +356,17 @@ public sealed class UiText
             + "that hang below the baseline are clipped, which turns ي into ى — a different letter.",
         PreviewOverlay = "Preview overlay",
         ShowHideOverlay = "Show / hide overlay",
+        OverlayVerticalPosition = "Position, top to bottom",
+        OverlayHorizontalPosition = "Position, left to right",
+        OverlayPositionNote =
+            "Move the panel if it sits on top of something you need to see. It moves as you drag, "
+            + "so press Preview overlay first and watch it. The position is inside the game's "
+            + "window, so it stays put when the game moves or changes monitor.",
+        ResetOverlayPosition = "Back to the middle",
+        OverlayCaptureWarning =
+            "This version of Windows cannot hide the overlay from screen capture. Keep the panel "
+            + "away from the area being read, or the app will read its own Arabic back and "
+            + "translate that instead of the game.",
 
         HotkeysNoteWindows =
             "Type a combination such as Ctrl+Shift+T. Modifiers: Ctrl, Shift, Alt, Win. Keys include "
@@ -608,6 +624,16 @@ public sealed class UiText
             + "المتدلّية تحت السطر، فتتحوّل ي إلى ى — وهو حرف آخر.",
         PreviewOverlay = "معاينة الطبقة",
         ShowHideOverlay = "إظهار / إخفاء الطبقة",
+        OverlayVerticalPosition = "الموضع من أعلى إلى أسفل",
+        OverlayHorizontalPosition = "الموضع من يمين إلى يسار",
+        OverlayPositionNote =
+            "حرّك اللوحة إن كانت تغطّي شيئاً تحتاج أن تراه. تتحرّك وأنت تسحب، فاضغط «معاينة الطبقة» "
+            + "أولاً وتابعها بعينك. والموضع محسوب داخل نافذة اللعبة، فيبقى كما هو إذا حرّكت اللعبة "
+            + "أو نقلتها إلى شاشة أخرى.",
+        ResetOverlayPosition = "أعِدها إلى الوسط",
+        OverlayCaptureWarning =
+            "إصدار ويندوز هذا لا يستطيع إخفاء الطبقة عن التقاط الشاشة. أبعِد اللوحة عن المنطقة "
+            + "التي يقرأها البرنامج، وإلا قرأ عربيّته هو وترجمها بدل نصّ اللعبة.",
 
         HotkeysNoteWindows =
             "اكتب تركيبة مثل Ctrl+Shift+T. المُعدِّلات: Ctrl و Shift و Alt و Win. والمفاتيح تشمل "

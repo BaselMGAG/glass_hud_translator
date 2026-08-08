@@ -1,4 +1,5 @@
 using GlassHudTranslator.App.Views;
+using GlassHudTranslator.Core.Capture;
 using GlassHudTranslator.Core.Config;
 using GlassHudTranslator.Core.Platform;
 using GlassHudTranslator.Core.Storage;
@@ -96,13 +97,15 @@ public partial class App : Application
 
         BindHotkeys(settings, settingsWindow);
 
-        settingsWindow.Opened += (_, _) => PositionOverlay(overlay, _session);
+        settingsWindow.Opened += (_, _) => PositionOverlay(overlay, _session, settings);
 
         // The overlay follows the game window wherever it is, including onto a second monitor.
-        _session.GameWindowLocated += game => Dispatcher.UIThread.Post(() =>
-            overlay.Position = new PixelPoint(
-                game.X + (game.Width - (int)overlay.Width) / 2,
-                game.Y + (int)(game.Height * 0.72)));
+        _session.GameWindowLocated += game => Dispatcher.UIThread.Post(
+            () => PlaceOverlay(overlay, game, settings));
+
+        // And it moves the instant a slider does, so where it will sit is something the user sees
+        // rather than a number they have to start a game to evaluate.
+        settingsWindow.OverlayPlacementChanged += () => PositionOverlay(overlay, _session, settings);
         return settingsWindow;
     }
 
@@ -278,24 +281,32 @@ public partial class App : Application
     /// the Arabic appears on a screen nobody is looking at.
     /// </para>
     /// </summary>
-    private static void PositionOverlay(OverlayWindow overlay, TranslationSession? session)
+    private static void PositionOverlay(
+        OverlayWindow overlay, TranslationSession? session, AppSettings settings)
     {
         overlay.Show();
 
         if (session?.OverlayAnchor() is { } game)
         {
-            overlay.Position = new PixelPoint(
-                game.X + (game.Width - (int)overlay.Width) / 2,
-                game.Y + (int)(game.Height * 0.72));
+            PlaceOverlay(overlay, game, settings);
             return;
         }
 
+        // No game found yet, so the screen stands in for it. The same fractions apply, which is
+        // what makes the preview in Settings mean anything before a game is running.
         if (overlay.Screens.Primary is not { } screen) return;
 
         var bounds = screen.WorkingArea;
-        overlay.Position = new PixelPoint(
-            bounds.X + (bounds.Width - (int)overlay.Width) / 2,
-            bounds.Y + (int)(bounds.Height * 0.72));
+        PlaceOverlay(overlay,
+            new CaptureRegion(bounds.X, bounds.Y, bounds.Width, bounds.Height), settings);
+    }
+
+    private static void PlaceOverlay(OverlayWindow overlay, CaptureRegion area, AppSettings settings)
+    {
+        var (x, y) = OverlayPlacement.Within(area, (int)overlay.Width, overlay.PanelHeight,
+            settings.OverlayHorizontal, settings.OverlayVertical);
+
+        overlay.Position = new PixelPoint(x, y);
     }
 }
 

@@ -147,6 +147,30 @@ public sealed class OverlayWindow : Window
     public void Clear() => Dispatcher.UIThread.Post(Hide);
 
     /// <summary>
+    /// How tall the panel actually is, for placing it. <see cref="Avalonia.Layout.Layoutable.Height"/>
+    /// is NaN here because the window sizes itself to its content, so asking for it before the
+    /// first layout pass yields a position computed from NaN - which silently becomes a coordinate
+    /// far off any screen.
+    /// </summary>
+    public int PanelHeight => (int)Math.Ceiling(
+        Bounds.Height > 0 ? Bounds.Height :
+        _panel.Bounds.Height > 0 ? _panel.Bounds.Height : 160);
+
+    /// <summary>
+    /// Whether this build could hide the overlay from its own screen capture, and what to do if
+    /// not. Null when everything is fine.
+    ///
+    /// <para>
+    /// Recorded rather than discarded, which it was until a player reported the overlay covering
+    /// the game's English text and asked whether that was why translation had stopped working. It
+    /// is exactly why it would: with the exclusion unavailable, the capture includes the Arabic
+    /// panel, OCR reads that back, and the pipeline translates its own output. The app already
+    /// knew this had happened and had nowhere to say it.
+    /// </para>
+    /// </summary>
+    public string? CaptureExclusionWarning { get; private set; }
+
+    /// <summary>
     /// True when the user has hidden the HUD by hotkey. Distinct from simply not being shown:
     /// translations keep running and keep being cached while hidden, they just are not drawn, so
     /// unhiding is instant and nothing was missed.
@@ -191,7 +215,7 @@ public sealed class OverlayWindow : Window
         // Click-through, no-activate, topmost, and excluded from its own captures. No-op off
         // Windows; Session 2 implements it.
         if (TryGetPlatformHandle() is { } handle)
-            PlatformServices.ApplyOverlayWindowStyles(handle.Handle);
+            CaptureExclusionWarning = PlatformServices.ApplyOverlayWindowStyles(handle.Handle);
     }
 
     /// <summary>

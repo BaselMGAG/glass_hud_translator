@@ -637,15 +637,53 @@ public sealed class SettingsWindow : Window
             _settings.Save();
         };
 
+        var vertical = new Slider
+        {
+            Minimum = 0, Maximum = 1, Value = _settings.OverlayVertical, Width = 240,
+        };
+        var horizontal = new Slider
+        {
+            Minimum = 0, Maximum = 1, Value = _settings.OverlayHorizontal, Width = 240,
+        };
+
+        vertical.PropertyChanged += (_, e) =>
+        {
+            if (e.Property != RangeBase_ValueProperty) return;
+            _settings.OverlayVertical = vertical.Value;
+            _settings.Save();
+            OverlayPlacementChanged?.Invoke();
+        };
+        horizontal.PropertyChanged += (_, e) =>
+        {
+            if (e.Property != RangeBase_ValueProperty) return;
+            _settings.OverlayHorizontal = horizontal.Value;
+            _settings.Save();
+            OverlayPlacementChanged?.Invoke();
+        };
+
         stack.Children.Add(Row(_text.FontSize, _fontSize));
         stack.Children.Add(Row(_text.PanelOpacity, _opacity));
+        stack.Children.Add(Row(_text.OverlayVerticalPosition, vertical));
+        stack.Children.Add(Row(_text.OverlayHorizontalPosition, horizontal));
+        stack.Children.Add(Note(_text.OverlayPositionNote));
         stack.Children.Add(Note(_text.OverlayNote));
+
+        // Only when it actually failed. The overlay reading its own Arabic back is the failure
+        // this warns about, and it is invisible from the inside - the translations simply get
+        // stranger. Silence when the exclusion worked, which is every supported Windows build.
+        if (_overlay.CaptureExclusionWarning is not null)
+            stack.Children.Add(Warning(_text.OverlayCaptureWarning));
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         buttons.Children.Add(Button(_text.PreviewOverlay, () =>
             _overlay.ShowTranslation("Y'shtola", "تعال، فالأثير هنا يزداد اضطراباً.")));
         buttons.Children.Add(Button(_text.ShowHideOverlay, () => _status.Text = _overlay.ToggleHidden()
             ? _text.OverlayShown : _text.OverlayHidden));
+        buttons.Children.Add(Button(_text.ResetOverlayPosition, () =>
+        {
+            vertical.Value = OverlayPlacement.DefaultVertical;
+            horizontal.Value = OverlayPlacement.DefaultHorizontal;
+        }));
         stack.Children.Add(buttons);
 
         return stack;
@@ -1173,6 +1211,12 @@ public sealed class SettingsWindow : Window
             : string.Join("  ·  ",
                 failed.Select(f => $"{_text.HotkeyDescription(f.Action)}: {f.Error}"));
     }
+
+    /// <summary>
+    /// Raised while a position slider is being dragged. The App owns where the overlay goes,
+    /// because only it knows which rectangle is the game; this window only knows the fractions.
+    /// </summary>
+    public event Action? OverlayPlacementChanged;
 
     public void ReportStatus(string message)
     {
