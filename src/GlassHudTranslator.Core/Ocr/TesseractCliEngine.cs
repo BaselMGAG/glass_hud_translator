@@ -92,7 +92,7 @@ public sealed class TesseractCliEngine(TesseractOptions? options = null) : IOcrE
         {
             await File.WriteAllBytesAsync(input, prepared.ToPng(), ct).ConfigureAwait(false);
             var tsv = await RunAsync(input, ct).ConfigureAwait(false);
-            return ParseTsv(tsv, _options.MinWordConfidence);
+            return ParseTsv(tsv, _options.MinWordConfidence, _options.Preprocess.UpscaleFactor);
         }
         finally
         {
@@ -144,12 +144,22 @@ public sealed class TesseractCliEngine(TesseractOptions? options = null) : IOcrE
     /// TSV columns: level page block par line word left top width height conf text.
     /// Words are regrouped into their original lines so the speaker name stays on its own line for
     /// <see cref="Text.DialogueParser"/>.
+    ///
+    /// <para>
+    /// <paramref name="upscaleFactor"/> is what the preprocessor multiplied the image by before
+    /// the engine saw it, and every reported box is divided back down by it. It defaults to 1 so a
+    /// caller parsing raw TSV gets the coordinates that are literally in the file; both real
+    /// engines pass their own <see cref="OcrPreprocessOptions.UpscaleFactor"/>, because a box left
+    /// in the upscaled space is wrong by a factor of two in a way that still looks like a box.
+    /// </para>
     /// </summary>
-    public static OcrResult ParseTsv(string tsv, float minWordConfidence)
+    public static OcrResult ParseTsv(string tsv, float minWordConfidence, int upscaleFactor = 1)
     {
+        var scale = Math.Max(1, upscaleFactor);
         var lines = new Dictionary<(int Block, int Par, int Line), List<string>>();
         var order = new List<(int Block, int Par, int Line)>();
         var confidences = new List<float>();
+        var words = new List<OcrWord>();
         var rejected = 0;
 
         foreach (var row in tsv.Split('\n'))
@@ -162,7 +172,11 @@ public sealed class TesseractCliEngine(TesseractOptions? options = null) : IOcrE
             if (text.Length == 0) continue;
 
             if (!float.TryParse(columns[10], CultureInfo.InvariantCulture, out var confidence)) continue;
-            if (confidence < minWordConfidence)
+
+            var accepted = confidence >= minWordConfidence;
+            words.Add(new OcrWord(text, BoxOf(columns, scale), confidence, accepted));
+
+            if (!accepted)
             {
                 // Counted, not just dropped. The reject count is what tells an empty region apart
                 // from an illegible one, and it is the per-region signal a future second OCR engine
@@ -175,20 +189,24 @@ public sealed class TesseractCliEngine(TesseractOptions? options = null) : IOcrE
             var key = (block, int.Parse(columns[3], CultureInfo.InvariantCulture),
                 int.Parse(columns[4], CultureInfo.InvariantCulture));
 
-            if (!lines.TryGetValue(key, out var words))
+            if (!lines.TryGetValue(key, out var lineWords))
             {
-                lines[key] = words = [];
+                lines[key] = lineWords = [];
                 order.Add(key);
             }
 
-            words.Add(text);
+            lineWords.Add(text);
             confidences.Add(confidence);
         }
 
         // Not the shared Empty when words were seen and all distrusted: that frame is illegible,
         // not blank, and collapsing the two was hiding exactly the frames a better engine is for.
         if (order.Count == 0)
-            return rejected == 0 ? OcrResult.Empty : new OcrResult(string.Empty, 0, 0, rejected);
+        {
+            return rejected == 0
+                ? OcrResult.Empty
+                : new OcrResult(string.Empty, 0, 0, rejected) { Words = words };
+        }
 
         var builder = new StringBuilder();
         foreach (var key in order)
@@ -197,7 +215,34 @@ public sealed class TesseractCliEngine(TesseractOptions? options = null) : IOcrE
             builder.Append(string.Join(' ', lines[key]));
         }
 
-        return new OcrResult(builder.ToString(), confidences.Average(), confidences.Count, rejected);
+        return new OcrResult(builder.ToString(), confidences.Average(), confidences.Count, rejected)
+        {
+            Words = words,
+        };
+    }
+
+    /// <summary>
+    /// Columns 6-9 are left, top, width and height, in the upscaled image the engine read.
+    ///
+    /// <para>
+    /// Width and height floor to 1 rather than 0. Integer division of a 1px mark - a full stop, an
+    /// apostrophe in the proper nouns this glossary is full of - at 2x would otherwise produce a
+    /// zero-width box, and a zero-width box is not a smaller rectangle, it is a rectangle that
+    /// every geometric test quietly declines to match.
+    /// </para>
+    /// </summary>
+    private static OcrBox BoxOf(string[] columns, int scale)
+    {
+        if (!int.TryParse(columns[6], CultureInfo.InvariantCulture, out var left) ||
+            !int.TryParse(columns[7], CultureInfo.InvariantCulture, out var top) ||
+            !int.TryParse(columns[8], CultureInfo.InvariantCulture, out var width) ||
+            !int.TryParse(columns[9], CultureInfo.InvariantCulture, out var height))
+        {
+            return default;
+        }
+
+        return new OcrBox(left / scale, top / scale,
+            Math.Max(1, width / scale), Math.Max(1, height / scale));
     }
 
     public void Dispose() { }

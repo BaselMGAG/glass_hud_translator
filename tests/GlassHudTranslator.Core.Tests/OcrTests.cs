@@ -1,4 +1,5 @@
 using GlassHudTranslator.Core.Capture;
+using GlassHudTranslator.Core.Diagnostics;
 using GlassHudTranslator.Core.Ocr;
 using GlassHudTranslator.Core.Text;
 using Microsoft.Extensions.Time.Testing;
@@ -155,6 +156,184 @@ public class TesseractTsvParsingTests
         var tsv = string.Join('\n', [Header, Row(1, 1, 1, 1, 95f, "  "), Row(1, 1, 1, 2, 95f, "Come")]);
 
         Assert.Equal("Come", TesseractCliEngine.ParseTsv(tsv, 40f).RawText);
+    }
+}
+
+public class OcrWordGeometryTests
+{
+    private const string Header =
+        "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext";
+
+    private static string RowAt(int line, float conf, string text,
+        int left, int top, int width, int height) =>
+        $"5\t1\t1\t1\t{line}\t1\t{left}\t{top}\t{width}\t{height}\t{conf}\t{text}";
+
+    [Fact]
+    public void WordsCarryTheirPositionInReadingOrder()
+    {
+        var tsv = string.Join('\n', [
+            Header,
+            RowAt(1, 96f, "Y'shtola", 40, 12, 120, 26),
+            RowAt(2, 94f, "Come,", 40, 50, 70, 26),
+            RowAt(2, 92f, "the", 118, 50, 44, 26),
+        ]);
+
+        var result = TesseractCliEngine.ParseTsv(tsv, minWordConfidence: 40f);
+
+        Assert.Equal(["Y'shtola", "Come,", "the"], result.Words.Select(w => w.Text));
+        Assert.Equal(new OcrBox(40, 12, 120, 26), result.Words[0].Box);
+        Assert.Equal(160, result.Words[0].Box.Right);
+        Assert.Equal(38, result.Words[0].Box.Bottom);
+        Assert.All(result.Words, w => Assert.True(w.Accepted));
+    }
+
+    [Fact]
+    public void BoxesAreMappedBackOutOfTheUpscaledImage()
+    {
+        // The one that would be silently wrong. OCR runs on a 2x copy, so Tesseract reports a word
+        // at (80, 24) sized 240x52 for a word that is at (40, 12) sized 120x26 in the frame. Handed
+        // back unmapped, the box is a plausible rectangle pointing below and right of the text.
+        var tsv = string.Join('\n', [Header, RowAt(1, 96f, "Y'shtola", 80, 24, 240, 52)]);
+
+        var mapped = TesseractCliEngine.ParseTsv(tsv, 40f, upscaleFactor: 2);
+        Assert.Equal(new OcrBox(40, 12, 120, 26), mapped.Words[0].Box);
+
+        // Default 1 leaves the file's own coordinates alone, so a caller parsing raw TSV is not
+        // silently given something else.
+        var raw = TesseractCliEngine.ParseTsv(tsv, 40f);
+        Assert.Equal(new OcrBox(80, 24, 240, 52), raw.Words[0].Box);
+    }
+
+    [Fact]
+    public void AOnePixelMarkSurvivesTheMappingAsAVisibleBox()
+    {
+        // A full stop or an apostrophe is a pixel or two wide. Integer division at 2x would take a
+        // 1px box to zero, and a zero-width box is not a small rectangle - it is one that every
+        // geometric test declines to match, so the mark vanishes from any clustering.
+        var tsv = string.Join('\n', [Header, RowAt(1, 90f, "'", 100, 20, 1, 3)]);
+
+        var box = TesseractCliEngine.ParseTsv(tsv, 40f, upscaleFactor: 2).Words[0].Box;
+
+        Assert.False(box.IsEmpty);
+        Assert.Equal(1, box.Width);
+    }
+
+    [Fact]
+    public void RejectedWordsKeepTheirGeometryAndAreMarked()
+    {
+        var tsv = string.Join('\n', [
+            Header,
+            RowAt(1, 95f, "Come", 10, 10, 60, 20),
+            RowAt(1, 12f, "|~", 300, 200, 8, 18),
+        ]);
+
+        var result = TesseractCliEngine.ParseTsv(tsv, minWordConfidence: 40f);
+
+        // Both present, so "is this region any good" can see the noise; only one accepted, so
+        // "where is the dialogue" can exclude it rather than proposing a region around a UI border.
+        Assert.Equal(2, result.Words.Count);
+        Assert.Equal(["Come"], result.AcceptedWords.Select(w => w.Text));
+        Assert.Equal(new OcrBox(300, 200, 8, 18), result.Words[1].Box);
+        Assert.False(result.Words[1].Accepted);
+    }
+
+    [Fact]
+    public void TheWordListAndTheScalarCountsAgree()
+    {
+        // Two representations of the same reading, and nothing but a test keeps them consistent.
+        var tsv = string.Join('\n', [
+            Header,
+            RowAt(1, 95f, "Come", 10, 10, 60, 20),
+            RowAt(1, 91f, "with", 80, 10, 60, 20),
+            RowAt(1, 12f, "|~", 300, 200, 8, 18),
+            RowAt(1, 8f, "..", 320, 200, 8, 18),
+        ]);
+
+        var result = TesseractCliEngine.ParseTsv(tsv, minWordConfidence: 40f);
+
+        Assert.Equal(result.WordCount, result.AcceptedWords.Count());
+        Assert.Equal(result.RejectedWordCount, result.Words.Count(w => !w.Accepted));
+        Assert.Equal(result.RawText, string.Join(' ', result.AcceptedWords.Select(w => w.Text)));
+    }
+
+    [Fact]
+    public void AnIllegibleFrameStillReportsWhereTheUnreadableWordsWere()
+    {
+        // Empty text, but the geometry is the evidence that something was there - which is what
+        // separates "no dialogue box on screen" from "the region is on the wrong thing".
+        var tsv = string.Join('\n', [
+            Header,
+            RowAt(1, 20f, "sm~ared", 10, 10, 60, 20),
+            RowAt(1, 15f, "t3xt", 80, 10, 60, 20),
+        ]);
+
+        var result = TesseractCliEngine.ParseTsv(tsv, minWordConfidence: 40f);
+
+        Assert.True(result.IsEmpty);
+        Assert.Equal(2, result.Words.Count);
+        Assert.Empty(result.AcceptedWords);
+    }
+
+    /// <summary>
+    /// Runs the real tesseract binary, which CI installs for the test job and a contributor on
+    /// macOS gets from <c>brew install tesseract</c>. Without it the body returns early rather than
+    /// failing: a missing dev tool is not a broken build. It still runs on every CI push, which is
+    /// the run that matters.
+    /// </summary>
+    [Fact]
+    public async Task TheSameFrameReadAtOneXAndTwoXPutsWordsInTheSamePlace()
+    {
+        if (TesseractCliEngine.Locate() is null) return;
+
+        // The invariant the arithmetic test cannot reach: it checks ParseTsv in isolation, so an
+        // engine that simply forgot to pass its upscale factor through would still satisfy it. This
+        // goes through RecognizeAsync, where the preprocessor really does double the image. If the
+        // mapping is skipped, every 2x box lands at twice the offset - outside an 880x240 frame
+        // entirely - while still looking like a perfectly ordinary rectangle.
+        var frame = SyntheticFrames.Render(
+            new SyntheticLine("Y'shtola", "Come, the aether here grows unstable."));
+
+        var atOne = await ReadAsync(frame, upscale: 1);
+        var atTwo = await ReadAsync(frame, upscale: 2);
+
+        Assert.NotEmpty(atOne.Words);
+        Assert.All(atTwo.Words, w =>
+        {
+            Assert.InRange(w.Box.Right, 1, frame.Width);
+            Assert.InRange(w.Box.Bottom, 1, frame.Height);
+        });
+
+        // Same words, same places. A few pixels of slack because upscaling genuinely changes what
+        // the engine sees at the edges of a glyph; a missing mapping is out by 100%, not by three.
+        var one = atOne.Words.ToDictionary(w => w.Text, w => w.Box);
+        foreach (var word in atTwo.Words.Where(w => one.ContainsKey(w.Text)))
+        {
+            Assert.InRange(Math.Abs(word.Box.Left - one[word.Text].Left), 0, 4);
+            Assert.InRange(Math.Abs(word.Box.Top - one[word.Text].Top), 0, 4);
+        }
+    }
+
+    private static async Task<OcrResult> ReadAsync(Frame frame, int upscale)
+    {
+        using var engine = new TesseractCliEngine(new TesseractOptions
+        {
+            Preprocess = new OcrPreprocessOptions { UpscaleFactor = upscale },
+        });
+
+        return await engine.RecognizeAsync(frame, CancellationToken.None);
+    }
+
+    [Fact]
+    public void AnEngineWithoutGeometryIsStillAValidResult()
+    {
+        // Geometry is optional per engine; the reject count is not. A vision-model lane returning
+        // text and nothing else must remain constructible.
+        var plain = new OcrResult("Come with me.", 90f, 3, RejectedWordCount: 1);
+
+        Assert.Empty(plain.Words);
+        Assert.Empty(plain.AcceptedWords);
+        Assert.Equal(1, plain.RejectedWordCount);
+        Assert.Empty(OcrResult.Empty.Words);
     }
 }
 

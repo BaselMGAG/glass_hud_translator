@@ -34,7 +34,7 @@ solution level it tries to force `net10.0` onto the Windows-only projects and fa
 dotnet test
 ```
 
-383 tests, all runnable on macOS and Linux.
+391 tests, all runnable on macOS and Linux.
 
 ```bash
 dotnet run --project tools/Replay -- --no-cache
@@ -135,6 +135,15 @@ misread are not failed translations, and they used to be reported as one — a f
 `TranslationResult` carrying the `stale` outcome, which read to every consumer as "the provider let
 us down". Null says the truth. Every consumer must branch on it; there is one in the App, one in
 Settings and one in Replay.
+
+**OCR word boxes are in frame coordinates, and the engine is what makes that true.** OCR runs on a
+preprocessed copy that is upscaled — 2x by default, because Tesseract is markedly better on larger
+text — so every box Tesseract reports is in doubled coordinates. `ParseTsv` takes the upscale factor
+and divides back down; both engines pass their own. Forget it and the boxes are wrong by exactly
+100% while still being perfectly plausible rectangles, pointing below and right of the words they
+name. The unit test on the arithmetic cannot catch a caller that simply omits the argument, so
+there is a second test that reads one frame at 1x and at 2x and requires the words to land in the
+same place. It has been mutation-checked. Any new engine returning geometry owes the same mapping.
 
 **Don't raise `MinWordConfidence` back to 40.** At 40 it silently deleted the word "linkpearl",
 which Tesseract had actually read perfectly at confidence 39.2. Tesseract scores unusual proper

@@ -127,7 +127,7 @@ contribute to**, not a finished product.
 | Providers supported | 4 — two free (Google Gemini, Groq), two paid and opt-in (OpenAI, Anthropic Claude) |
 | Interface languages | 2 — English and Arabic, English by default |
 | Credit card needed | No |
-| Automated tests | 383 |
+| Automated tests | 391 |
 | Glossary | 86 Final Fantasy XIV proper nouns pinned so far |
 | Configurable hotkeys | 5 |
 | Licence | Apache 2.0 |
