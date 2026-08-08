@@ -1205,7 +1205,7 @@ public sealed class SettingsWindow : Window
                 // line one of this method and nothing else will ever clear it - which is the
                 // v0.1.0 bug in CLAUDE.md exactly: a failure reported only to the Settings status
                 // line, leaving the overlay stuck on "translating", which reads as a hang.
-                _overlay.ShowError(_text.NoTextInRegion);
+                _overlay.ShowError(_text.NoTextInRegion, _text.IsRightToLeft);
                 _status.Text = $"{_text.TestFailed} {_text.NoTextInRegion}";
                 return;
             }

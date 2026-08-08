@@ -56,6 +56,10 @@ jobs:
           Copy-Item scripts/windows/*.bat out/
           Copy-Item README.md out/README.md
           Copy-Item README.ar.md out/README.ar.md
+          # The Egyptian one is the only player-facing manual, and both of the others link to it by
+          # relative path - so leaving it out puts a dead link in front of exactly the reader it
+          # was written for, on the screen where they have no other instructions.
+          Copy-Item README.masri.md out/README.masri.md
         shell: pwsh
 
       # The native Tesseract libraries and eng.traineddata have to survive publishing, or OCR
@@ -68,6 +72,7 @@ jobs:
           if (-not (Test-Path out/profiles/ffxiv/profile.json))  { $missing += 'profiles/ffxiv/profile.json' }
           if (-not (Test-Path out/data/models.json))             { $missing += 'data/models.json' }
           if (-not (Test-Path out/1-test-no-api-key.bat))        { $missing += '1-test-no-api-key.bat' }
+          if (-not (Test-Path out/README.masri.md))              { $missing += 'README.masri.md' }
 
           # The exact failure that reached the overlay on the first real run. These two DLLs are
           # what the managed wrapper P/Invokes into; without them OCR cannot start at all.

@@ -129,9 +129,19 @@ public sealed class OverlayWindow : Window
     /// Something went wrong. Shown on the overlay rather than only in Settings, because the overlay
     /// is where the user is looking - an earlier version reported failures to the Settings status
     /// line only, so the overlay sat on "loading" forever and the app looked hung.
+    ///
+    /// <para>
+    /// <paramref name="rightToLeft"/> follows the interface language, and the caller passes
+    /// <c>UiText.IsRightToLeft</c> rather than this deciding for itself. It used to hardcode
+    /// left-to-right, which was right while every one of these messages was an English literal in
+    /// the session code - and stopped being right in the same commit that moved them all into
+    /// UiText and gave them Arabic translations. The result was Arabic laid out as though it were
+    /// English, on the most visible surface in the app, in the change whose entire point was that
+    /// the overlay should stop answering in English.
+    /// </para>
     /// </summary>
-    public void ShowError(string message) => Dispatcher.UIThread.Post(() =>
-        Render(null, message, warning: null, englishBody: true, isError: true));
+    public void ShowError(string message, bool rightToLeft) => Dispatcher.UIThread.Post(() =>
+        Render(null, message, warning: null, englishBody: !rightToLeft, isError: true));
 
     /// <summary>Hides the panel entirely. Used when there is nothing to say.</summary>
     public void Clear() => Dispatcher.UIThread.Post(Hide);

@@ -210,7 +210,7 @@ Early, but working.
 | Screen capture, OCR, global hotkeys | **working on Windows** |
 | Overlay drawn over a running game | **working** |
 | End-to-end translation in game | **working** — about 1 second per line |
-| Checking an API key from Settings | working |
+| Checking an API key from Settings | written, not yet verified on hardware |
 | A game on a second monitor | written, not yet verified on hardware |
 | Click-through, 125%/150% display scaling | not yet verified |
 

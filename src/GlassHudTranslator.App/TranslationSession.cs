@@ -346,7 +346,10 @@ public sealed class TranslationSession : IDisposable
     private void Fail(string message)
     {
         Report(message);
-        _overlay.ShowError(message);
+
+        // Read live, not captured once: the language can be switched while the app is running and
+        // these messages already follow it, so their direction has to as well.
+        _overlay.ShowError(message, Text.IsRightToLeft);
     }
 
     public void Dispose()
