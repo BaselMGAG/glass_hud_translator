@@ -66,10 +66,17 @@ public static class KeyProbe
             Probe, Speaker: null, Glossary: [], PreviousLines: null,
             Register: ArabicRegister.ModernStandard, RequestedAt: DateTimeOffset.UtcNow);
 
-        // Walk the model list exactly as the router does. A provider whose first model has been
-        // retired is a live situation - it happened to gemini-2.5-flash-lite - and reporting that
+        // Walk the model list exactly as the router does. A provider whose models have been retired
+        // is a live situation - the whole Gemini 2.x list went in August 2026 - and reporting that
         // as a bad key would send the user to regenerate a key that was never the problem.
-        KeyProbeResult last = new(KeyStatus.Unknown, "no model answered");
+        //
+        // Every retired model is collected rather than the message being overwritten by whichever
+        // failed last. That is not tidiness: when all of them were gone, the report named only the
+        // final entry, so a lane that had lost its entire catalogue looked like one stale model. It
+        // sent the investigation after the one name it printed, which was the least interesting of
+        // the three, and hid that the list needed replacing rather than trimming.
+        var gone = new List<string>();
+        KeyProbeResult? other = null;
 
         foreach (var model in provider.Models)
         {
@@ -90,16 +97,16 @@ public static class KeyProbe
             }
             catch (ProviderException e) when (e.Failure == ProviderFailure.ModelNotFound)
             {
-                last = new KeyProbeResult(KeyStatus.Unknown, $"{model} is gone");
+                gone.Add(model);
             }
             catch (ProviderException e)
             {
                 // Rate limited or transient. The key is probably fine and we cannot prove it.
-                last = new KeyProbeResult(KeyStatus.Unknown, e.Message);
+                other = new KeyProbeResult(KeyStatus.Unknown, e.Message);
             }
             catch (OperationCanceledException)
             {
-                last = new KeyProbeResult(KeyStatus.Unknown, "timed out");
+                other = new KeyProbeResult(KeyStatus.Unknown, "timed out");
             }
             catch (Exception e)
             {
@@ -109,10 +116,21 @@ public static class KeyProbe
                 // settings window whose entire job is to report on something else. An unhandled
                 // exception here would take down the window the user is trying to configure, to
                 // tell them nothing. The router has the same contract for the same reason.
-                last = new KeyProbeResult(KeyStatus.Unknown, e.Message);
+                other = new KeyProbeResult(KeyStatus.Unknown, e.Message);
             }
         }
 
-        return last;
+        // Every model retired and nothing else went wrong: say so as one fact rather than as the
+        // name of whichever happened to be tried last. This is a configuration problem in
+        // models.json, not a problem with the key, and the message has to make that obvious enough
+        // that nobody goes looking for a new key.
+        if (gone.Count > 0 && gone.Count == provider.Models.Count)
+            return new KeyProbeResult(KeyStatus.Unknown, $"no model left: {string.Join(", ", gone)}");
+
+        if (other is not null) return other;
+
+        return gone.Count > 0
+            ? new KeyProbeResult(KeyStatus.Unknown, $"gone: {string.Join(", ", gone)}")
+            : new KeyProbeResult(KeyStatus.Unknown, "no model answered");
     }
 }

@@ -78,6 +78,45 @@ public class KeyProbeTests
         Assert.Equal(2, provider.Calls);
     }
 
+    [Fact]
+    public async Task WhenEveryModelIsRetiredTheReportNamesThemAll()
+    {
+        // What actually happened in August 2026: the whole Gemini 2.x list went at once. The report
+        // named only the last entry tried, so a lane that had lost its entire catalogue looked like
+        // one stale model - and the investigation went after that one name, which was the least
+        // interesting of the three. The user cannot fix what the message does not mention.
+        var provider = new FakeProvider(
+            ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-flash-lite"],
+            model => throw Fail(ProviderFailure.ModelNotFound, model));
+
+        var result = await KeyProbe.TestAsync(provider, Budget, default);
+
+        Assert.Equal(KeyStatus.Unknown, result.Status);
+        Assert.Contains("gemini-2.5-flash", result.Detail);
+        Assert.Contains("gemini-2.0-flash", result.Detail);
+        Assert.Contains("gemini-2.5-flash-lite", result.Detail);
+
+        // And it must not read as the key's fault - that is the whole point of Unknown.
+        Assert.DoesNotContain("key", result.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ARealFailureOnALaterModelOutranksTheRetiredOnesBeforeIt()
+    {
+        // A retired model followed by a rate limit is not "no model left" - the catalogue is fine
+        // and the lane is simply busy, which is a different thing to tell someone.
+        var provider = new FakeProvider(["gone", "busy"],
+            model => throw Fail(
+                model == "gone" ? ProviderFailure.ModelNotFound : ProviderFailure.RateLimited,
+                model));
+
+        var result = await KeyProbe.TestAsync(provider, Budget, default);
+
+        Assert.Equal(KeyStatus.Unknown, result.Status);
+        Assert.Contains(nameof(ProviderFailure.RateLimited), result.Detail);
+        Assert.DoesNotContain("no model left", result.Detail);
+    }
+
     [Theory]
     [InlineData(ProviderFailure.RateLimited)]
     [InlineData(ProviderFailure.Transient)]
