@@ -212,7 +212,7 @@ Early, but working.
 
 | | |
 |---|---|
-| Translation pipeline (OCR → normalise → cache → LLM → render) | working, 427 tests |
+| Translation pipeline (OCR → normalise → cache → LLM → render) | working, 446 tests |
 | Arabic rendering, shaping, bidi, diacritics | working and verified |
 | Game profiles, glossary, OCR corrections | working |
 | Provider failover, quota tracking, caching | working |
@@ -360,7 +360,7 @@ Nothing, in normal use. Rough arithmetic for a heavy story session:
 |---|---|
 | Lines of dialogue in cutscene-dense play | 100–200 |
 | API requests after cache hits | ~120 |
-| Free-tier daily budget across both free providers | ~15,000 |
+| Free-tier daily budget across both free providers | ~3,500 translations |
 
 You would need to play for well over a day straight to run out. The realistic way to burn quota
 isn't long sessions — it's a bug where the same line hashes two different ways and gets paid for

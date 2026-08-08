@@ -463,6 +463,326 @@ public class ProviderTimeoutTests
     }
 }
 
+public class RateLimitFallthroughTests
+{
+    private static readonly RouterOptions FastRetries = new()
+    {
+        RetryBaseDelay = TimeSpan.FromMilliseconds(1),
+    };
+
+    private static TranslationRequest Line() =>
+        new("Come with me.", RequestedAt: DateTimeOffset.UtcNow);
+
+    [Fact]
+    public async Task ARateLimitedModelFallsThroughToItsSiblingInTheSameLane()
+    {
+        // The bug, exactly as it was reported. Free providers meter PER MODEL - one Gemini model
+        // allows 20 requests a day and another 500 - so a 429 on the first says nothing about the
+        // rest. Ending the lane there left 498 requests unspent and told the user every provider
+        // was exhausted.
+        var gemini = new FakeProvider("gemini", "small-quota", "big-quota");
+        gemini.Fails(ProviderFailure.RateLimited).Returns("تعال معي.");
+        var router = new ProviderRouter([(gemini, 600)], FastRetries);
+
+        var result = await router.TranslateAsync(Line(), CancellationToken.None);
+
+        Assert.Equal("تعال معي.", result.Text);
+        Assert.Equal("big-quota", result.Model);
+        Assert.Equal(2, gemini.Calls.Count);
+    }
+
+    [Fact]
+    public async Task AnExhaustedGeminiHandsOverToGroqInsteadOfGivingUp()
+    {
+        // Precisely the evening this was reported: Gemini's daily allowance gone, Groq untouched,
+        // and the overlay saying "translation failed" the whole time.
+        var gemini = new FakeProvider("gemini", "m1", "m2", "m3");
+        gemini.Fails(ProviderFailure.RateLimited, times: 3);
+
+        var groq = new FakeProvider("groq", "llama", "gpt-oss");
+        groq.Returns("هلمّ معي.");
+
+        var router = new ProviderRouter([(gemini, 600), (groq, 600)], FastRetries);
+
+        var result = await router.TranslateAsync(Line(), CancellationToken.None);
+
+        Assert.Equal("هلمّ معي.", result.Text);
+        Assert.Equal("groq", result.Provider);
+        Assert.False(result.IsFallbackEnglish);
+
+        // Every Gemini model was actually tried before moving on - not one and out.
+        Assert.Equal(3, gemini.Calls.Count);
+    }
+
+    [Fact]
+    public async Task ALaneCoolsDownOnlyWhenEveryModelIsRateLimited()
+    {
+        var clock = new FakeTimeProvider();
+        var gemini = new FakeProvider("gemini", "m1", "m2");
+        gemini.Fails(ProviderFailure.RateLimited, times: 2);
+        var groq = new FakeProvider("groq").Returns("أ").Returns("ب");
+
+        var router = new ProviderRouter([(gemini, 600), (groq, 600)], FastRetries, clock);
+
+        await router.TranslateAsync(Line(), CancellationToken.None);
+        Assert.Equal(2, gemini.Calls.Count);
+
+        // Sidelined, so the second line does not pay for two more instant 429s.
+        await router.TranslateAsync(
+            new TranslationRequest("And then?", RequestedAt: clock.GetUtcNow()),
+            CancellationToken.None);
+
+        Assert.Equal(2, gemini.Calls.Count);
+    }
+
+    [Fact]
+    public async Task OneRateLimitAmongOtherFailuresDoesNotSidelineTheLane()
+    {
+        // A lane where one model is throttled and another is merely broken is not a throttled
+        // lane. Blacking it out for a minute would keep us from the models that were fine.
+        //
+        // Timeout rather than Transient for the second model, deliberately: a transient failure
+        // backs off through the injected clock, and a FakeTimeProvider that nobody advances makes
+        // that delay wait forever. A timeout goes straight to the next model, which is the
+        // behaviour under test here anyway.
+        var clock = new FakeTimeProvider();
+        var gemini = new FakeProvider("gemini", "limited", "broken");
+        gemini.Fails(ProviderFailure.RateLimited).Fails(ProviderFailure.Timeout);
+        var groq = new FakeProvider("groq").Returns("أ").Returns("ب");
+
+        var router = new ProviderRouter([(gemini, 600), (groq, 600)], FastRetries, clock);
+
+        await router.TranslateAsync(Line(), CancellationToken.None);
+        var afterFirst = gemini.Calls.Count;
+
+        await router.TranslateAsync(
+            new TranslationRequest("And then?", RequestedAt: clock.GetUtcNow()),
+            CancellationToken.None);
+
+        Assert.True(gemini.Calls.Count > afterFirst,
+            "The lane was sidelined even though not every model was rate limited.");
+    }
+
+    [Fact]
+    public async Task AModelThatRefusesTheRequestDoesNotCondemnTheProvider()
+    {
+        // A 400 is about this model and this request - a token ceiling below what we asked for,
+        // a parameter a sibling accepts. Only a bad key ends the lane.
+        var gemini = new FakeProvider("gemini", "fussy", "fine");
+        gemini.Fails(ProviderFailure.ModelRejected).Returns("تعال معي.");
+        var router = new ProviderRouter([(gemini, 600)], FastRetries);
+
+        var result = await router.TranslateAsync(Line(), CancellationToken.None);
+
+        Assert.Equal("تعال معي.", result.Text);
+        Assert.Equal(2, gemini.Calls.Count);
+    }
+
+    [Fact]
+    public async Task ABadKeyStillEndsItsLaneImmediately()
+    {
+        // The one failure that really is about the provider. Walking the rest of the models with a
+        // key the provider has already refused spends requests to learn nothing.
+        var gemini = new FakeProvider("gemini", "m1", "m2", "m3");
+        gemini.Fails(ProviderFailure.Fatal, times: 3);
+        var groq = new FakeProvider("groq").Returns("هلمّ معي.");
+
+        var router = new ProviderRouter([(gemini, 600), (groq, 600)], FastRetries);
+
+        var result = await router.TranslateAsync(Line(), CancellationToken.None);
+
+        Assert.Equal("groq", result.Provider);
+        Assert.Equal(1, gemini.Calls.Count);
+    }
+
+    [Fact]
+    public async Task AnExhaustedBudgetStopsTheWalkButStillTriesOneModelPerLane()
+    {
+        // Two rules meeting. The budget stops a run of slow models spending a minute before the
+        // overlay says anything - but it must never mean a lane goes unasked, because that is the
+        // original bug in another form. So: the first model of each lane always gets a turn, and
+        // the rest of that lane's list is what the budget cuts.
+        var clock = new FakeTimeProvider();
+        var gemini = new FakeProvider("gemini", "m1", "m2", "m3", "m4");
+        for (var i = 0; i < 4; i++) gemini.Fails(ProviderFailure.Timeout);
+        var groq = new FakeProvider("groq", "g1", "g2").Returns("هلمّ معي.");
+
+        var router = new ProviderRouter(
+            [(gemini, 600), (groq, 600)],
+            new RouterOptions
+            {
+                RetryBaseDelay = TimeSpan.FromMilliseconds(1),
+                TotalBudget = TimeSpan.Zero,
+            },
+            clock);
+
+        var result = await router.TranslateAsync(Line(), CancellationToken.None);
+
+        // Gemini's walk was cut to its first model, and Groq - out of time from the start - was
+        // still asked, and answered.
+        Assert.Single(gemini.Calls);
+        Assert.Equal("هلمّ معي.", result.Text);
+        Assert.False(result.IsFallbackEnglish);
+    }
+}
+
+/// <summary>
+/// Everything an adversarial review confirmed before v0.5.1 shipped. Each of these is a way the
+/// router could still leave the user looking at English while a provider was willing to answer.
+/// </summary>
+public class RouterBudgetTests
+{
+    private static TranslationRequest Line() =>
+        new("Come with me.", RequestedAt: DateTimeOffset.UtcNow);
+
+    /// <summary>Blocks until released, so a test can hold an attempt open past a deadline.</summary>
+    private sealed class HangingUntilCancelled(string name, params string[] models) : ITranslationProvider
+    {
+        public string Name { get; } = name;
+
+        public IReadOnlyList<string> Models { get; } = models.Length > 0 ? models : ["m1"];
+
+        public int Calls { get; private set; }
+
+        public async Task<string> TranslateAsync(TranslationRequest r, string model, CancellationToken ct)
+        {
+            Calls++;
+            await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
+            return "unreachable";
+        }
+    }
+
+    [Fact]
+    public async Task ASlowFirstLaneStillLeavesTheSecondLaneATurn()
+    {
+        // The regression the budget itself introduced, and the worst one: a provider that hangs
+        // could spend the whole allowance and the healthy lane behind it was never asked. That is
+        // the original bug wearing a different hat - English on screen while Groq sits idle.
+        var gemini = new HangingUntilCancelled("gemini", "m1", "m2", "m3");
+        var groq = new FakeProvider("groq").Returns("هلمّ معي.");
+
+        var router = new ProviderRouter(
+            [(gemini, 600), (groq, 600)],
+            new RouterOptions
+            {
+                RequestTimeout = TimeSpan.FromMilliseconds(60),
+                TotalBudget = TimeSpan.FromMilliseconds(80),
+                MinimumAttempt = TimeSpan.FromMilliseconds(60),
+                MaxTransientRetries = 0,
+                RetryBaseDelay = TimeSpan.FromMilliseconds(1),
+            });
+
+        var result = await router.TranslateAsync(Line(), CancellationToken.None);
+
+        Assert.Equal("هلمّ معي.", result.Text);
+        Assert.False(result.IsFallbackEnglish);
+    }
+
+    [Fact]
+    public async Task OneModelCannotSpendTheWholeBudgetThreeTimesOver()
+    {
+        // The per-attempt cap was not clamped to the budget, so three retries at ten seconds ran
+        // for thirty against a twenty second ceiling - on a single model, before any other lane
+        // was reached.
+        var slow = new HangingUntilCancelled("gemini", "m1", "m2", "m3");
+
+        var router = new ProviderRouter(
+            [(slow, 600)],
+            new RouterOptions
+            {
+                RequestTimeout = TimeSpan.FromMilliseconds(200),
+                TotalBudget = TimeSpan.FromMilliseconds(150),
+                MinimumAttempt = TimeSpan.FromMilliseconds(20),
+                RetryBaseDelay = TimeSpan.FromMilliseconds(1),
+            });
+
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        var result = await router.TranslateAsync(Line(), CancellationToken.None);
+        started.Stop();
+
+        Assert.True(result.IsFallbackEnglish);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(2),
+            $"One lane ran for {started.Elapsed.TotalSeconds:F1}s against a 0.15s budget.");
+    }
+
+    [Fact]
+    public async Task ATimeoutIsNotRetriedOnTheSameModel()
+    {
+        // A raw cancellation from the per-attempt cap used to be filed as Transient, because the
+        // provider's own timeout catch is guarded on the very token that was cancelled. Every
+        // timeout was therefore retried twice more on a model that had just proved it was slow,
+        // and the Timeout branch never ran for a real HTTP provider at all.
+        var slow = new HangingUntilCancelled("gemini", "m1", "m2");
+
+        var router = new ProviderRouter(
+            [(slow, 600)],
+            new RouterOptions
+            {
+                RequestTimeout = TimeSpan.FromMilliseconds(40),
+                TotalBudget = TimeSpan.FromSeconds(5),
+                MinimumAttempt = TimeSpan.FromMilliseconds(40),
+                MaxTransientRetries = 2,
+                RetryBaseDelay = TimeSpan.FromMilliseconds(1),
+            });
+
+        await router.TranslateAsync(Line(), CancellationToken.None);
+
+        // Two models, one attempt each. Six would mean timeouts are being retried.
+        Assert.Equal(2, slow.Calls);
+    }
+
+    [Fact]
+    public async Task CancellingDuringTheRetryBackoffDoesNotThrowOutOfTheRouter()
+    {
+        // The await sat inside a catch block, where a throw bypasses that try's own handlers and
+        // leaves the class whose entire contract is that it never throws.
+        var provider = new FakeProvider("gemini", "m1", "m2");
+        provider.Fails(ProviderFailure.Transient, times: 6);
+
+        var router = new ProviderRouter(
+            [(provider, 600)],
+            new RouterOptions { RetryBaseDelay = TimeSpan.FromMilliseconds(400) });
+
+        using var cancelled = new CancellationTokenSource(TimeSpan.FromMilliseconds(80));
+
+        var result = await router.TranslateAsync(Line(), cancelled.Token);
+
+        Assert.NotNull(result);
+        Assert.True(result.IsFallbackEnglish);
+    }
+}
+
+public class BadKeyClassificationTests
+{
+    [Theory]
+    // Verbatim from the live Gemini endpoint with a corrupted key. The first guess at this list
+    // did not contain it, and a probe against the real provider is the only reason it does now.
+    [InlineData("[{\"error\":{\"code\":400,\"message\":\"Invalid Auth key.\",\"status\":\"INVALID_ARGUMENT\"}}]")]
+    [InlineData("{\"error\":{\"code\":400,\"message\":\"API key not valid. Please pass a valid API key.\"}}")]
+    [InlineData("{\"error\":{\"message\":\"Incorrect API key provided\"}}")]
+    [InlineData("{\"error\":{\"message\":\"invalid_api_key\"}}")]
+    public void ABadKeyIsRecognisedEvenWhenTheProviderCallsIt400(string body)
+    {
+        // Gemini answers a rejected key with 400, not 401 - verified against the live endpoint.
+        // Without this the key test says «تعذّر التحقّق», "could not check", about a key the
+        // provider explicitly refused, which is the one confusion the three-way verdict exists to
+        // prevent.
+        Assert.True(ProviderDiagnostics.MentionsBadKey(body));
+    }
+
+    [Theory]
+    [InlineData("{\"error\":{\"message\":\"max_tokens is too large for this model\"}}")]
+    [InlineData("{\"error\":{\"message\":\"temperature must be between 0 and 2\"}}")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void AnOrdinaryBadRequestIsNotMistakenForABadKey(string? body)
+    {
+        // These must stay ModelRejected so the router tries the next model rather than writing
+        // off a working key.
+        Assert.False(ProviderDiagnostics.MentionsBadKey(body));
+    }
+}
+
 public class InlineReasoningTests
 {
     [Fact]

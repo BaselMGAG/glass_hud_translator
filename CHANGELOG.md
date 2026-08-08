@@ -3,6 +3,31 @@
 Notable changes. Started once the app was working end to end, so everything before the first entry
 is "the thing being described in the README".
 
+## v0.5.1 — 8 August 2026
+
+One fix, and it is the difference between the free tier lasting an evening and lasting all day.
+
+### Fixed
+
+- **The app gave up on a provider that still had most of its budget left.** Free providers meter
+  **per model**, not per provider — Google allows one of its models 20 requests a day and another
+  **500**; Groq gives each of three models its own thousand. The router treated the first "too many
+  requests" from any single model as the end of that whole provider, so it announced that
+  everything was exhausted while, in one measured evening, 498 unused Google requests and two
+  entirely untouched Groq models sat there. It now moves to the next model, and only sets a
+  provider aside when every one of its models says no.
+- **The model with the biggest daily allowance now goes first.** It was third. The two ahead of it
+  had 20 requests a day between them, which a single conversation spends.
+- **The daily quota shown in Diagnostics was invented.** It claimed 1,000 requests for Google and
+  14,400 for Groq. The real figures, read off each provider's own dashboard, are about 540 and
+  3,000. Both are now stated per model in `data/models.json`.
+- A model refusing one particular request — a token ceiling lower than asked for, a setting a
+  sibling model accepts — no longer condemns the whole provider. Only a rejected API key does that.
+
+Verified against live keys with the Google allowance genuinely exhausted: the app walked three
+Google models, moved to Groq, walked all three of those as each filled up, and translated every
+line. Fourteen out of fourteen, no English fallback.
+
 ## v0.5.0 — 8 August 2026
 
 The first release verified against a real game since v0.1.0, and the first where the app can tell

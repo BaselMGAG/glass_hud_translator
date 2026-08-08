@@ -23,8 +23,27 @@ public sealed record RouterOptions
     /// </summary>
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(10);
 
-    /// <summary>How long a 429 sidelines a provider before it is tried again.</summary>
+    /// <summary>
+    /// How long a provider is sidelined once EVERY model it offers has been rate limited. Not one
+    /// model — every one, because the limits are per model and a lane holds several.
+    /// </summary>
     public TimeSpan RateLimitCooldown { get; init; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Ceiling on one whole call, across every lane and model. Needed precisely because a failure
+    /// now walks on to the next model instead of ending its lane: with seven models between the
+    /// two free providers, a run of timeouts could otherwise spend over a minute before the
+    /// overlay said anything at all. Most failures are instant — a 404 or a 429 costs
+    /// milliseconds — so this only ever bites on a genuinely slow provider.
+    /// </summary>
+    public TimeSpan TotalBudget { get; init; } = TimeSpan.FromSeconds(20);
+
+    /// <summary>
+    /// The shortest an attempt may be cut to by the budget. Every lane is guaranteed one try even
+    /// when the budget is spent — a fallback provider that is never asked is the failure this
+    /// whole release is about — and a guaranteed attempt with no time left is not an attempt.
+    /// </summary>
+    public TimeSpan MinimumAttempt { get; init; } = TimeSpan.FromSeconds(3);
 
     public int MaxTransientRetries { get; init; } = 2;
 
@@ -70,6 +89,8 @@ public sealed class ProviderRouter(
                 Stopwatch.GetElapsedTime(started), TranslationLogOutcomes.Stale);
         }
 
+        var deadline = _clock.GetUtcNow() + _options.TotalBudget;
+
         // Collected rather than logged per lane. An unconfigured lane is switched off, not broken,
         // and saying so once per line would drown the log that reports the failures that do
         // matter - but staying silent when EVERY lane is unconfigured left a first-run user with
@@ -100,7 +121,7 @@ public sealed class ProviderRouter(
                 continue;
             }
 
-            var text = await TryLaneAsync(lane, request, ct).ConfigureAwait(false);
+            var text = await TryLaneAsync(lane, request, deadline, ct).ConfigureAwait(false);
             if (text is null) continue;
 
             if (ProviderUsed is not null)
@@ -118,18 +139,55 @@ public sealed class ProviderRouter(
             Stopwatch.GetElapsedTime(started), TranslationLogOutcomes.FallbackEnglish);
     }
 
-    /// <summary>Returns null when the whole lane is unusable and the caller should move on.</summary>
+    /// <summary>
+    /// Returns null when the whole lane is unusable and the caller should move on.
+    ///
+    /// <para>
+    /// Every failure except a bad key now moves to the NEXT MODEL rather than ending the lane. The
+    /// old shape abandoned the provider on the first 429, which is wrong because free providers
+    /// meter per model: one Gemini model allows 20 requests a day and another 500, and Groq gives
+    /// each of three models its own thousand. A lane was being written off with almost all of its
+    /// budget untouched, and the user was told every provider was exhausted while two of Groq's
+    /// three models had never been called once.
+    /// </para>
+    /// </summary>
     private async Task<(string Text, string Model)?> TryLaneAsync(
-        Lane lane, TranslationRequest request, CancellationToken ct)
+        Lane lane, TranslationRequest request, DateTimeOffset deadline, CancellationToken ct)
     {
+        var rateLimited = 0;
+        var tried = 0;
+
         foreach (var model in lane.Provider.Models)
         {
+            // The first model of a lane is always worth one attempt, even out of time. A lane that
+            // is never asked at all is precisely the bug this release exists to fix, and letting a
+            // slow first provider starve a healthy second one would reintroduce it wearing a
+            // different hat: the user would see English while Groq sat idle.
+            if (tried > 0 && _clock.GetUtcNow() >= deadline)
+            {
+                _log($"router: out of time before {lane.Provider.Name}/{model}");
+                break;
+            }
+
+            tried++;
+
             for (var attempt = 0; attempt <= _options.MaxTransientRetries; attempt++)
             {
+                if (attempt > 0 && _clock.GetUtcNow() >= deadline)
+                {
+                    _log($"router: out of time retrying {lane.Provider.Name}/{model}");
+                    goto nextModel;
+                }
+
                 try
                 {
                     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    timeout.CancelAfter(_options.RequestTimeout);
+
+                    // Clamped to what is left of the budget, or the cap is not a cap: three
+                    // attempts at ten seconds each is thirty, on one model, against a twenty
+                    // second ceiling. The floor keeps the guaranteed first attempt of a late lane
+                    // from being cancelled before it can travel.
+                    timeout.CancelAfter(AttemptTimeout(deadline));
 
                     var text = await lane.Provider.TranslateAsync(request, model, timeout.Token)
                         .ConfigureAwait(false);
@@ -145,10 +203,18 @@ public sealed class ProviderRouter(
                 {
                     // A provider that lets the per-attempt cap surface as a raw cancellation would
                     // otherwise escape this method entirely and throw out of a router that
-                    // documents, and is depended on for, never throwing. Treat it as what it is:
-                    // no answer in time, worth one more try or the next lane.
+                    // documents, and is depended on for, never throwing.
+                    //
+                    // Timeout, not Transient, and that distinction was dead code until now: the
+                    // provider's own timeout catch is guarded on the token it was handed, which IS
+                    // the cancelled one when the cap fires, so the guard is false and a raw
+                    // cancellation arrives here instead. Filing it as Transient meant every
+                    // timeout was retried twice more on the same model - thirty seconds spent
+                    // proving a slow model is still slow - and the Timeout branch below never ran
+                    // for a real HTTP provider at all. The outer-cancellation case is already
+                    // handled above, so a bare cancellation reaching here can only be the cap.
                     var e = raised as ProviderException;
-                    var failure = e?.Failure ?? ProviderFailure.Transient;
+                    var failure = e?.Failure ?? ProviderFailure.Timeout;
                     var detail = e?.Message
                                  ?? $"no answer within {_options.RequestTimeout.TotalSeconds:F0}s";
 
@@ -163,10 +229,16 @@ public sealed class ProviderRouter(
                             goto nextModel;
 
                         case ProviderFailure.RateLimited:
-                            lane.CooldownUntil = _clock.GetUtcNow() + _options.RateLimitCooldown;
-                            _log($"router: {lane.Provider.Name} rate limited, cooling down " +
-                                 $"{_options.RateLimitCooldown.TotalSeconds:F0}s");
-                            return null;
+                            // Next model, and the lane is only sidelined if every one of them
+                            // says this. The daily allowances are per model and wildly uneven.
+                            rateLimited++;
+                            _log($"router: {lane.Provider.Name}/{model} rate limited, next model");
+                            goto nextModel;
+
+                        case ProviderFailure.ModelRejected:
+                            _log($"router: {lane.Provider.Name}/{model} refused the request " +
+                                 $"({detail}). Trying the next model.");
+                            goto nextModel;
 
                         case ProviderFailure.Timeout:
                             // Next model, no retry. Retrying a timeout re-runs the exact thing
@@ -177,6 +249,8 @@ public sealed class ProviderRouter(
                             goto nextModel;
 
                         case ProviderFailure.Fatal:
+                            // The one failure that really is about the provider rather than the
+                            // model: the key is bad, so no sibling model will do better.
                             _log($"router: {lane.Provider.Name} fatal - {detail}");
                             return null;
 
@@ -185,11 +259,18 @@ public sealed class ProviderRouter(
                             if (attempt == _options.MaxTransientRetries)
                             {
                                 _log($"router: {lane.Provider.Name}/{model} failed after " +
-                                     $"{attempt + 1} attempts - {detail}");
-                                return null;
+                                     $"{attempt + 1} attempts - {detail}. Trying the next model.");
+                                goto nextModel;
                             }
 
-                            await BackoffAsync(attempt, ct).ConfigureAwait(false);
+                            // Guarded, because this await sits INSIDE a catch block and an
+                            // exception thrown there is not caught by that try's own clauses. A
+                            // cancelled token during the backoff delay therefore escaped the
+                            // router entirely - out of the one class in this codebase whose
+                            // contract is that it never throws. Pre-existing, and made three
+                            // times more reachable by walking on to the next model instead of
+                            // ending the lane.
+                            if (!await BackoffAsync(attempt, ct).ConfigureAwait(false)) return null;
                             break;
                     }
                 }
@@ -198,15 +279,52 @@ public sealed class ProviderRouter(
             nextModel: ;
         }
 
+        // Sidelined only when rate limiting is the whole story. If even one model failed for some
+        // other reason the provider may still be healthy, and a 60-second blackout would keep us
+        // from the models that were never the problem.
+        if (tried > 0 && rateLimited == tried)
+        {
+            lane.CooldownUntil = _clock.GetUtcNow() + _options.RateLimitCooldown;
+            _log($"router: {lane.Provider.Name} rate limited on all {tried} models, cooling down " +
+                 $"{_options.RateLimitCooldown.TotalSeconds:F0}s");
+        }
+
         return null;
     }
 
-    /// <summary>Exponential backoff with jitter, so two lanes recovering do not resynchronise.</summary>
-    private Task BackoffAsync(int attempt, CancellationToken ct)
+    /// <summary>
+    /// How long this attempt may run: the per-attempt cap, or whatever is left of the whole
+    /// call's budget if that is less. Floored at <see cref="RouterOptions.MinimumAttempt"/> so the
+    /// one attempt every lane is guaranteed is a real attempt rather than an instant cancellation.
+    /// </summary>
+    private TimeSpan AttemptTimeout(DateTimeOffset deadline)
+    {
+        var remaining = deadline - _clock.GetUtcNow();
+
+        if (remaining < _options.MinimumAttempt) return _options.MinimumAttempt;
+        return remaining < _options.RequestTimeout ? remaining : _options.RequestTimeout;
+    }
+
+    /// <summary>
+    /// Exponential backoff with jitter, so two lanes recovering do not resynchronise. Returns
+    /// false when the caller cancelled during the delay, rather than throwing: this is awaited
+    /// from inside a catch block, where a thrown exception bypasses the enclosing try's own
+    /// handlers and leaves the router.
+    /// </summary>
+    private async Task<bool> BackoffAsync(int attempt, CancellationToken ct)
     {
         var baseDelay = _options.RetryBaseDelay * Math.Pow(2, attempt);
         var jitter = Random.Shared.NextDouble() * 0.5 + 0.75;
-        return Task.Delay(baseDelay * jitter, _clock, ct);
+
+        try
+        {
+            await Task.Delay(baseDelay * jitter, _clock, ct).ConfigureAwait(false);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
     }
 
     private sealed class Lane(ITranslationProvider provider, TokenBucket bucket)

@@ -120,7 +120,16 @@ public sealed class OpenAiCompatibleProvider(
             HttpStatusCode.BadRequest when ProviderDiagnostics.MentionsMissingModel(detail)
                 => ProviderFailure.ModelNotFound,
 
-            HttpStatusCode.BadRequest => ProviderFailure.Fatal,
+            // Checked BEFORE the generic 400: Gemini reports a bad key as 400 rather than 401, and
+            // without this the key test would answer "could not check" for a key the provider had
+            // flatly refused, while the router walked every remaining model with it.
+            HttpStatusCode.BadRequest when ProviderDiagnostics.MentionsBadKey(detail)
+                => ProviderFailure.Fatal,
+
+            // Not Fatal: a 400 is about this request and this model - a token ceiling lower than
+            // we asked for, a parameter this one does not take - and the next model on the same
+            // key may well accept it. Only an auth failure condemns the whole lane.
+            HttpStatusCode.BadRequest => ProviderFailure.ModelRejected,
             _ when (int)response.StatusCode >= 500 => ProviderFailure.Transient,
             _ => ProviderFailure.Transient,
         };

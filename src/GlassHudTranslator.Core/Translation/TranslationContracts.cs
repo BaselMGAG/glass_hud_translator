@@ -82,8 +82,22 @@ public enum ProviderFailure
     /// <summary>The model name is gone from the catalogue. Try the next model, and say so loudly.</summary>
     ModelNotFound,
 
-    /// <summary>429. Stop using this provider for a while and move to the next lane.</summary>
+    /// <summary>
+    /// 429. Try the NEXT MODEL, not the next lane. Every free provider meters per model — Gemini
+    /// gives one model 20 requests a day and another 500, Groq gives each of three models its own
+    /// 1,000 — so one model refusing says nothing about its neighbours. Treating a 429 as the end
+    /// of the lane threw away 498 unused Gemini requests and 400,000 unused Groq tokens in a single
+    /// evening, and reported "all providers exhausted" while both providers had plenty left.
+    /// </summary>
     RateLimited,
+
+    /// <summary>
+    /// 400 that is not a missing model: this model refused this request. Distinct from
+    /// <see cref="Fatal"/> because it is about the model, not the key — a model whose token
+    /// ceiling is lower than the one we asked for, or that rejects a parameter its siblings
+    /// accept, must not take the whole provider down with it.
+    /// </summary>
+    ModelRejected,
 
     /// <summary>5xx, socket error. Worth a bounded retry — the next attempt may genuinely differ.</summary>
     Transient,
@@ -96,7 +110,11 @@ public enum ProviderFailure
     /// </summary>
     Timeout,
 
-    /// <summary>Bad or missing key, malformed request. Retrying cannot help.</summary>
+    /// <summary>
+    /// 401/403. The key itself is bad or missing, so no other model on this provider will fare
+    /// better — this is the ONE failure that ends the lane immediately. Everything else moves to
+    /// the next model first.
+    /// </summary>
     Fatal,
 }
 

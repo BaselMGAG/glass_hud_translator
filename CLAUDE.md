@@ -34,7 +34,7 @@ solution level it tries to force `net10.0` onto the Windows-only projects and fa
 dotnet test
 ```
 
-427 tests, all runnable on macOS and Linux.
+446 tests, all runnable on macOS and Linux.
 
 ```bash
 dotnet run --project tools/Replay -- --no-cache
@@ -178,6 +178,21 @@ the four-second per-attempt cap surface as a bare `OperationCanceledException` e
 entirely, because the only cancellation catch was guarded on the *outer* token, which is not the
 one that fires on a timeout. `TryLaneAsync` now catches `OperationCanceledException` alongside
 `ProviderException` and treats it as transient. Any new `catch` in that method needs the same care.
+
+**Free providers meter per model, so a 429 means "next model", never "next lane".** Gemini allows
+`gemini-3.1-flash-lite` 500 requests a day and the flash models twenty *each*; Groq gives every one
+of its three models its own thousand. The router used to put a whole provider in cooldown on the
+first 429 from any single model, which reported "all providers exhausted" to a user who still had
+498 Gemini requests and two completely untouched Groq models. Only `Fatal` — 401/403, a bad key —
+ends a lane immediately, because that is the one failure that really is about the provider rather
+than the model. A lane cools down only when *every* model it tried was rate limited. The same logic
+puts the biggest daily allowance first in each lane: **order within a lane is the quota policy**,
+and it is not the same as quality order.
+
+**`RouterOptions.TotalBudget` exists because everything falls through now.** With seven models
+across two free lanes, a run of timeouts could otherwise spend a minute before the overlay said
+anything. Most failures are instant — a 404 or a 429 costs milliseconds — so the cap only bites on
+a genuinely slow provider. Any new failure kind that continues the walk has to stay inside it.
 
 **Lane order in `data/models.json` is the cost policy.** The router walks it top to bottom, so the
 free lanes must stay above the paid ones — a paid provider placed above a free one spends money on
