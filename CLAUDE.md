@@ -34,7 +34,7 @@ solution level it tries to force `net10.0` onto the Windows-only projects and fa
 dotnet test
 ```
 
-276 tests, all runnable on macOS and Linux.
+310 tests, all runnable on macOS and Linux.
 
 ```bash
 dotnet run --project tools/Replay -- --no-cache
@@ -86,7 +86,27 @@ stays correct when the user changes font size in Settings.
 
 **`PlatformServices.cs` is the only file in the App allowed to contain `#if WINDOWS`.** If a second
 one appears, the platform seam has leaked and the macOS build has stopped being a faithful
-rehearsal of the Windows build.
+rehearsal of the Windows build. `PlatformSeamTests` enforces this, along with Core never referencing
+the Interop or Windows projects and the App keeping both TFMs — the multi-target is what makes
+`[SupportedOSPlatform]` tell the truth, so dropping the neutral one would silence the analyzer and
+let the seam erode with nothing complaining.
+
+**The cache key is a frozen wire format.** Every installation has a `translations` table keyed by
+`sha256("{register}\n" + lowercased body)`, and a key change makes every row unreachable —
+silently, because a miss looks exactly like a line never seen before. `CacheKeyTests` pins it with
+golden hex vectors; if one fails, the answer is almost never to update the expected value. Two
+things make a future change survivable and both are now tested: `translations.source` holds
+byte-for-byte what was hashed, so rows can be rehashed rather than discarded, and only two register
+tokens are ever produced, neither containing a newline — the separator alone does *not* make the
+encoding injective.
+
+**Migrations are a ladder, and they are additive forever.** `AppDatabase` applies steps from
+whatever version the file is at, bumping `user_version` per step so an interrupted upgrade resumes.
+The previous shape — one conditional followed by every migration — works exactly once: a second
+step would be skipped for everyone already at the current version, which is every existing user.
+Never rename a column and never drop one: there is deliberately no self-updater, so re-unzipping an
+older release is a supported recovery, and an older build opening a newer database proceeds without
+complaint. That is only safe while nothing it knew about has moved.
 
 **Normalise before hashing, and lowercase only for the cache key.** `TextNormalizer` returns
 case-preserved text for the prompt; `CacheKey` lowercases on its way into SHA-256. Casing is real
@@ -221,8 +241,13 @@ APIs.
 
 ## Version choices that were deliberate
 
-**Avalonia 11.3.x rather than 12.x.** 11.x is the API surface this was written against. Worth
-revisiting once the UI settles.
+**Avalonia 11.3.x rather than 12.x — a deliberate hold, not a pending question.** 11.x is the API
+surface this was written against, and the UI has now settled: tabs, the profile editor, two
+languages, a mirrored layout, a bundled font. That is precisely why the hold is deliberate rather
+than temporary. There are live users on a build that works, the Arabic path depends on shaping,
+bidi and font-fallback behaviour that a major version could change silently, and `--render-test`
+is the only thing that would catch it. Revisit when there is a reason — a bug fixed upstream, a
+feature 11.x cannot do — not on a schedule.
 
 **SkiaSharp pinned to 2.88.9**, because that's what Avalonia.Skia 11.3.18 depends on. Bumping it
 independently causes a diamond conflict.
@@ -245,7 +270,12 @@ timing for the overlay styles — both turned out fine.
 Still unverified: click-through, display scaling above 100%, auto-watch under sustained load, and
 cache hit rate over a real session.
 
-Found and fixed so far, all from one screenshot:
+### What has actually gone wrong
+
+The most useful section of this file, because every entry is a mistake that shipped or nearly did.
+Kept current with the changelog.
+
+**From the first Windows run (v0.1.0), all from one screenshot:**
 
 - The app never exited. Avalonia shuts down on last-window-close and the overlay is a second
   top-level window, so closing Settings left an orphaned overlay and a live process.
@@ -258,7 +288,51 @@ Found and fixed so far, all from one screenshot:
   `x64/tesseract55.dll` is missing. Do not reintroduce single-file publishing — it buys nothing
   here, because tessdata, profiles and data ship alongside regardless.
 
-`test-frames/` currently holds **synthetic** frames drawn by `SyntheticFrames`. They exercise every
-stage of the pipeline but say nothing about a real game's typeface, its translucency, or a moving
-3D scene behind the text. Replacing them with real captures is the highest-value contribution
-available.
+**Found by adding providers and the Arabic interface (v0.2.0):**
+
+- **The router threw.** A provider that let the four-second per-attempt cap surface as a bare
+  `OperationCanceledException` escaped the class whose entire contract is never throwing, because
+  the only cancellation catch was guarded on the *outer* token rather than the linked timeout one.
+- Arabic tab labels rendered as empty boxes: the interface was leaning on a system Arabic font,
+  which macOS has and a plain Windows install may not. The same build would have shown nothing but
+  boxes to the users it was built for.
+- A first run with no keys explained nothing — skipping an unconfigured lane silently is right per
+  line, but with every lane unconfigured the log said only "all providers exhausted".
+- The shipped OpenAI model IDs were all wrong; none were current chat models.
+
+**Found by a native Arabic reader, none of them catchable by a test (v0.2.1):**
+
+- Three buttons read `حدد dialogue`. Region names are stored English keys, and the caption was
+  built by gluing one onto a translated verb — half an interface, on the most prominent controls.
+- The API key field said `غير محدَّد` — "not set", which describes a setting whose value is unknown
+  rather than one you have not filled in.
+- The dialect selector was labelled `المستوى اللغوي`, a linguist's term for a choice between two
+  named dialects.
+- The explanatory notes were 11px in mid-grey — the standard "secondary, skip this" styling, and
+  exactly wrong for the paragraphs that tell a first-time user which providers are free.
+- **The quota readout listed the provider lanes in reverse.** Latin runs inside a mirrored
+  paragraph reorder, and that order *is* the cost policy — so the Arabic interface was reporting
+  the paid lane as the one tried first.
+
+**Found while writing the player-facing readme (v0.4.2):**
+
+- The profile list showed folder names, not the names people gave their games: "Baldur's Gate 3"
+  was listed as `baldur-s-gate-3`. Tolerable while the only two shipped with the app; not once
+  anyone could add one. Same defect as building a button caption out of a stored key.
+
+**Latent, found by inspection and not yet hit in the wild:** the bundled `NotoSansArabic-Regular.ttf`
+contains **no Latin at all** — not `A`, not `%`, and none of `✓ ✗ ⚠ → · ⏎`. Every Latin word in the
+Arabic interface is already resolved by OS fallback. That works today, but the whole reason the font
+is bundled is to not depend on fallback, and the Unicode-isolate incident proved a single
+unresolvable codepoint can poison fallback for an entire window. Before adding any new non-Arabic
+codepoint to an Arabic string, check it against the font.
+
+### Still unverified
+
+Click-through, display scaling above 100%, auto-watch under sustained load, cache hit rate over a
+real session, and multi-monitor behaviour of any kind.
+
+`test-frames/` holds **synthetic** frames drawn by `SyntheticFrames`. They exercise every stage of
+the pipeline but say nothing about a real game's typeface, its translucency, or a moving 3D scene
+behind the text. Replacing them with real captures is the highest-value contribution available —
+see `CONTRIBUTING.md`, which asks for the same thing.

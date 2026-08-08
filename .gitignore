@@ -10,6 +10,17 @@ out/
 secrets.dev.json
 **/secrets.dev.json
 
+# Planning, research and working notes. Never published.
+#
+# The repository is a public artefact: everything tracked here is written for someone who has
+# just arrived and wants to use or contribute to the app. Roadmaps, competitive research, session
+# plans and half-formed decisions are working material - they read as commitments once they are
+# public, and a plan that changes weekly is worse than no plan at all. Keep them here; when
+# something is settled, it graduates into CHANGELOG.md, CLAUDE.md or the READMEs in finished form.
+.internal/
+NOTES.md
+TODO.md
+
 # Local runtime state
 *.db
 *.db-wal

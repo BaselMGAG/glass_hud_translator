@@ -1,24 +1,46 @@
 namespace GlassHudTranslator.Core.Storage;
 
 /// <summary>
-/// Where the app keeps its state. Resolves to %APPDATA%\GlassHudTranslator on Windows and
-/// ~/.config/GlassHudTranslator on macOS, so the same code runs in both places without a platform
-/// check leaking out of here.
+/// Where the app keeps its state — the API keys, the database, the settings and the user's own game
+/// profiles. Resolves under the OS application-data folder (<c>%APPDATA%\GlassHudTranslator</c> on
+/// Windows), so the same code runs everywhere without a platform check leaking out of here.
 /// </summary>
 public static class AppPaths
 {
     public const string FolderName = "GlassHudTranslator";
 
-    /// <summary>The name used before the app was renamed. Migrated from on first run.</summary>
-    private const string LegacyFolderName = "GlassHudTranslator";
+    /// <summary>
+    /// The folder used before the v0.2.0 rename. Moved from on first run.
+    ///
+    /// <para>
+    /// This shipped broken: both constants were written as the new name, so the guard below
+    /// (<c>!Exists(current) &amp;&amp; Exists(legacy)</c>) compared a path to itself and could never
+    /// be true. The migration never ran once, and the commit that introduced it says in its own
+    /// message that without it "everyone's API keys, capture regions and cache would silently
+    /// vanish" — which is exactly what happened to anyone who had used the app before the rename.
+    /// </para>
+    ///
+    /// <para>
+    /// Fixed rather than deleted. Deleting it would make that data loss permanent for anyone who
+    /// still has the old folder, and the move is safe: it only fires when there is nothing at the
+    /// new location to overwrite. There is a test.
+    /// </para>
+    /// </summary>
+    private const string LegacyFolderName = "GamingTranslatorGlassHUD";
 
     public static string DataDirectory { get; } = Resolve();
 
-    private static string Resolve()
-    {
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData,
-            Environment.SpecialFolderOption.Create);
+    private static string Resolve() => ResolveUnder(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData,
+            Environment.SpecialFolderOption.Create));
 
+    /// <summary>
+    /// The data directory under a given application-data root, migrating the pre-rename folder if
+    /// one is there. Takes the root as a parameter purely so this can be tested — the one time this
+    /// logic shipped untested, it was inert for its entire life.
+    /// </summary>
+    internal static string ResolveUnder(string root)
+    {
         var current = Path.Combine(root, FolderName);
         var legacy = Path.Combine(root, LegacyFolderName);
 

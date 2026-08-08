@@ -108,44 +108,6 @@ public class TextNormalizerTests
     }
 }
 
-public class CacheKeyTests
-{
-    [Fact]
-    public void OcrVariantsOfTheSameLineCollapseToOneKey()
-    {
-        // The quota guard (brief 5). If these two produce different keys, the same line of
-        // dialogue is paid for twice, and that - not session length - is what exhausts a daily
-        // budget. This test is the reason the correction dictionary runs before hashing.
-        var corrections = new OcrCorrections(new Dictionary<string, string> { ["Y shtola"] = "Y'shtola" });
-
-        var clean = TextNormalizer.Normalize("Y shtola nods slowly.", corrections);
-        var mangled = TextNormalizer.Normalize("Y’shtola   nods slowly. ▼", corrections);
-
-        Assert.Equal(CacheKey.For(clean), CacheKey.For(mangled));
-    }
-
-    [Fact]
-    public void CaseDoesNotAffectTheKey()
-    {
-        Assert.Equal(CacheKey.For("Come, the aether stirs."), CacheKey.For("come, THE aether STIRS."));
-    }
-
-    [Fact]
-    public void DifferentLinesProduceDifferentKeys()
-    {
-        Assert.NotEqual(CacheKey.For("Come with me."), CacheKey.For("Come with us."));
-    }
-
-    [Fact]
-    public void KeyIsLowercaseHexSha256()
-    {
-        var key = CacheKey.For("anything");
-
-        Assert.Equal(64, key.Length);
-        Assert.Matches("^[0-9a-f]{64}$", key);
-    }
-}
-
 public class DialogueParserTests
 {
     [Fact]

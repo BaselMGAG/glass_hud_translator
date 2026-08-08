@@ -38,5 +38,14 @@ public static class CacheKey
     }
 
     public static string For(string normalizedBody, ArabicRegister register) =>
-        For(normalizedBody, register == ArabicRegister.Egyptian ? "eg" : "msa");
+        For(normalizedBody, TokenFor(register));
+
+    /// <summary>
+    /// The register's wire token. Exposed so a test can assert the property that actually keeps the
+    /// key unambiguous: the newline separator alone does not, because a register containing a
+    /// newline could swallow part of the body. Only these two tokens are ever produced, and neither
+    /// contains one. A third register must keep that true.
+    /// </summary>
+    public static string TokenFor(ArabicRegister register) =>
+        register == ArabicRegister.Egyptian ? "eg" : "msa";
 }

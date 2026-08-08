@@ -52,6 +52,38 @@ public sealed class AppDatabase : IAsyncDisposable
         return db;
     }
 
+    /// <summary>
+    /// Schema steps, applied in order from whatever version the file is already at.
+    ///
+    /// <para>
+    /// A ladder rather than one conditional block, and the difference is not stylistic. The previous
+    /// shape was <c>if (version >= SchemaVersion) return;</c> followed by every migration in
+    /// sequence — which works exactly once. The second migration written that way would be skipped
+    /// entirely for every user already at the current version, which is all of them: the check
+    /// passes, the function returns, and the new step never runs. The failure is silent and it
+    /// lands on the people who have been using the app longest.
+    /// </para>
+    ///
+    /// <para>
+    /// Rules for adding a step. Append, never renumber — the index is persisted in
+    /// <c>user_version</c> on real machines. Make each step idempotent anyway, because a process
+    /// killed between the work and the version bump will re-run it. And **migrations are additive
+    /// forever**: never rename a column, never drop one. There is deliberately no self-updater, so
+    /// re-unzipping an older release is a supported recovery, and an older build opening a newer
+    /// database proceeds without complaint — it will simply ignore what it does not know about,
+    /// which is only safe if nothing it *did* know about has moved.
+    /// </para>
+    /// </summary>
+    private IReadOnlyList<Func<CancellationToken, Task>> Migrations =>
+    [
+        // 0 → 1: nothing beyond the base schema, which has already been applied by the time any
+        // step runs. Kept as an explicit no-op so the list index and the version number line up.
+        _ => Task.CompletedTask,
+
+        // 1 → 2: capture regions gain a game profile column.
+        MigrateRegionsToV2Async,
+    ];
+
     private async Task InitialiseAsync(CancellationToken ct)
     {
         // WAL keeps a read during capture from blocking a write from the translation task.
@@ -60,11 +92,30 @@ public sealed class AppDatabase : IAsyncDisposable
         await ExecuteAsync("PRAGMA synchronous=NORMAL;", ct).ConfigureAwait(false);
 
         var version = Convert.ToInt32(await ScalarAsync("PRAGMA user_version;", ct).ConfigureAwait(false));
+
+        // A database written by a NEWER build. Nothing to do and nothing to complain about:
+        // migrations are additive, so everything this build knows about is still where it left it.
+        // This matters because there is no self-updater - re-unzipping an older release is a
+        // supported way out of a bad update, and it must not corrupt anything on the way.
         if (version >= SchemaVersion) return;
 
+        // Applied before any step, on every upgrade path. Every statement is CREATE IF NOT EXISTS,
+        // so it is idempotent and cheap - and it means a database from ANY older version arrives at
+        // the per-version steps with the full current table set. Without this, a v1 file upgrading
+        // today would skip straight to step 1 and never gain a table added since.
         await ExecuteAsync(Schema, ct).ConfigureAwait(false);
-        await MigrateRegionsToV2Async(ct).ConfigureAwait(false);
-        await ExecuteAsync($"PRAGMA user_version={SchemaVersion};", ct).ConfigureAwait(false);
+
+        for (var step = version; step < SchemaVersion; step++)
+        {
+            await Migrations[step](ct).ConfigureAwait(false);
+
+            // Bumped per step, so an interrupted upgrade resumes where it stopped rather than
+            // restarting. Every step is idempotent as well, but that is a belt this does not want
+            // to depend on: a step that INSERTs against a UNIQUE constraint would throw on the
+            // re-run, inside OpenAsync, and the app would fail to start for someone who cannot
+            // read the error.
+            await ExecuteAsync($"PRAGMA user_version={step + 1};", ct).ConfigureAwait(false);
+        }
     }
 
     private const string Schema = """

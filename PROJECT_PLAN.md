@@ -208,8 +208,13 @@ public sealed class FrameSignature {
 }
 
 // ── OCR ────────────────────────────────────────────────────────────────────
-public sealed record OcrResult(string RawText, float Confidence);
+public sealed record OcrResult(string RawText, float Confidence, int WordCount) {
+    public static readonly OcrResult Empty;      // NOTE: a shared static - an empty region and a
+    public bool IsEmpty { get; }                 // wholly illegible one are indistinguishable today
+}
 public interface IOcrEngine : IDisposable {
+    string Name { get; }
+    string? Diagnostics => null;                 // how the engine started up; surfaced in Settings
     Task<OcrResult> RecognizeAsync(Frame frame, CancellationToken ct);
 }
 public static class OcrPreprocessor {
@@ -228,7 +233,16 @@ public static class TextNormalizer {
 public static class DialogueParser {
     public static (string? Speaker, string Body) Parse(string normalized);
 }
-public static class CacheKey { public static string For(string body); }   // lowercase → sha256 hex
+// The canonical string is a FROZEN WIRE FORMAT, not an implementation detail: ~100 shipped
+// caches are keyed by it. Register is a newline-delimited PREFIX, added in v0.2.0 because without
+// it switching to Egyptian returned the Modern Standard translation straight from cache.
+//   canonical = $"{register}\n{body.ToLowerInvariant()}"   register is "msa" | "eg"
+//   key       = Convert.ToHexStringLower(SHA256(UTF8(canonical)))
+// Golden vectors live in CacheKeyTests. Change nothing here without a migration.
+public static class CacheKey {
+    public static string For(string normalizedBody, string register = "msa");
+    public static string For(string normalizedBody, ArabicRegister register);
+}
 
 // ── Glossary ───────────────────────────────────────────────────────────────
 public sealed record GlossaryTerm(string En, string Ar, string Type, string[] Aliases);
@@ -238,7 +252,7 @@ public sealed class GlossaryMatcher {                   // longest-first, word-b
 }
 
 // ── Translation ────────────────────────────────────────────────────────────
-public enum ArabicRegister { Msa, Egyptian }
+public enum ArabicRegister { ModernStandard, Egyptian }
 public sealed record TranslationRequest(
     string Body, string? Speaker,
     IReadOnlyList<GlossaryTerm> Glossary,
@@ -357,18 +371,25 @@ public static class UpdateCheck {
 public interface ITranslationCache {
     Task<CachedTranslation?> TryGetAsync(string key, CancellationToken ct);
     Task PutAsync(CachedTranslation entry, CancellationToken ct);
-    Task PutOverrideAsync(string key, string arabic, CancellationToken ct);   // Ctrl+Shift+F
+    Task PutOverrideAsync(string key, string source, string arabic, CancellationToken ct);  // Ctrl+Shift+F
     Task<CacheStats> GetStatsAsync(CancellationToken ct);
 }
 
 // ── Orchestration ──────────────────────────────────────────────────────────
-public sealed class TranslationEngine {
-    public event Action<TranslationResult>? Translated;
-    public event Action<string>? Status;                // "جارٍ الترجمة..."
-    public Task<TranslationResult> TranslateNowAsync(CaptureRegion r, CancellationToken ct);
-    public void StartAutoWatch(CaptureRegion r);        // 2 fps, 90 s self-expiry
-    public void StopAutoWatch();
-}
+// `TranslationEngine` was planned and never built. The work split in two instead, and this is what
+// exists:
+//
+//   Core/Pipeline/TranslationPipeline  - frame in, PipelineOutcome out. Owns OCR, normalisation,
+//                                        parsing, cache, glossary and the router call. Holds
+//                                        mutable per-profile state (glossary, corrections, style,
+//                                        previous line) swapped by UseProfile, so it is NOT safe to
+//                                        call concurrently. Anything adding a second source has to
+//                                        settle that first.
+//   App/TranslationSession             - owns the loop: hotkeys, auto-watch (2 fps, 90 s
+//                                        self-expiry), change detection, overlay updates, status.
+public sealed record PipelineOutcome(
+    string RawOcr, string Normalized, string? Speaker, string Body,
+    TranslationResult Result, TimeSpan Ocr, TimeSpan Total, bool Skipped);
 ```
 
 ---
@@ -443,12 +464,20 @@ Two things this shape is load-bearing for, both learned the hard way:
 
 **Order is the cost policy**, not a preference: the router walks the list top to bottom.
 
-### SQLite — one file, `%APPDATA%\Glass HUD Translator\glasshud.db`, WAL
+### SQLite — one file, `%APPDATA%\GlassHudTranslator\glasshud.db`, WAL
+
+`AppDatabase.SchemaVersion` is **2**. Migrations are additive **forever**: never rename a column,
+never drop one. There is deliberately no self-updater, so re-unzipping an older release is a
+supported recovery, and an older build opening a newer database proceeds without complaint.
 
 ```sql
 CREATE TABLE translations (            -- the cache
-  key         TEXT PRIMARY KEY,        -- sha256(lowercased normalized body)
-  source      TEXT NOT NULL,           -- normalized body, case preserved
+  key         TEXT PRIMARY KEY,        -- sha256("{register}\n" + lowercased normalized body)
+  source      TEXT NOT NULL,           -- normalized body, case preserved. INVARIANT: this is
+                                       -- byte-for-byte what was hashed, so a key can always be
+                                       -- recomputed from the row. CacheKeyTests asserts it; it is
+                                       -- what makes a future key change migratable rather than
+                                       -- destructive.
   arabic      TEXT NOT NULL,
   provider    TEXT NOT NULL,
   model       TEXT NOT NULL,
@@ -479,15 +508,24 @@ CREATE TABLE quota (
 );
 
 CREATE TABLE region_profiles (
-  name        TEXT PRIMARY KEY,        -- 'dialogue' | 'subtitle' | 'quest'
-  resolution  TEXT NOT NULL,           -- '2560x1440'
-  ui_scale    REAL NOT NULL,
-  rel_x REAL, rel_y REAL, rel_w REAL, rel_h REAL   -- fractions of the FFXIV client rect
+  profile     TEXT NOT NULL,           -- game profile id; added in schema v2
+  name        TEXT NOT NULL,           -- 'dialogue' | 'subtitle' | 'quest'
+  resolution  TEXT NOT NULL,           -- '2560x1440'  -- WRITTEN BUT NEVER READ
+  ui_scale    REAL NOT NULL,           --               -- WRITTEN BUT NEVER READ
+  rel_x REAL NOT NULL, rel_y REAL NOT NULL, rel_w REAL NOT NULL, rel_h REAL NOT NULL,
+  PRIMARY KEY (profile, name)
 );
 ```
 
 Regions stored as **fractions of the client rect** (brief §8) so they survive window moves and
 resolution changes.
+
+**`resolution` and `ui_scale` are provenance, not a key.** Both are written on save and read back
+into the record, and no code anywhere consults either — so a rectangle dragged at 2560×1440 / 125%
+is silently reused at 1920×1080 / 100%. `RegionProfile`'s own doc comment claims it is "keyed to
+the resolution and UI scale it was drawn at". It is not. Making them part of the primary key would
+be worse — a user changing resolution would lose the region entirely — so the fix is to compare on
+load and say something, not to key on them.
 
 ---
 

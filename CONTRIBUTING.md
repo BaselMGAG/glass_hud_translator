@@ -13,6 +13,12 @@ Thanks for looking. This is an early project and the most useful contributions a
   Arabic. Stiff phrasing, a wrong term, or something that just reads like a translation rather than
   like software: say so.
 
+  One specific string is already under question and a native reader should settle it: **`الملف`
+  for "Profile"** (the game selector on the Translating tab). Standing alone it reads as "the
+  file", which is not what it is. `ملف اللعبة` and `التعريف` have both been suggested. This is
+  exactly the class of error that produced `حدد dialogue` and `المستوى اللغوي`, and it is not
+  being changed unilaterally.
+
 Open an issue or a PR — either is fine, and you do not need to justify it at length.
 
 **2. Add a game profile.** No programming, and since v0.4.0 no files either: Settings →
@@ -33,7 +39,13 @@ is the whole point — one person setting a game up properly is enough.
 
 `profiles/_template/` is still there if you would rather write one by hand.
 
-**3. Tell me what broke.** It has been tested against one game on one machine. A bug report that
+**3. Real capture frames.** `test-frames/` currently holds synthetic images drawn in code. They
+exercise every stage of the pipeline and say nothing about a real game's typeface, its translucent
+dialogue box, or a moving 3D scene behind the text — so OCR accuracy has never actually been
+measured against anything real. Twenty PNGs of your game's dialogue, at the resolution you play at,
+are worth more than any amount of code. Run with `--save-frames <dir>` to collect them.
+
+**4. Tell me what broke.** It has been tested against one game on one machine. A bug report that
 says what you were playing, what you saw, and what the Diagnostics tab said is genuinely useful.
 
 ## If you do want to write code
