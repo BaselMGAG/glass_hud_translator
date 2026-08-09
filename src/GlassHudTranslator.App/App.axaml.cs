@@ -32,14 +32,23 @@ public partial class App : Application
                     Program.Option("--render-test-out"), Program.HasFlag("--exit-after-render"))
                 : Program.HasFlag("--overlay-test")
                     ? BuildOverlaySnapshot(desktop)
-                    : BuildMainWindow();
+                    : Program.HasFlag("--toolbar-test")
+                        ? BuildToolbarSnapshot(desktop)
+                        : BuildMainWindow();
 
             if (Program.HasFlag("--ui-shots") && desktop.MainWindow is SettingsWindow shotTarget)
                 CaptureSettingsShots(shotTarget, desktop);
 
             desktop.ShutdownRequested += async (_, _) =>
             {
+                // Every top-level window, not just the overlay. Avalonia shuts down on last-window
+                // close, so a floating window left open is a live process with no way back into it
+                // - which is exactly the bug the first Windows run found, when the overlay was the
+                // only second window there was and closing Settings orphaned it.
                 _overlay?.Close();
+                _toolbar?.Close();
+                _frame?.Close();
+
                 _session?.Dispose();
                 if (_services is not null) await _services.DisposeAsync();
             };
@@ -106,18 +115,201 @@ public partial class App : Application
         _session.Status += message => Dispatcher.UIThread.Post(() => settingsWindow.ReportStatus(message));
 
         BindHotkeys(settings, settingsWindow);
+        BuildFloatingWindows(settings, settingsWindow);
 
         settingsWindow.Opened += (_, _) => PositionOverlay(overlay, _session, settings);
 
         // The overlay follows the game window wherever it is, including onto a second monitor.
-        _session.GameWindowLocated += game => Dispatcher.UIThread.Post(
-            () => PlaceOverlay(overlay, game, settings));
+        _session.GameWindowLocated += game => Dispatcher.UIThread.Post(() =>
+        {
+            PlaceOverlay(overlay, game, settings);
+
+            // A window that turns up somewhere new usually means the game was Alt-Tabbed away and
+            // back, and anything topmost that appeared in between now sits above us permanently.
+            overlay.ReassertTopmost();
+            _toolbar?.ReassertTopmost();
+            _frame?.ReassertTopmost();
+        });
 
         // And it moves the instant a slider does, so where it will sit is something the user sees
         // rather than a number they have to start a game to evaluate.
         settingsWindow.OverlayPlacementChanged += () => PositionOverlay(overlay, _session, settings);
         return settingsWindow;
     }
+
+    private ToolbarWindow? _toolbar;
+    private CaptureFrameWindow? _frame;
+
+    /// <summary>
+    /// Creates the toolbar and the capture frame and connects them to everything they drive.
+    ///
+    /// <para>
+    /// Both are built whether or not they are switched on, for the same reason every provider lane
+    /// is: a setting that needs a restart to take effect is a setting people conclude does not
+    /// work. They are simply not shown.
+    /// </para>
+    /// </summary>
+    private void BuildFloatingWindows(AppSettings settings, SettingsWindow settingsWindow)
+    {
+        if (_session is null || _overlay is null) return;
+
+        var session = _session;
+        var overlay = _overlay;
+
+        var frame = _frame = new CaptureFrameWindow();
+        frame.Adjusted += region => Dispatcher.UIThread.Post(
+            () => _ = settingsWindow.FrameAdjustedAsync(region));
+
+        // The frame outlines whatever is about to be captured, so it follows the region rather than
+        // being told where to go. Marshalled: auto-watch resolves regions on its own thread.
+        session.RegionResolved += region => Dispatcher.UIThread.Post(() => frame.Track(region));
+
+        // And it follows a re-pick or a drag straight away, rather than outlining the old rectangle
+        // until the next translation happens to resolve one.
+        settingsWindow.RegionChanged += () => _ = RetrackFrameAsync();
+
+        var toolbar = _toolbar = new ToolbarWindow(UiText.For(settings.Language), settings,
+            new ToolbarActions(
+                TranslateNow: () => _ = session.TranslateNowAsync(),
+                ToggleAutoWatch: () =>
+                {
+                    session.ToggleAutoWatch();
+                    RefreshToolbar(settings);
+                },
+                Snip: () => _ = settingsWindow.SnipAsync(),
+                PickRegion: () => _ = settingsWindow.PickRegionAsync(settings.LastRegionProfile),
+                ToggleCaptureFrame: () => _ = CycleCaptureFrameAsync(settings),
+                ToggleOverlay: () =>
+                {
+                    var text = UiText.For(settings.Language);
+                    settingsWindow.ReportStatus(overlay.ToggleHidden() ? text.OverlayShown : text.OverlayHidden);
+                    RefreshToolbar(settings);
+                },
+                OpenSettings: () =>
+                {
+                    settingsWindow.Show();
+                    settingsWindow.Activate();
+                },
+                ToggleWatchMode: () =>
+                {
+                    settings.WatchMode = settings.WatchMode == WatchMode.Video
+                        ? WatchMode.Dialogue
+                        : WatchMode.Video;
+                    settings.Save();
+                    settingsWindow.ReportStatus(string.Format(UiText.For(settings.Language).WatchModeSetTo,
+                        UiText.For(settings.Language).WatchModeName(settings.WatchMode)));
+                    RefreshToolbar(settings);
+                },
+                ToggleDiacritics: () =>
+                {
+                    settings.Diacritics = !settings.Diacritics;
+                    settings.Save();
+                    _services!.Pipeline.Diacritics = settings.Diacritics;
+                    var text = UiText.For(settings.Language);
+                    settingsWindow.ReportStatus(settings.Diacritics ? text.DiacriticsShown : text.DiacriticsHidden);
+                    RefreshToolbar(settings);
+                },
+                PinCorrection: () => _ = settingsWindow.CorrectCurrentAsync(),
+                Quit: () => settingsWindow.Close()));
+
+        settingsWindow.FloatingWindowsChanged += () => _ = ApplyFloatingWindowsAsync(settings);
+
+        settingsWindow.Opened += (_, _) => _ = ApplyFloatingWindowsAsync(settings);
+        _ = toolbar;
+    }
+
+    /// <summary>
+    /// Shows or hides the toolbar and the frame to match the settings, and re-applies the window
+    /// styles both depend on.
+    /// </summary>
+    private async Task ApplyFloatingWindowsAsync(AppSettings settings)
+    {
+        if (_toolbar is { } toolbar)
+        {
+            if (settings.ShowToolbar)
+            {
+                toolbar.Show();
+
+                // Re-applied rather than set once: the focus escape hatch is a checkbox, and it has
+                // to take effect on the window that is already open.
+                toolbar.ApplyPlatformStyles();
+                toolbar.PlaceNear(_session?.OverlayAnchor()
+                                  ?? WholeScreenFallback(toolbar));
+                RefreshToolbar(settings);
+            }
+            else
+            {
+                toolbar.Hide();
+            }
+        }
+
+        if (_frame is { } frame)
+        {
+            // The rectangle FIRST, then the mode. Showing a frame that has never been told where to
+            // go is a zero-by-zero window somewhere near the origin, which looks like the feature
+            // being broken rather than like there being no region to outline yet.
+            if (settings.ShowCaptureFrame) await RetrackFrameAsync();
+
+            var wanted = settings.ShowCaptureFrame ? FrameMode.Shown : FrameMode.Hidden;
+
+            // Never demote an in-progress adjustment: the checkbox says whether the frame is drawn,
+            // and someone dragging it is already past that question.
+            if (frame.Mode != FrameMode.Adjustable || wanted == FrameMode.Hidden) frame.Mode = wanted;
+        }
+    }
+
+    /// <summary>
+    /// The frame button cycles hidden → outlined → grabbable → hidden.
+    ///
+    /// <para>
+    /// Three states on one button because they are three points on one axis — how much of itself
+    /// the frame is offering to the mouse — and splitting them across two controls would put the
+    /// rarely-used one somewhere it has to be hunted for. The icon changes with the state, so which
+    /// one you are in is visible rather than remembered.
+    /// </para>
+    /// </summary>
+    private async Task CycleCaptureFrameAsync(AppSettings settings)
+    {
+        if (_frame is not { } frame) return;
+
+        var next = frame.Mode switch
+        {
+            FrameMode.Hidden => FrameMode.Shown,
+            FrameMode.Shown => FrameMode.Adjustable,
+            _ => FrameMode.Hidden,
+        };
+
+        settings.ShowCaptureFrame = next != FrameMode.Hidden;
+        settings.Save();
+
+        if (next != FrameMode.Hidden) await RetrackFrameAsync();
+
+        frame.Mode = next;
+        RefreshToolbar(settings);
+    }
+
+    private async Task RetrackFrameAsync()
+    {
+        if (_frame is not { } frame || _session is null) return;
+        if (await _session.CurrentRegionAsync() is { } region)
+            frame.Track(region);
+    }
+
+    private void RefreshToolbar(AppSettings settings)
+    {
+        if (_toolbar is not { } toolbar || _overlay is null || _session is null) return;
+
+        toolbar.UseLanguage(UiText.For(settings.Language));
+        toolbar.ShowState(_session.IsAutoWatching, _overlay.HiddenByUser,
+            _frame?.Mode is FrameMode.Shown or FrameMode.Adjustable,
+            settings.Diacritics, settings.WatchMode);
+    }
+
+    private static CaptureRegion WholeScreenFallback(Avalonia.Controls.Window window) =>
+        window.Screens.Primary is { } screen
+            ? new CaptureRegion(screen.WorkingArea.X, screen.WorkingArea.Y,
+                screen.WorkingArea.Width, screen.WorkingArea.Height)
+            : new CaptureRegion(0, 0, 1920, 1080);
 
     /// <summary>
     /// Hotkeys arrive on a dedicated Win32 message thread, so every handler hops back to the UI
@@ -150,6 +342,9 @@ public partial class App : Application
                     settingsWindow.ReportStatus(overlay.ToggleHidden()
                         ? text.OverlayShown
                         : text.OverlayHidden);
+                    break;
+                case HotkeyAction.SnipTranslate:
+                    _ = settingsWindow.SnipAsync();
                     break;
                 case HotkeyAction.OpenSettings:
                     // Settings has no taskbar button of its own, so once it is behind a fullscreen
@@ -283,6 +478,70 @@ public partial class App : Application
     }
 
     /// <summary>
+    /// Renders the toolbar, collapsed and expanded, and exits.
+    ///
+    /// <para>
+    /// The icons are path geometry parsed from strings, and a typo in one of them is an exception
+    /// thrown while the window is being built — on the user's machine, at startup, on a Windows box
+    /// nobody here can reach. There is no compiler to catch it and no unit test that can, because
+    /// the parser lives in Avalonia and the test project does not reference it. Rendering the real
+    /// control on the development machine is the check: if every icon draws here, the geometry
+    /// parses everywhere.
+    /// </para>
+    /// </summary>
+    private static Avalonia.Controls.Window BuildToolbarSnapshot(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var directory = Program.Option("--toolbar-test-out") ?? Path.GetTempPath();
+        Directory.CreateDirectory(directory);
+
+        var settings = new AppSettings { ToolbarExpanded = false };
+        var nothing = new Action(() => { });
+        var actions = new ToolbarActions(nothing, nothing, nothing, nothing, nothing, nothing,
+            nothing, nothing, nothing, nothing, nothing);
+
+        var toolbar = new ToolbarWindow(
+            UiText.For(Program.Option("--toolbar-test-lang") == "ar" ? UiLanguage.Arabic : UiLanguage.English),
+            settings, actions);
+
+        toolbar.Opened += async (_, _) =>
+        {
+            foreach (var (file, expanded) in new[] { ("toolbar-simple.png", false), ("toolbar-advanced.png", true) })
+            {
+                // Set through the window rather than through the expander button, because that
+                // writes to the settings file and this run must not touch it. Then a delay, so the
+                // layout pass actually runs before anything is measured - a snapshot taken in the
+                // same tick as the visibility change captures the old geometry.
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    toolbar.ShowAdvanced(expanded);
+                    toolbar.ShowState(autoWatch: expanded, overlayHidden: false,
+                        captureFrame: expanded, diacritics: false, mode: WatchMode.Dialogue);
+                });
+
+                await Task.Delay(250);
+
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    var path = Path.Combine(directory, file);
+                    try
+                    {
+                        toolbar.SaveSnapshot(path);
+                        Console.WriteLine($"toolbar-test: wrote {path}");
+                    }
+                    catch (Exception e)
+                    {
+                        Console.Error.WriteLine($"toolbar-test: FAILED {file} - {e.Message}");
+                    }
+                });
+            }
+
+            desktop.Shutdown();
+        };
+
+        return toolbar;
+    }
+
+    /// <summary>
     /// Bottom-centre, roughly where a dialogue box sits. On Windows the saved region profile takes
     /// over once one exists.
     /// </summary>
@@ -318,12 +577,47 @@ public partial class App : Application
             new CaptureRegion(bounds.X, bounds.Y, bounds.Width, bounds.Height), settings);
     }
 
+    /// <summary>
+    /// Places the panel inside <paramref name="area"/>, converting the window's size out of
+    /// device-independent pixels first.
+    ///
+    /// <para>
+    /// Three quantities meet here and two of them used to be in the wrong unit.
+    /// <c>overlay.Width</c> and <see cref="OverlayWindow.PanelHeight"/> are DIPs — 900 and whatever
+    /// the text wrapped to — while <paramref name="area"/> and <see cref="Window.Position"/> are
+    /// physical screen pixels. At 100% scaling those are the same number and nothing was visibly
+    /// wrong. At 125% the panel is 1125 physical pixels wide while the placement arithmetic
+    /// believed 900, so "flush with the right edge" hung 225 pixels off the screen. Invisible until
+    /// something has to line up exactly with the rectangle being captured — which is precisely what
+    /// the capture frame does.
+    /// </para>
+    ///
+    /// <para>
+    /// The scaling comes from the monitor the panel is being sent TO, not from
+    /// <c>overlay.RenderScaling</c>, which is the monitor it currently happens to be on. Using the
+    /// latter makes the move to a differently-scaled second screen a two-step affair: land in the
+    /// wrong place at the old scale, then correct on the next placement.
+    /// </para>
+    /// </summary>
     private static void PlaceOverlay(OverlayWindow overlay, CaptureRegion area, AppSettings settings)
     {
-        var (x, y) = OverlayPlacement.Within(area, (int)overlay.Width, overlay.PanelHeight,
-            settings.OverlayHorizontal, settings.OverlayVertical);
+        var (x, y) = OverlayPlacement.Within(area, overlay.Width, overlay.PanelHeight,
+            ScalingOf(overlay, area), settings.OverlayHorizontal, settings.OverlayVertical);
 
         overlay.Position = new PixelPoint(x, y);
+    }
+
+    /// <summary>
+    /// The DPI scale of the monitor <paramref name="area"/> sits on, falling back to the window's
+    /// own and then to 1. A zero or NaN here would multiply a size into a coordinate far off any
+    /// screen, which looks exactly like the overlay having vanished.
+    /// </summary>
+    private static double ScalingOf(Avalonia.Controls.Window window, CaptureRegion area)
+    {
+        var centre = new PixelPoint(area.X + area.Width / 2, area.Y + area.Height / 2);
+        var scaling = window.Screens.ScreenFromPoint(centre)?.Scaling ?? window.RenderScaling;
+
+        return double.IsNaN(scaling) || scaling <= 0 ? 1.0 : scaling;
     }
 }
 

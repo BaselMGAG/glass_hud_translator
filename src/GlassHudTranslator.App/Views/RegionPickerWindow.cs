@@ -24,7 +24,22 @@ namespace GlassHudTranslator.App.Views;
 public sealed class RegionPickerWindow : Window
 {
     private readonly Frame? _screenshot;
-    private readonly Func<CaptureRegion, Task<string>>? _testOcr;
+
+    /// <summary>
+    /// Reads a crop THIS window already holds, rather than being handed a rectangle and going back
+    /// to the screen for it.
+    ///
+    /// <para>
+    /// That distinction is the whole of a bug that shipped for months. This window is full-screen,
+    /// topmost and has no capture exclusion, so a live re-capture of the same rectangle grabs the
+    /// picker's own rendering of the frozen still — plus the instruction panel and the blue
+    /// selection box sitting over the very text being tested. On a single monitor the scale works
+    /// out 1:1 and the result looks plausible, which is why nobody noticed. On two monitors the
+    /// still spans the whole desktop while this window covers one screen, and "test what the OCR
+    /// reads here" reported on entirely different pixels.
+    /// </para>
+    /// </summary>
+    private readonly Func<Frame, Task<string>>? _testOcr;
     private readonly Image _backdrop = new() { Stretch = Stretch.Uniform };
     private readonly Rectangle _selection;
     private readonly TextBlock _readout;
@@ -35,18 +50,32 @@ public sealed class RegionPickerWindow : Window
     private Point _origin;
     private bool _dragging;
 
+    /// <summary>
+    /// One-shot mode: the box is committed the moment the button comes up, rather than waiting for
+    /// Enter.
+    ///
+    /// <para>
+    /// The same window rather than a second one, because the two differ in exactly one gesture and
+    /// everything else — the frozen still, the letterbox arithmetic, the too-small guard, the
+    /// off-screen check — is the part that took the effort and the part that is easy to get subtly
+    /// wrong twice.
+    /// </para>
+    /// </summary>
+    private readonly bool _snip;
+
     public RegionPickerWindow(string profileName, Frame? screenshot = null,
-        Func<CaptureRegion, Task<string>>? testOcr = null, UiText? text = null)
+        Func<Frame, Task<string>>? testOcr = null, UiText? text = null, bool snip = false)
     {
         _screenshot = screenshot;
         _testOcr = testOcr;
         _text = text ?? UiText.En;
+        _snip = snip;
 
         // The region's display name, not its stored key: this window is full-screen over the game
         // and its instructions are the only thing on it, so a lone English word in them is loud.
         var region = _text.RegionName(profileName);
 
-        Title = string.Format(_text.SelectRegionTitle, region);
+        Title = snip ? _text.SnipTitle : string.Format(_text.SelectRegionTitle, region);
         SystemDecorations = SystemDecorations.None;
         WindowState = WindowState.FullScreen;
         Topmost = true;
@@ -108,9 +137,11 @@ public sealed class RegionPickerWindow : Window
                 {
                     new TextBlock
                     {
-                        Text = string.Format(
-                            screenshot is null ? _text.PickerHintPlain : _text.PickerHintFrozen,
-                            region),
+                        Text = snip
+                            ? _text.SnipHint
+                            : string.Format(
+                                screenshot is null ? _text.PickerHintPlain : _text.PickerHintFrozen,
+                                region),
                         FontSize = 16,
                         Foreground = Brushes.White,
                         TextWrapping = TextWrapping.Wrap,
@@ -161,6 +192,11 @@ public sealed class RegionPickerWindow : Window
         }
 
         Draw(rect);
+
+        // A snip is over when the button comes up. Asking for Enter as well would mean the user has
+        // drawn the box, seen it, and still has to confirm the thing they just drew - and the whole
+        // point of this mode is that it is faster than picking a region.
+        if (_snip) Commit();
     }
 
     private void Draw(Rect rect)
@@ -186,28 +222,31 @@ public sealed class RegionPickerWindow : Window
                 break;
 
             case Key.Enter when _selection.IsVisible:
-                var candidate = ToScreenPixels(CurrentRect());
-
-                // The still can be wider than the monitor this window opened on - it covers every
-                // screen - so Stretch.Uniform letterboxes it, and a drag that starts in the black
-                // band maps outside the image entirely. Saving that produces a negative fraction
-                // and a region that resolves to nothing, with no way for the user to tell why.
-                if (_screenshot is not null
-                    && !candidate.FitsWithin(_screenshot.Width, _screenshot.Height))
-                {
-                    _readout.Text = _text.SelectionOffScreen;
-                    break;
-                }
-
-                Result = candidate;
-                Close();
+                Commit();
                 break;
 
             case Key.Space when _selection.IsVisible && _testOcr is not null:
+                // No still means no crop to read. Off Windows that is the normal state, and the
+                // honest answer is the one the old code arrived at by accident.
+                if (_screenshot is null)
+                {
+                    _ocrPreview.Text = _text.CaptureWindowsOnly;
+                    break;
+                }
+
+                var candidateRect = ToScreenPixels(CurrentRect());
+                if (!candidateRect.FitsWithin(_screenshot.Width, _screenshot.Height))
+                {
+                    _ocrPreview.Text = _text.SelectionOffScreen;
+                    break;
+                }
+
                 _ocrPreview.Text = _text.OcrReading;
                 try
                 {
-                    var text = await _testOcr(ToScreenPixels(CurrentRect()));
+                    // The crop comes from the still this window is already displaying, so what the
+                    // OCR reads is exactly what the user can see inside the blue box.
+                    var text = await _testOcr(_screenshot.Crop(candidateRect));
                     _ocrPreview.Text = string.IsNullOrWhiteSpace(text)
                         ? _text.OcrReadNothing
                         : $"{_text.OcrReads}   {text.Replace("\n", "   ⏎   ")}";
@@ -219,6 +258,31 @@ public sealed class RegionPickerWindow : Window
 
                 break;
         }
+    }
+
+    /// <summary>
+    /// Accepts the current selection, or refuses it and says why.
+    ///
+    /// <para>
+    /// The still can be wider than the monitor this window opened on — it covers every screen — so
+    /// <c>Stretch.Uniform</c> letterboxes it, and a drag that starts in the black band maps outside
+    /// the image entirely. Committing that produces a negative fraction and a region that resolves
+    /// to nothing, with no way for the user to tell why.
+    /// </para>
+    /// </summary>
+    private void Commit()
+    {
+        var candidate = ToScreenPixels(CurrentRect());
+
+        if (_screenshot is not null && !candidate.FitsWithin(_screenshot.Width, _screenshot.Height))
+        {
+            _readout.Text = _text.SelectionOffScreen;
+            _selection.IsVisible = false;
+            return;
+        }
+
+        Result = candidate;
+        Close();
     }
 
     private Rect CurrentRect() => new(

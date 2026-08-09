@@ -178,6 +178,13 @@ public sealed class UiText
     /// <summary>Said once, after a long run of empty reads, naming the re-pick hotkey.</summary>
     public required string RegionSeemsWrong { get; init; }
 
+    /// <summary>
+    /// The same line again, dropped before it cost anything. Status line only and never the
+    /// overlay: the translation the player is reading is still up, and interrupting it to announce
+    /// that nothing happened would be the opposite of the saving.
+    /// </summary>
+    public required string SkippedRepeat { get; init; }
+
     public required string WatchMode { get; init; }
     public required string WatchModeDialogue { get; init; }
     public required string WatchModeVideo { get; init; }
@@ -276,6 +283,46 @@ public sealed class UiText
     public required string OcrReads { get; init; }
     public required string OcrFailed { get; init; }
 
+    // ── snip ───────────────────────────────────────────────────────────────────────────────
+    public required string SnipTitle { get; init; }
+    public required string SnipHint { get; init; }
+    public required string SnipCancelled { get; init; }
+
+    // ── capture frame ──────────────────────────────────────────────────────────────────────
+    public required string ShowCaptureFrame { get; init; }
+    public required string ShowCaptureFrameNote { get; init; }
+    public required string FrameAdjustHint { get; init; }
+    public required string FrameAdjusted { get; init; }
+    public required string FrameNoRegionYet { get; init; }
+    public required string FrameWindowsOnly { get; init; }
+
+    // ── toolbar ────────────────────────────────────────────────────────────────────────────
+    // Every one of these reaches a tooltip that shows BOTH languages at once, whichever the
+    // interface is set to. A toolbar has no text on it - only shapes - so a tooltip in one
+    // language leaves somebody guessing: an English speaker helping a friend set it up, or the
+    // person the app was built for. The same reasoning as the «Language · اللغة» control, and
+    // more strongly, because there is nothing else to read.
+    public required string ShowToolbar { get; init; }
+    public required string ShowToolbarNote { get; init; }
+    public required string ToolbarCanTakeFocus { get; init; }
+    public required string ToolbarCanTakeFocusNote { get; init; }
+    public required string ToolbarTranslateNow { get; init; }
+    public required string ToolbarAutoWatch { get; init; }
+    public required string ToolbarSnip { get; init; }
+    public required string ToolbarRegion { get; init; }
+    public required string ToolbarCaptureFrame { get; init; }
+    public required string ToolbarHideOverlay { get; init; }
+    public required string ToolbarSettings { get; init; }
+    public required string ToolbarMore { get; init; }
+    public required string ToolbarLess { get; init; }
+    public required string ToolbarWatchMode { get; init; }
+    public required string ToolbarDiacritics { get; init; }
+    public required string ToolbarPinCorrection { get; init; }
+    public required string ToolbarQuit { get; init; }
+    public required string ToolbarCollapse { get; init; }
+    public required string ToolbarShow { get; init; }
+    public required string ToolbarMove { get; init; }
+
     // ── status messages ────────────────────────────────────────────────────────────────────
     public required string ProfileNoteWindowed { get; init; }
     public required string ProfileNoteScreen { get; init; }
@@ -314,6 +361,14 @@ public sealed class UiText
         _ => region,
     };
 
+    /// <summary>
+    /// The display name for a watch mode. Same reasoning as <see cref="RegionName"/>: the enum
+    /// member is an identifier, not a word, and interpolating one into a translated sentence is
+    /// what produced "حدد dialogue" on three buttons.
+    /// </summary>
+    public string WatchModeName(Capture.WatchMode mode) =>
+        mode == Capture.WatchMode.Video ? WatchModeVideo : WatchModeDialogue;
+
     public string HotkeyDescription(HotkeyAction action) => action switch
     {
         HotkeyAction.PickRegion => HotkeyPickRegion,
@@ -322,6 +377,7 @@ public sealed class UiText
         HotkeyAction.FlagTranslation => HotkeyFlagTranslation,
         HotkeyAction.ToggleOverlay => HotkeyToggleOverlay,
         HotkeyAction.OpenSettings => HotkeyOpenSettings,
+        HotkeyAction.SnipTranslate => HotkeySnipTranslate,
         _ => action.ToString(),
     };
 
@@ -331,6 +387,7 @@ public sealed class UiText
     public required string HotkeyFlagTranslation { get; init; }
     public required string HotkeyToggleOverlay { get; init; }
     public required string HotkeyOpenSettings { get; init; }
+    public required string HotkeySnipTranslate { get; init; }
 
     public static UiText For(UiLanguage language) => language == UiLanguage.Arabic ? Ar : En;
 
@@ -486,6 +543,7 @@ public sealed class UiText
         RegionSeemsWrong =
             "Nothing has been readable in the capture region for a while. If the game's layout "
             + "changed, press {0} to draw the box again.",
+        SkippedRepeat = "Same line as before — nothing sent.",
 
         WatchMode = "What is on screen",
         WatchModeDialogue = "Game dialogue",
@@ -633,6 +691,54 @@ public sealed class UiText
         OcrReads = "OCR reads:",
         OcrFailed = "OCR failed:",
 
+        SnipTitle = "Translate once",
+        SnipHint =
+            "Drag a box around anything on screen. It is translated once, on release, and the "
+            + "region you normally watch is left alone.    Esc cancels",
+        SnipCancelled = "Nothing selected.",
+
+        ShowCaptureFrame = "Show what is being captured",
+        ShowCaptureFrameNote =
+            "Draws a thin outline around the capture region so you can see exactly what is being "
+            + "read. The outline sits outside the rectangle and is hidden from every screen "
+            + "capture, including this app's own, so it can never end up inside the text. Clicks "
+            + "pass straight through it until you choose to move it.",
+        FrameAdjustHint =
+            "Drag the middle to move it, a corner to resize.    Enter saves  ·  Esc cancels",
+        FrameAdjusted = "Capture region updated: {0} of the width, {1} of the height.",
+        FrameNoRegionYet = "No capture region saved yet for {0}. Draw one first.",
+        FrameWindowsOnly = "The capture frame needs Windows.",
+
+        ShowToolbar = "Show the floating toolbar",
+        ShowToolbarNote =
+            "A small strip of buttons that stays over the game, for everything you would otherwise "
+            + "need a hotkey or this window for. It starts with six buttons and one that opens the "
+            + "rest, it can be dragged anywhere, and it collapses to a single handle. Hovering a "
+            + "button names it in both Arabic and English.",
+        ToolbarCanTakeFocus = "Toolbar may take focus",
+        ToolbarCanTakeFocusNote =
+            "Leave this off. The toolbar normally never pulls the keyboard away from the game, "
+            + "which is what you want mid-fight. Turn it on only if the toolbar does not respond "
+            + "to clicks at all — on some systems a window that refuses focus also stops receiving "
+            + "the mouse, and this is the escape hatch for that.",
+
+        ToolbarTranslateNow = "Translate what is on screen now",
+        ToolbarAutoWatch = "Keep watching and translate by itself",
+        ToolbarSnip = "Translate one thing once",
+        ToolbarRegion = "Choose what gets read",
+        ToolbarCaptureFrame = "Show or move the capture outline",
+        ToolbarHideOverlay = "Hide or show the translation",
+        ToolbarSettings = "Settings",
+        ToolbarMore = "More buttons",
+        ToolbarLess = "Fewer buttons",
+        ToolbarWatchMode = "Switch between game dialogue and video subtitles",
+        ToolbarDiacritics = "Show or hide the Arabic vowel marks",
+        ToolbarPinCorrection = "Fix the line on screen",
+        ToolbarQuit = "Close the app",
+        ToolbarCollapse = "Shrink to a handle",
+        ToolbarShow = "Open the toolbar",
+        ToolbarMove = "Drag here to move the toolbar",
+
         ProfileNoteWindowed =
             "Active: {0}. Carries its own glossary ({1} terms) and measures the capture region "
             + "against that application's window, so the region survives the window being moved.",
@@ -668,6 +774,7 @@ public sealed class UiText
         HotkeyFlagTranslation = "Correct the current translation",
         HotkeyToggleOverlay = "Show / hide the overlay",
         HotkeyOpenSettings = "Open Settings",
+        HotkeySnipTranslate = "Translate one thing once",
     };
 
     public static readonly UiText Ar = new()
@@ -814,6 +921,7 @@ public sealed class UiText
         RegionSeemsWrong =
             "لم يُقرأ أي نص في منطقة الالتقاط منذ فترة. إن تغيّر شكل واجهة اللعبة، "
             + "اضغط {0} لتحديد المنطقة من جديد.",
+        SkippedRepeat = "نفس السطر السابق — لم يُرسَل شيء.",
 
         WatchMode = "ما الذي على الشاشة",
         WatchModeDialogue = "حوار لعبة",
@@ -956,6 +1064,51 @@ public sealed class UiText
         OcrReads = "القراءة الضوئية:",
         OcrFailed = "أخفقت القراءة الضوئية:",
 
+        SnipTitle = "ترجمة مرة واحدة",
+        SnipHint =
+            "ارسم مستطيلاً حول أي شيء على الشاشة. تُترجَم مرة واحدة بمجرّد رفع الزر، ولا تتأثّر "
+            + "المنطقة التي تتابعها عادةً.    Esc يلغي",
+        SnipCancelled = "لم تُحدَّد أي منطقة.",
+
+        ShowCaptureFrame = "أظهر ما يجري التقاطه",
+        ShowCaptureFrameNote =
+            "يرسم إطاراً رفيعاً حول منطقة الالتقاط لترى بالضبط ما الذي يُقرأ. الإطار يقع خارج "
+            + "المستطيل ومخفيّ عن كل تصوير للشاشة، بما في ذلك تصوير هذا البرنامج نفسه، فلا يمكن أن "
+            + "يدخل داخل النص أبداً. والنقر يمرّ من خلاله إلى اللعبة حتى تختار أنت تحريكه.",
+        FrameAdjustHint =
+            "اسحب من الوسط لتحريكه، ومن الزاوية لتغيير حجمه.    Enter يحفظ  ·  Esc يلغي",
+        FrameAdjusted = "حُدِّثت منطقة الالتقاط: {0} من العرض و {1} من الارتفاع.",
+        FrameNoRegionYet = "لا توجد منطقة التقاط محفوظة بعد لـ {0}. حدّد واحدة أولاً.",
+        FrameWindowsOnly = "إطار الالتقاط يحتاج إلى ويندوز.",
+
+        ShowToolbar = "أظهر شريط الأدوات العائم",
+        ShowToolbarNote =
+            "شريط صغير من الأزرار يبقى فوق اللعبة، لكل ما كنت ستحتاج إليه اختصار لوحة مفاتيح أو "
+            + "هذه النافذة من أجله. يبدأ بستة أزرار وزرّ يفتح البقية، ويمكن سحبه إلى أي مكان، "
+            + "وينكمش إلى مقبض واحد. وعند مرور المؤشّر فوق أي زرّ يظهر اسمه بالعربية والإنجليزية معاً.",
+        ToolbarCanTakeFocus = "اسمح لشريط الأدوات بأخذ التركيز",
+        ToolbarCanTakeFocusNote =
+            "اتركه مُطفأً. الشريط في الوضع الطبيعي لا يسحب لوحة المفاتيح من اللعبة أبداً، وهذا ما "
+            + "تريده في وسط قتال. لا تشغّله إلا إذا كان الشريط لا يستجيب للنقر إطلاقاً — فعلى بعض "
+            + "الأنظمة النافذة التي ترفض التركيز تتوقّف أيضاً عن استقبال الفأرة، وهذا هو المخرج.",
+
+        ToolbarTranslateNow = "ترجم ما على الشاشة الآن",
+        ToolbarAutoWatch = "تابع وترجم تلقائياً",
+        ToolbarSnip = "ترجم شيئاً واحداً مرة واحدة",
+        ToolbarRegion = "اختر ما الذي يُقرأ",
+        ToolbarCaptureFrame = "أظهر إطار الالتقاط أو حرّكه",
+        ToolbarHideOverlay = "أخفِ الترجمة أو أظهرها",
+        ToolbarSettings = "الإعدادات",
+        ToolbarMore = "أزرار أكثر",
+        ToolbarLess = "أزرار أقل",
+        ToolbarWatchMode = "بدّل بين حوار اللعبة وترجمة الفيديو",
+        ToolbarDiacritics = "أظهر التشكيل أو أخفِه",
+        ToolbarPinCorrection = "صحّح السطر الظاهر",
+        ToolbarQuit = "أغلق البرنامج",
+        ToolbarCollapse = "اطوِ الشريط إلى مقبض",
+        ToolbarShow = "افتح شريط الأدوات",
+        ToolbarMove = "اسحب من هنا لتحريك الشريط",
+
         ProfileNoteWindowed =
             "المُفعَّل: {0}. له مسرده الخاص ({1} مصطلحاً)، وتُقاس منطقة الالتقاط على نافذة ذلك "
             + "التطبيق، فتبقى المنطقة صالحة إذا حُرّكت النافذة.",
@@ -989,5 +1142,6 @@ public sealed class UiText
         HotkeyFlagTranslation = "تصحيح الترجمة الحالية",
         HotkeyToggleOverlay = "إظهار / إخفاء الطبقة",
         HotkeyOpenSettings = "فتح الإعدادات",
+        HotkeySnipTranslate = "ترجمة شيء واحد مرة واحدة",
     };
 }

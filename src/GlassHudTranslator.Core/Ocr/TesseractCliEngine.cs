@@ -92,7 +92,8 @@ public sealed class TesseractCliEngine(TesseractOptions? options = null) : IOcrE
         {
             await File.WriteAllBytesAsync(input, prepared.ToPng(), ct).ConfigureAwait(false);
             var tsv = await RunAsync(input, ct).ConfigureAwait(false);
-            return ParseTsv(tsv, _options.MinWordConfidence, _options.Preprocess.UpscaleFactor);
+            return ParseTsv(tsv, _options.MinWordConfidence, _options.Preprocess.UpscaleFactor,
+                OcrPreprocessor.PaddingFor(_options.Preprocess));
         }
         finally
         {
@@ -152,10 +153,20 @@ public sealed class TesseractCliEngine(TesseractOptions? options = null) : IOcrE
     /// engines pass their own <see cref="OcrPreprocessOptions.UpscaleFactor"/>, because a box left
     /// in the upscaled space is wrong by a factor of two in a way that still looks like a box.
     /// </para>
+    ///
+    /// <para>
+    /// <paramref name="padPixels"/> is the blank margin the preprocessor added, measured in the
+    /// same upscaled space, and it comes off BEFORE the division — the padding was added after the
+    /// upscale, so it is not scaled by it. Getting that order wrong shifts every word by half the
+    /// margin, which is small enough to look like nothing and large enough to matter to anything
+    /// that reasons about where the words are.
+    /// </para>
     /// </summary>
-    public static OcrResult ParseTsv(string tsv, float minWordConfidence, int upscaleFactor = 1)
+    public static OcrResult ParseTsv(
+        string tsv, float minWordConfidence, int upscaleFactor = 1, int padPixels = 0)
     {
         var scale = Math.Max(1, upscaleFactor);
+        var pad = Math.Max(0, padPixels);
         var lines = new Dictionary<(int Block, int Par, int Line), List<string>>();
         var order = new List<(int Block, int Par, int Line)>();
         var confidences = new List<float>();
@@ -174,7 +185,7 @@ public sealed class TesseractCliEngine(TesseractOptions? options = null) : IOcrE
             if (!float.TryParse(columns[10], CultureInfo.InvariantCulture, out var confidence)) continue;
 
             var accepted = confidence >= minWordConfidence;
-            words.Add(new OcrWord(text, BoxOf(columns, scale), confidence, accepted));
+            words.Add(new OcrWord(text, BoxOf(columns, scale, pad), confidence, accepted));
 
             if (!accepted)
             {
@@ -231,7 +242,7 @@ public sealed class TesseractCliEngine(TesseractOptions? options = null) : IOcrE
     /// every geometric test quietly declines to match.
     /// </para>
     /// </summary>
-    private static OcrBox BoxOf(string[] columns, int scale)
+    private static OcrBox BoxOf(string[] columns, int scale, int pad)
     {
         if (!int.TryParse(columns[6], CultureInfo.InvariantCulture, out var left) ||
             !int.TryParse(columns[7], CultureInfo.InvariantCulture, out var top) ||
@@ -241,7 +252,9 @@ public sealed class TesseractCliEngine(TesseractOptions? options = null) : IOcrE
             return default;
         }
 
-        return new OcrBox(left / scale, top / scale,
+        // Padding off first, then the upscale divided out. The margin was added after the image was
+        // enlarged, so it lives in enlarged units and is not itself scaled.
+        return new OcrBox((left - pad) / scale, (top - pad) / scale,
             Math.Max(1, width / scale), Math.Max(1, height / scale));
     }
 

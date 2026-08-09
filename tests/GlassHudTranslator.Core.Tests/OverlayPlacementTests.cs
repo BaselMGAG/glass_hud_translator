@@ -100,4 +100,47 @@ public class OverlayPlacementTests
         // box - but now expressed as free space, so a taller panel rides up instead of off.
         Assert.InRange(y, (int)(1080 * 0.7), 1080 - PanelHeight);
     }
+
+    // ── Device-independent pixels in, physical pixels out ─────────────────────────────────────
+    // The App had this conversion and nothing could test it there. It was also wrong.
+
+    [Fact]
+    public void ScalingIsAppliedToThePanelSizeBeforePlacing()
+    {
+        // 900 DIPs at 125% is 1125 physical pixels. Flush right therefore starts 1125 from the
+        // right edge, not 900 - which is the whole of the bug: at 100% the two agree, and every
+        // machine this gets written on is at 100%.
+        var (x, _) = OverlayPlacement.Within(Game, PanelWidth, PanelHeight, 1.25, 1, 0);
+
+        Assert.Equal(1920 - 1125, x);
+    }
+
+    [Fact]
+    public void AScaledPanelStillFitsEntirelyInsideTheGame()
+    {
+        foreach (var scaling in new[] { 1.0, 1.25, 1.5, 1.75, 2.0 })
+        {
+            var (x, y) = OverlayPlacement.Within(Game, PanelWidth, PanelHeight, scaling, 1, 1);
+
+            var physical = new CaptureRegion(x, y,
+                (int)Math.Ceiling(PanelWidth * scaling), (int)Math.Ceiling(PanelHeight * scaling));
+
+            Assert.True(physical.FitsWithin(1920, 1080),
+                $"at {scaling:P0} the panel lands at {physical} and hangs off the screen");
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(double.NaN)]
+    public void AnUnusableScaleIsTreatedAsOneRatherThanCollapsingThePanel(double scaling)
+    {
+        // Screens.ScreenFromPoint can return null while a window is between monitors, and
+        // RenderScaling is 0 before the first layout pass. Neither may become a coordinate.
+        var scaled = OverlayPlacement.Within(Game, PanelWidth, PanelHeight, scaling, 0.5, 0.5);
+        var plain = OverlayPlacement.Within(Game, PanelWidth, PanelHeight, 0.5, 0.5);
+
+        Assert.Equal(plain, scaled);
+    }
 }

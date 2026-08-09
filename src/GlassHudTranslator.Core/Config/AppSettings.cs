@@ -106,6 +106,50 @@ public sealed record AppSettings
     /// </summary>
     [JsonPropertyName("autoWatchExpirySeconds")] public int AutoWatchExpirySeconds { get; set; } = 90;
 
+    /// <summary>
+    /// Whether the floating toolbar is shown. On, and that is a change of stance rather than a
+    /// default picked at random.
+    ///
+    /// <para>
+    /// Every problem this app can have used to be answered by "go into Settings", which a player
+    /// inside a fullscreen game cannot do — reported exactly that way, «كل ما يحصل مشكله اخش علي
+    /// الاعدادات نفسها». Ctrl+Shift+S was half the answer; something visible that does not have to
+    /// be memorised is the other half. Anyone who does not want it switches it off here, and the
+    /// hotkeys keep working either way.
+    /// </para>
+    /// </summary>
+    [JsonPropertyName("showToolbar")] public bool ShowToolbar { get; set; } = true;
+
+    /// <summary>
+    /// Whether the toolbar is allowed to take keyboard focus. Off, which is what nobody playing a
+    /// game wants changed — see <see cref="Platform.OverlayStyleOptions.NoActivate"/> for the one
+    /// unverified platform behaviour this exists to escape from.
+    /// </summary>
+    [JsonPropertyName("toolbarCanTakeFocus")] public bool ToolbarCanTakeFocus { get; set; }
+
+    /// <summary>
+    /// Where the toolbar was left, in physical screen pixels. Null until it has been dragged once,
+    /// which is what lets the first-run position follow the game rather than a saved guess. Clamped
+    /// back onto a monitor on the way out, because a layout can change under a stored coordinate.
+    /// </summary>
+    [JsonPropertyName("toolbarX")] public int? ToolbarX { get; set; }
+
+    [JsonPropertyName("toolbarY")] public int? ToolbarY { get; set; }
+
+    /// <summary>
+    /// Whether the toolbar is showing its advanced row. Remembered, because someone who has opened
+    /// it once has said which kind of user they are, and making them say it again every launch is
+    /// the sort of thing that makes an app feel like it is not paying attention.
+    /// </summary>
+    [JsonPropertyName("toolbarExpanded")] public bool ToolbarExpanded { get; set; }
+
+    /// <summary>
+    /// Whether the visible outline around the capture region is drawn. Off by default: it is an
+    /// answer to "is it even looking at the right place", and once someone knows the answer the
+    /// outline is one more thing on a screen they are trying to play a game on.
+    /// </summary>
+    [JsonPropertyName("showCaptureFrame")] public bool ShowCaptureFrame { get; set; }
+
     /// <summary>Bindings as display strings, e.g. "Ctrl+Shift+T". Missing entries fall back to defaults.</summary>
     [JsonPropertyName("hotkeys")] public Dictionary<string, string> Hotkeys { get; set; } = [];
 

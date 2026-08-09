@@ -138,9 +138,9 @@ contribute to**, not a finished product.
 | Providers supported | 4 — two free (Google Gemini, Groq), two paid and opt-in (OpenAI, Anthropic Claude) |
 | Interface languages | 2 — English and Arabic, English by default |
 | Credit card needed | No |
-| Automated tests | 542 |
+| Automated tests | 573 |
 | Glossary | 86 Final Fantasy XIV proper nouns pinned so far |
-| Configurable hotkeys | 5 |
+| Configurable hotkeys | 7 |
 | Licence | Apache 2.0 |
 | Platform | Windows 10/11 to use; developed on macOS |
 | Install footprint | Download a folder, run it. No installer, no admin rights, nothing to configure |

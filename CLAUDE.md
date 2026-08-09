@@ -34,7 +34,7 @@ solution level it tries to force `net10.0` onto the Windows-only projects and fa
 dotnet test
 ```
 
-542 tests, all runnable on macOS and Linux.
+573 tests, all runnable on macOS and Linux.
 
 ```bash
 dotnet run --project tools/Replay -- --no-cache
@@ -47,12 +47,18 @@ to bypass change detection, `--generate-frames` to rewrite the sample corpus.
 
 ```bash
 dotnet run --project src/GlassHudTranslator.App -f net10.0 -- --stub
-dotnet run --project src/GlassHudTranslator.App -f net10.0 -- --render-test
+dotnet run --project src/GlassHudTranslator.App -f net10.0 -- --render-test --render-test-out /tmp/render.png --exit-after-render
+dotnet run --project src/GlassHudTranslator.App -f net10.0 -- --toolbar-test --toolbar-test-out /tmp
 ```
 
 Run `--render-test` after touching anything to do with fonts, text layout or the Avalonia version.
 It renders the cases where Arabic layout usually breaks and tells you whether the bundled font
 actually loaded rather than the OS quietly substituting one.
+
+Run `--toolbar-test` after touching `Icons`. The icons are SVG path strings parsed at runtime, so a
+typo is an exception thrown while the window is being built — on a user's machine, at startup, with
+no compiler and no unit test able to see it. This draws the real strip, simple and expanded, to two
+PNGs. If they render here they parse everywhere.
 
 ## Layout
 
@@ -130,6 +136,40 @@ guard exists to prevent had already happened, and only the display was suppresse
 `TranslationPipeline.MinimumBodyCharacters` now. Any future "don't translate this" rule goes in the
 same place, ahead of `cache.TryGetAsync`, or it is decoration.
 
+**There are two nets before the cache now, and the second one exists because the first cannot see
+text.** `FrameSettleGate` compares binarised thumbnails, so a subtitle burnt into moving footage
+differs from the previous frame in whatever the picture is doing behind it — the words can be
+pixel-identical while the signature says the screen changed. `TextSimilarity.LooksLikeARepeat` runs
+after OCR and before the lookup, and drops a body within a few characters of the last one shown. It
+costs one finished OCR and saves the metered half; the frame gate spends free polls and saves the
+OCR. **Absolute edit distance, capped at a quarter of the shorter body** — an absolute budget of
+three is right for a sentence and absurd for a word, because "yes" and "no" are three edits apart.
+The reference is never advanced on a match, or a caption drifting three characters at a time would
+never be translated at all.
+
+**Suppressible and being-the-reference are different questions, and a test is what forced them
+apart.** `ProcessOptions` carries `SuppressRepeats` and `RemembersLine` separately. A hotkey press
+must never be dropped — it is a question and it gets an answer — but it does put a line on the
+overlay, so the poll half a second later reading the same pixels with one comma misread is a repeat
+*of it*, and the cache does not save that: a different string is a different key. A snip sets
+neither, plus `UseContext = false`.
+
+**A snip must leave no trace, and the list is longer than the feature.** It must never call
+`FrameSettleGate.Offer` — calling a frame Ready is not an opinion, it records that frame as the one
+on the overlay, so a snip offered to the gate would overwrite the watched region's signature and
+every later poll of the real dialogue box would answer `Unchanged` forever. It must not become the
+repeat reference, or the dialogue the player is reading gets suppressed as a repeat of a menu
+tooltip. It must not touch `_consecutiveEmpty`, which is diagnosing a different rectangle, must not
+repoint `LastRegionProfile`, and must not enter the cadence median that the adaptive settle deadline
+is derived from — `WatchSession.CountedOutsideTheRhythm` counts it against the session cap and
+against nothing else. And it deliberately ignores `_busy`: dropping a poll costs nothing because
+another is half a second away, but the user dragged this box by hand.
+
+**After a snip, forget the watched region — do not try to restore it.** `_settle.Reset()` and
+`ResetRepeatGuard()` on the way out, so the next poll re-translates the main line. That looks like
+waste and is not: the line was translated in this session, so it is already in the cache and a hit
+is free. Without it the player sits looking at a menu tooltip until the dialogue advances.
+
 **`PipelineOutcome.Result` is null when nothing was attempted.** An empty region and a two-character
 misread are not failed translations, and they used to be reported as one — a fabricated
 `TranslationResult` carrying the `stale` outcome, which read to every consumer as "the provider let
@@ -138,12 +178,30 @@ Settings and one in Replay.
 
 **OCR word boxes are in frame coordinates, and the engine is what makes that true.** OCR runs on a
 preprocessed copy that is upscaled — 2x by default, because Tesseract is markedly better on larger
-text — so every box Tesseract reports is in doubled coordinates. `ParseTsv` takes the upscale factor
-and divides back down; both engines pass their own. Forget it and the boxes are wrong by exactly
-100% while still being perfectly plausible rectangles, pointing below and right of the words they
-name. The unit test on the arithmetic cannot catch a caller that simply omits the argument, so
+text — and then **padded**, so every box Tesseract reports is in doubled *and* offset coordinates.
+`ParseTsv` takes both numbers, subtracts the padding and divides by the upscale, **in that order**:
+the margin is added after the enlargement, so it lives in enlarged units and is not itself scaled.
+Both engines pass their own. Forget the upscale and the boxes are wrong by exactly 100% while still
+being perfectly plausible rectangles; get the padding order wrong and they are quietly out by half
+the margin. The unit test on the arithmetic cannot catch a caller that simply omits an argument, so
 there is a second test that reads one frame at 1x and at 2x and requires the words to land in the
-same place. It has been mutation-checked. Any new engine returning geometry owes the same mapping.
+same place — which covers both transforms at once, because the pad is 8 at 1x and 16 at 2x. It has
+been mutation-checked. Any new engine returning geometry owes the same mapping.
+
+**Pad the crop, and pad it last.** A glyph touching the edge of the image has no background left for
+layout analysis to measure it against, and a hand-drawn capture region guarantees exactly that — it
+is why a box drawn tightly around the words reads worse than one drawn a little wide, which is not
+advice anyone should have to be given. The margin goes on **after** the auto-invert, when the image
+is dark-on-light whichever way it started, so white is continuous with the background. Padding
+before the invert draws a bright frame around the text and is worse than not padding at all.
+
+**Contrast is stretched on percentiles, never on min and max.** One specular highlight, or one
+sliver of a white UI border clipped into a corner, pins an end of the range at its limit and the
+rescale becomes a near no-op on the text — which is the part that needed it. Real frames nearly
+always contain such a pixel and `test-frames/` almost never does, which is exactly why this survived
+so long. Two percent trimmed each end, and the result is **clamped**: the trimmed outliers are
+outside the chosen range by construction, so without the clamp the brightest pixel in the frame
+overflows to black.
 
 **A region proposal returns nothing rather than a weak guess.** `RegionFinder` is offered to
 someone who cannot check the rectangle against the English, at the first moment they use the app.
@@ -413,6 +471,65 @@ empty boxes. Relying on OS fallback works on macOS and hides the problem — the
 were tofu the first time the interface was switched, and that was on a Mac that *does* have Arabic
 fonts.
 
+**Icons are geometry, never glyphs.** `Icons` holds SVG path data compiled into the assembly. The
+bundled Arabic font has no Latin and no symbols, so any character-based icon already depends on OS
+fallback — the exact dependency the font was bundled to remove — and one unresolvable codepoint has
+already poisoned fallback for a whole window once. A toolbar has no text on it, so if its glyphs
+fail there is nothing left. Nothing on the machine can change what a `Path` looks like.
+`--toolbar-test` renders the real strip to a PNG, because a typo in a path string is an exception
+thrown while the window is built, on a user's machine, and no compiler or unit test here can catch
+it: the parser is Avalonia's and the test project does not reference Avalonia.
+
+**A bilingual tooltip is two TextBlocks, not one string with a separator.** `BilingualTip` shows
+Arabic and English at once, whichever language the interface is in, for the reason the
+`Language · اللغة` control exists — and more strongly, because a toolbar button is a shape and
+nothing else. One control holding "Translate now · ترجم الآن" would have to resolve half its
+characters through OS fallback; two controls let the Arabic line use the bundled font and the Latin
+line the system default, and no separator glyph is needed because they are on different lines. The
+interface language leads; both are always present.
+
+**Every floating window is a `FloatingWindow`, and they differ only in which bits they want.**
+`OverlayStyleOptions` names the four: click-through, no-activate, exclude-from-capture, and topmost
+which is not optional. **The bits are set AND cleared** — the old code OR'd four constants in and
+returned, which is idempotent only while nobody ever wants one back off, and the capture frame wants
+`WS_EX_TRANSPARENT` off while it is being dragged and on the instant that finishes.
+
+**A fully transparent window is invisible to the mouse, not just to the eye.** The compositor
+hit-tests against alpha, so a zero-alpha region passes clicks through whatever the extended styles
+say. That is *useful* — it is how the capture frame stays out of the way — but anything that has to
+be grabbed paints `FloatingWindow.BarelyThere`, one part in 255 of black.
+
+**Nothing drags itself with `BeginMoveDrag`.** That helper asks the window manager to run a modal
+move loop, which is the kind of thing a `WS_EX_NOACTIVATE` window is least likely to be granted, and
+it cannot be rehearsed off Windows. The toolbar and the frame both do the arithmetic themselves:
+`PointToScreen` at grab, `PointToScreen` on move, anchor to the grab rather than to the previous
+frame so rounding cannot accumulate. Exact at any DPI and identical on both platforms.
+
+**The visible capture frame is only possible because of the exclusion flag.** A border drawn around
+the rectangle being OCR'd is normally a border inside the pixels about to be OCR'd, and every
+general fix is unpleasant. `WDA_EXCLUDEFROMCAPTURE` means it physically cannot appear in our BitBlt,
+and the border is drawn *outside* the rect as well — window inflated, stored region deflated back —
+so it would be on the wrong side of the boundary even without it. Both, deliberately.
+
+**The frame saves on release, with no confirm step.** Dragging it *is* the edit, and there is
+nothing to confirm because the thing being edited is showing its own result. That is also what keeps
+it off the keyboard, which is the one behaviour on this platform nobody here can test.
+
+**Sizes come out of a UI toolkit in device-independent pixels; screen coordinates are physical.**
+`OverlayPlacement.Within` has an overload that takes the scale and does the conversion, and it lives
+in Core because that is where it can be tested — it used to live in `App.axaml.cs` where nothing
+could, and it was wrong. At 100% the two units are the same number, which is the machine this gets
+written on; at 125% a 900-DIP panel is 1125 pixels and "flush right" hangs a quarter of it off the
+screen. Take the scale from the monitor the window is going **to**, not from `RenderScaling`, which
+is the monitor it currently happens to be on.
+
+**The picker tests the still it is already holding, never a fresh capture.** `RegionPickerWindow` is
+full-screen, topmost and has no capture exclusion, so re-photographing the screen to answer "what
+does the OCR read here" photographs the picker: its instruction panel, and the blue selection box
+drawn across the very text being tested. On one monitor the scale works out and it looks right. On
+two, the still spans the desktop while the window covers one screen, and the preview reported on
+entirely different pixels. The callback takes a `Frame`, not a rectangle, so this cannot come back.
+
 ## Things deliberately not done
 
 No game-process injection, no memory reading, no plugin frameworks — those risk accounts and break
@@ -626,6 +743,26 @@ The pattern worth keeping: **four of the five were failures of REPORTING, not of
 app already knew it had stopped, knew the region was dead, knew it was hiding from the recorder. It
 had nowhere to say any of it that the person in a fullscreen game would ever look.
 
+**Found while building the window features (v0.6.0), all of them latent for months:**
+
+- **"Test what the OCR reads here" read the picker's own rendering.** `TestRegionAsync` re-captured
+  the screen live while the full-screen picker was on top of it, so the preview contained the HUD
+  panel and the blue selection rectangle sitting over the text under test. On one monitor the scale
+  works out 1:1 and the answer looks plausible, which is why it shipped; on two it reported on a
+  different screen entirely. The fix is a signature change — the callback takes the crop rather than
+  the rectangle — because a function handed pixels cannot go and fetch different ones.
+- **DIPs and physical pixels were mixed in overlay placement.** Harmless at 100% and only at 100%.
+  Worth recording as a category rather than a bug: two units that are equal on the development
+  machine and unequal on the user's is the shape of defect this project keeps producing, and the fix
+  is always to state the unit in the signature and move the conversion somewhere testable.
+- **A manual press left no repeat reference, so the poll after it paid for OCR jitter.** Caught by a
+  test that was asserting the wrong thing, which turned out to be the design being wrong: I had
+  folded "may be suppressed" and "becomes the reference" into one flag because the three callers
+  happened to line up. They do not.
+- **Padding changed what Tesseract segments at 1x**, enough to produce the apostrophe in "Y'shtola"
+  as two separate word tokens — which made a `ToDictionary` in an existing test throw on the
+  duplicate key. The test's invariant was fine; keying by word text was the assumption.
+
 **Latent, found by inspection and not yet hit in the wild:** the bundled `NotoSansArabic-Regular.ttf`
 contains **no Latin at all** — not `A`, not `%`, and none of `✓ ✗ ⚠ → · ⏎`. Every Latin word in the
 Arabic interface is already resolved by OS fallback. That works today, but the whole reason the font
@@ -637,6 +774,22 @@ codepoint to an Arabic string, check it against the font.
 
 Click-through, and cache hit rate over a real session. Multi-monitor and display scaling above 100%
 came off this list in v0.5.2, verified by a long session across several games on two screens.
+
+**And, new in v0.6.0, one specific question worth budgeting the Windows laptop for: does a
+`WS_EX_NOACTIVATE` Avalonia window receive pointer input?** At the Win32 level it should — it is
+`WS_EX_TRANSPARENT`, not this, that makes a window invisible to the mouse — but whether Avalonia's
+input stack delivers events to a window it never activates has not been tested on hardware, and the
+toolbar and the adjustable capture frame both depend on it. Everything that *would* have depended on
+activation is avoided deliberately: manual dragging instead of `BeginMoveDrag`, save-on-release
+instead of Enter, no keyboard input anywhere on either window. If it does turn out to be dead to the
+mouse, `AppSettings.ToolbarCanTakeFocus` switches `NOACTIVATE` off without a new build — which is
+why that checkbox is worded as a symptom ("turn it on if the toolbar does not respond to clicks")
+rather than as a mechanism.
+
+The second unverified thing is smaller and has the same shape: whether a zero-alpha region of a
+layered window really does pass clicks through on every Windows compositor configuration. It is
+standard behaviour and the capture frame leans on it in its non-adjustable state, but the
+belt-and-braces is that the extended style is set to match, so the two would have to fail together.
 
 The settle gate is the newest thing here and the least measured. It is tested against synthetic
 reveals, but whether FFXIV's actual reveal — against a 2 fps poll and `FrameSignature`'s six-cell

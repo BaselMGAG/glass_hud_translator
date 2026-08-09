@@ -3,6 +3,65 @@
 Notable changes. Started once the app was working end to end, so everything before the first entry
 is "the thing being described in the README".
 
+## v0.6.0 — 10 August 2026
+
+You can see what the app is looking at, reach everything it does without memorising a key
+combination, and translate one thing without disturbing the thing it was already watching. Two bugs
+that had been sitting on the paths all of that uses are fixed underneath.
+
+### Added
+
+- **A floating toolbar.** Six buttons over the game — translate now, watch automatically, translate
+  one thing, choose the region, hide the translation, settings — and one more that opens the rest.
+  Drag it anywhere, shrink it to a single handle, and hover any button to see what it does **in
+  Arabic and English at the same time**, whichever language the interface is set to. A toolbar has
+  no words on it, only shapes, so a label in one language leaves somebody guessing: the friend
+  helping with the setup, or the person the app was built for. Switch it off in Settings → Overlay
+  if you would rather not have it.
+- **A visible outline around what is being captured.** Switch it on and a thin border shows exactly
+  which rectangle is being read — the answer to "is it even looking at the right place". Clicks pass
+  straight through it, so it does not get in the way of the game. Press the toolbar's frame button
+  again and you can drag it or pull a corner to resize; it saves the moment you let go, with no
+  confirmation step, because the thing you are editing is already showing you the result. It can
+  never end up inside the text it outlines: like the translation panel, it is invisible to every
+  screen capture, including this app's own.
+- **Translate one thing, once.** `Ctrl+Shift+X`, or the toolbar. Drag a box around anything on
+  screen — a tooltip, an item name, a sign in the corner — and it is translated the moment you let
+  go. Automatic mode keeps running throughout and comes straight back to what it was watching, and
+  the one-off never joins the conversation: a menu tooltip must not steer the pronouns of the next
+  line of dialogue, in either direction.
+
+### Fixed
+
+- **The same line is no longer paid for twice because one comma was misread.** Text recognition is
+  not perfectly repeatable: the same pixels a moment later come back with a comma turned into a full
+  stop or an `l` read as an `I`, and every one of those is a different line as far as the cache is
+  concerned — so it was translated again, and paid for again. This matters most on video, where the
+  picture behind a subtitle is always moving and no amount of comparing frames can tell you the
+  words have not changed. The app now compares the text as well, and a line within a few characters
+  of the one already on screen costs nothing. Short labels still have to match exactly, because
+  "yes" and "no" are three characters apart and are not the same word.
+- **"Test what the OCR reads here" was reading the wrong pixels.** The region picker re-photographed
+  the screen while it was itself covering it, so the preview included its own instruction panel and
+  the blue selection box drawn across the very text being tested. On one monitor the sizes happened
+  to line up and it looked right; on two screens it reported on an entirely different part of the
+  desktop. It now reads the frozen image you are actually looking at.
+- **The translation panel hung off the edge at 125% and 150% display scaling.** Its size was being
+  measured in one unit and its position in another. At 100% those are the same number, which is why
+  this was invisible — and it stops being invisible the moment something has to line up exactly with
+  the captured rectangle, which the new outline does.
+- **Text touching the edge of the capture region reads better.** A blank margin is added around the
+  crop before recognition, which is what layout analysis needs in order to find a block of text at
+  all. It is why a box drawn tightly around the words used to read worse than one drawn a little
+  wide — advice nobody should have had to be given.
+- **One bright pixel no longer cancels the contrast correction.** A glint on a sword, or a sliver of
+  a white interface border clipped into the corner of the region, was enough to make the brightness
+  adjustment do nothing at all — it took the single brightest and single darkest pixel as the range.
+  It now ignores the outermost two percent at each end, which is where those live.
+- **An answer that arrived as you switched something off is kept.** If a provider replied at the
+  moment automatic mode stopped, or the app closed, the reply was thrown away — after being sent,
+  counted against the day's allowance, and paid for. It is stored now.
+
 ## v0.5.3 — 9 August 2026
 
 Almost all of this came from one player's feedback after an evening with Wuthering Waves, and from

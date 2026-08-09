@@ -212,6 +212,14 @@ public static partial class NativeMethods
     public const uint SwpShowWindow = 0x0040;
 
     /// <summary>
+    /// Recalculates the non-client frame. Required whenever an extended style is changed after the
+    /// window exists, which the capture frame does every time it is switched between click-through
+    /// and grabbable - without it the new style can sit unapplied until some later repaint happens
+    /// to force it.
+    /// </summary>
+    public const uint SwpFrameChanged = 0x0020;
+
+    /// <summary>
     /// Excludes the overlay from screen captures - including our own. Without it the pipeline reads
     /// its own Arabic output back on the next poll and translates that.
     /// </summary>

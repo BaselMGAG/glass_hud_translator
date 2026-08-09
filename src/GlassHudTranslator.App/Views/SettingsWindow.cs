@@ -812,6 +812,51 @@ public sealed class SettingsWindow : Window
         stack.Children.Add(recordable);
         stack.Children.Add(Note(_text.AllowRecordingNote));
 
+        var toolbar = new CheckBox
+        {
+            Content = _text.ShowToolbar,
+            IsChecked = _settings.ShowToolbar,
+        };
+        toolbar.IsCheckedChanged += (_, _) =>
+        {
+            _settings.ShowToolbar = toolbar.IsChecked == true;
+            _settings.Save();
+            FloatingWindowsChanged?.Invoke();
+        };
+        stack.Children.Add(toolbar);
+        stack.Children.Add(Note(_text.ShowToolbarNote));
+
+        // The escape hatch for one unverified platform behaviour, worded as a symptom rather than
+        // as a mechanism: nobody reading this knows what WS_EX_NOACTIVATE is, and they should not
+        // need to. See OverlayStyleOptions.NoActivate for what is actually uncertain.
+        var focusable = new CheckBox
+        {
+            Content = _text.ToolbarCanTakeFocus,
+            IsChecked = _settings.ToolbarCanTakeFocus,
+        };
+        focusable.IsCheckedChanged += (_, _) =>
+        {
+            _settings.ToolbarCanTakeFocus = focusable.IsChecked == true;
+            _settings.Save();
+            FloatingWindowsChanged?.Invoke();
+        };
+        stack.Children.Add(focusable);
+        stack.Children.Add(Note(_text.ToolbarCanTakeFocusNote));
+
+        var frame = new CheckBox
+        {
+            Content = _text.ShowCaptureFrame,
+            IsChecked = _settings.ShowCaptureFrame,
+        };
+        frame.IsCheckedChanged += (_, _) =>
+        {
+            _settings.ShowCaptureFrame = frame.IsChecked == true;
+            _settings.Save();
+            FloatingWindowsChanged?.Invoke();
+        };
+        stack.Children.Add(frame);
+        stack.Children.Add(Note(_text.ShowCaptureFrameNote));
+
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         buttons.Children.Add(Button(_text.PreviewOverlay, () =>
             _overlay.ShowTranslation("Y'shtola", "تعال، فالأثير هنا يزداد اضطراباً.")));
@@ -1342,9 +1387,35 @@ public sealed class SettingsWindow : Window
         // applied to a rectangle picked on that frame.
         var region = screenshot is null ? picked : picked.Translate(desktop.X, desktop.Y);
 
-        // Stored relative to the game's client area, not the screen, so the profile survives the
-        // window being moved. Falls back to the whole desktop when there is no game window.
-        var game = PlatformServices.FindGameWindow(_services.Profile.WindowTitles, _services.Profile.ProcessNames);
+        var profile = await SaveRegionAsync(profileName, region);
+
+        _settings.LastRegionProfile = profileName;
+        _settings.Save();
+
+        _status.Text = string.Format(_text.RegionSaved, _text.RegionName(profileName),
+            profile.RelWidth.ToString("P0"), profile.RelHeight.ToString("P0"));
+
+        RegionChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Turns a rectangle in physical screen pixels into a stored region profile.
+    ///
+    /// <para>
+    /// Shared by the picker and by the draggable capture frame, and shared deliberately rather than
+    /// copied. The conversion is the fiddly part — relative to the game's client area rather than
+    /// to the screen, so the profile survives the window being moved, falling back to the whole
+    /// desktop when there is no game window and to the primary monitor when there is no desktop
+    /// either. Two copies of that would drift, and the symptom of drift is a region that is subtly
+    /// in the wrong place only for whichever route the user happened to take.
+    /// </para>
+    /// </summary>
+    private async Task<RegionProfile> SaveRegionAsync(string profileName, CaptureRegion region)
+    {
+        var desktop = PlatformServices.VirtualDesktop();
+        var game = PlatformServices.FindGameWindow(
+            _services.Profile.WindowTitles, _services.Profile.ProcessNames);
+
         var origin = game?.ClientArea
                      ?? (desktop.IsEmpty
                          ? new CaptureRegion(0, 0,
@@ -1352,31 +1423,92 @@ public sealed class SettingsWindow : Window
                              Screens.Primary?.Bounds.Height ?? 1080)
                          : desktop);
 
-        var relative = region.RelativeTo(origin);
-
-        var profile = RegionProfile.FromPixels(profileName, relative,
+        var profile = RegionProfile.FromPixels(profileName, region.RelativeTo(origin),
             origin.Width, origin.Height, game?.Scaling ?? 1.0);
+
         await _services.Regions.SaveAsync(_services.Profile.Id, profile, CancellationToken.None);
-
-        _settings.LastRegionProfile = profileName;
-        _settings.Save();
-
-        _status.Text = string.Format(_text.RegionSaved, _text.RegionName(profileName),
-            profile.RelWidth.ToString("P0"), profile.RelHeight.ToString("P0"));
+        return profile;
     }
 
     /// <summary>
-    /// Reads whatever is inside a candidate rectangle, so the picker can show the user exactly what
-    /// the OCR sees before they commit to it. Costs no API quota - OCR only, no translation.
+    /// Commits a rectangle the user dragged the capture frame to. Saves under whichever region
+    /// profile is currently live, because that is the one the frame was drawn around.
     /// </summary>
-    private async Task<string> TestRegionAsync(CaptureRegion region)
+    public async Task FrameAdjustedAsync(CaptureRegion region)
     {
+        var name = _settings.LastRegionProfile;
+        var profile = await SaveRegionAsync(name, region);
+
+        _status.Text = string.Format(_text.FrameAdjusted,
+            profile.RelWidth.ToString("P0"), profile.RelHeight.ToString("P0"));
+
+        RegionChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Drag a box around anything on screen and translate it once.
+    ///
+    /// <para>
+    /// Same frozen still and same picker as choosing a region, in one-shot mode: the box commits on
+    /// release rather than on Enter. What it does NOT do is touch anything the watched region owns
+    /// — see <see cref="TranslationSession.SnipAsync"/>, where the list of things a snip must leave
+    /// alone is longer than the feature itself.
+    /// </para>
+    /// </summary>
+    public async Task SnipAsync()
+    {
+        _overlay.Clear();
+        await Task.Delay(120);
+
+        var desktop = PlatformServices.VirtualDesktop();
         var screenshot = PlatformServices.CaptureFullScreen();
-        if (screenshot is null) return _text.CaptureWindowsOnly;
 
-        if (!region.FitsWithin(screenshot.Width, screenshot.Height)) return _text.SelectionOffScreen;
+        var picker = new RegionPickerWindow(
+            _settings.LastRegionProfile, screenshot, TestRegionAsync, _text, snip: true);
 
-        var result = await _services.Ocr.RecognizeAsync(screenshot.Crop(region), CancellationToken.None);
+        // Not ShowDialog against Settings. Settings is usually behind a fullscreen game when this
+        // is reached from the toolbar, and a modal owned by a hidden window is a hang from the
+        // outside. Awaiting the close gives the same sequencing without the ownership.
+        var closed = new TaskCompletionSource();
+        picker.Closed += (_, _) => closed.TrySetResult();
+        picker.Show();
+        await closed.Task;
+
+        if (picker.Result is not { } picked)
+        {
+            _status.Text = _text.SnipCancelled;
+            return;
+        }
+
+        await _session.SnipAsync(screenshot is null ? picked : picked.Translate(desktop.X, desktop.Y));
+    }
+
+    /// <summary>
+    /// Raised when the stored capture region changes, so the visible frame can move to match it
+    /// rather than outlining where the region used to be.
+    /// </summary>
+    public event Action? RegionChanged;
+
+    /// <summary>
+    /// Raised when the toolbar or the capture frame is switched on or off, or when the toolbar's
+    /// focus behaviour changes. One event rather than three, because the App's response to all of
+    /// them is the same: re-read the settings and apply them to the live windows.
+    /// </summary>
+    public event Action? FloatingWindowsChanged;
+
+    /// <summary>
+    /// Reads a crop the picker hands over, so it can show the user exactly what the OCR sees before
+    /// they commit to it. Costs no API quota - OCR only, no translation.
+    ///
+    /// <para>
+    /// Takes the pixels rather than a rectangle, and that is the fix rather than a tidy-up: this
+    /// used to re-capture the screen while the picker was on top of it, so the "preview" was the
+    /// picker's own rendering with the selection box drawn across the text being tested.
+    /// </para>
+    /// </summary>
+    private async Task<string> TestRegionAsync(Frame crop)
+    {
+        var result = await _services.Ocr.RecognizeAsync(crop, CancellationToken.None);
         return result.RawText;
     }
 
@@ -1487,7 +1619,8 @@ public sealed class SettingsWindow : Window
             // Not the live screen, so it does not claim to be. A rendered frame with a known-good
             // line: if nothing comes back the pipeline is broken, not the capture region.
             var outcome = await _services.Pipeline.ProcessAsync(frame, regionKey: null,
-                Core.Pipeline.SourceKind.RecordedFrame, CancellationToken.None);
+                Core.Pipeline.SourceKind.RecordedFrame, Core.Pipeline.ProcessOptions.Manual,
+                CancellationToken.None);
 
             if (outcome.Result is not { } result)
             {

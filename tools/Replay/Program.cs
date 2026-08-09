@@ -103,8 +103,11 @@ while (await frames.GetFrameAsync(CaptureRegion.Empty, CancellationToken.None) i
     previous = signature;
     processed++;
 
+    // Manual, deliberately: the corpus is a set of distinct frames, not a time series off one
+    // screen, so the repeat gate would suppress most of what the harness exists to push through -
+    // for the same reason the settle gate is not applied here either.
     var outcome = await pipeline.ProcessAsync(frame, regionKey: null,
-        SourceKind.RecordedFrame, CancellationToken.None);
+        SourceKind.RecordedFrame, ProcessOptions.Manual, CancellationToken.None);
     Print(label, outcome);
 }
 

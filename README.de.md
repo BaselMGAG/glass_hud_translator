@@ -114,13 +114,16 @@ Arabische erscheint nach etwa einer Sekunde, oder sofort, wenn diese Zeile schon
 | `Strg+Umschalt+R` | Aufnahmebereich neu festlegen |
 | `Strg+Umschalt+F` | Aktuelle Übersetzung korrigieren und die Korrektur festhalten |
 | `Strg+Umschalt+S` | Einstellungen öffnen, ohne das Spiel zu verlassen |
+| `Strg+Umschalt+X` | Eine Sache einmal übersetzen — zieh einen Rahmen um irgendetwas auf dem Bildschirm |
 
-Alle sechs lassen sich unter Einstellungen → **Hotkeys** neu belegen. Als Modifikatoren gehen Strg,
+Alle sieben lassen sich unter Einstellungen → **Hotkeys** neu belegen. Als Modifikatoren gehen Strg,
 Umschalt, Alt und Windows; als Tasten A–Z, 0–9, F1–F24, Pfeiltasten, Einfg/Entf/Pos1/Ende, der
 Ziffernblock und Satzzeichen.
 
 **F13–F24 sind die sichersten.** Es gibt sie auf physischen Tastaturen nicht, also hat kein Spiel
 etwas darauf gelegt.
+
+Merken muss man sich davon nichts. Es gibt eine Werkzeugleiste — siehe unten.
 
 ### Eine Maustaste benutzen
 
@@ -136,6 +139,48 @@ Kombination hier:
 Maustaste 4     →  Strg+F13   (in der Maus-Software)
 Strg+F13        →  Übersetzt, was gerade auf dem Bildschirm steht   (Einstellungen → Hotkeys)
 ```
+
+### Die Werkzeugleiste
+
+Eine kleine Knopfleiste, die über dem Spiel liegt, für all das, wofür man sonst ein Tastenkürzel
+oder das Einstellungsfenster bräuchte. Sechs Knöpfe zu Beginn — jetzt übersetzen, automatisch
+mitlesen, eine Sache übersetzen, Bereich wählen, Übersetzung ausblenden, Einstellungen — und einer,
+der den Rest aufklappt: der Aufnahmerahmen, die Umschaltung zwischen Dialog und Video, die
+Vokalzeichen, eine Korrektur festhalten, beenden.
+
+Zieh sie an den Punkten am linken Rand irgendwohin; sie merkt sich, wo. Mit dem Knopf am rechten
+Rand schrumpft sie auf einen einzigen Griff. Wer lieber mit Tastenkürzeln arbeitet, schaltet sie
+unter Einstellungen → **Overlay** ganz ab.
+
+**Fährst du über einen Knopf, sagt er dir auf Arabisch und Englisch zugleich, was er tut** — egal,
+welche Sprache die Oberfläche gerade hat. Auf einer Werkzeugleiste steht kein Wort, nur Formen. Eine
+Beschriftung in nur einer Sprache lässt also jemanden raten, und es ist Zufall, wen: den Freund, der
+beim Einrichten hilft, oder die Person, für die das hier gebaut wurde.
+
+### Sehen, was aufgenommen wird
+
+Einstellungen → **Overlay** → *Zeigen, was aufgenommen wird* zeichnet einen dünnen Rahmen um das
+Rechteck, das gelesen wird. Das ist die Antwort auf „schaut es überhaupt an die richtige Stelle" —
+sonst bleibt nur Raten.
+
+Klicks gehen glatt hindurch, es stört das Spielen also nicht. Drückst du den Rahmenknopf auf der
+Leiste ein weiteres Mal, lässt er sich greifen: in der Mitte ziehen verschiebt ihn, an einer Ecke
+ziehen ändert die Größe. Gespeichert wird beim Loslassen — ohne Bestätigungsschritt, denn was du
+bearbeitest, zeigt dir sein Ergebnis bereits selbst.
+
+Er kann nicht in dem Text landen, den er umrahmt. Der Rahmen liegt außerhalb des Rechtecks, und wie
+das Übersetzungsfeld ist er für jede Bildschirmaufnahme unsichtbar — auch für die dieses Programms.
+
+### Eine Sache übersetzen
+
+`Strg+Umschalt+X`, oder der dritte Knopf auf der Leiste. Zieh einen Rahmen um irgendetwas — eine
+Gegenstandsbeschreibung, ein Schild, einen Namen in einem Menü — und beim Loslassen wird es
+übersetzt.
+
+Es stört nicht, was das Programm gerade tat. Der Automatikmodus läuft weiter und kehrt sofort zu der
+Zeile zurück, die er beobachtet hat, und die einmalige Übersetzung bleibt in beide Richtungen außen
+vor: eine Gegenstandsbeschreibung soll nicht vom eben gelesenen Dialog eingefärbt werden, und schon
+gar nicht die Pronomen der nächsten Zeile steuern.
 
 ### Hinweise
 
@@ -296,7 +341,7 @@ Früh, aber es funktioniert.
 
 | | |
 |---|---|
-| Übersetzungskette (OCR → bereinigen → Cache → LLM → zeichnen) | funktioniert, 542 Tests |
+| Übersetzungskette (OCR → bereinigen → Cache → LLM → zeichnen) | funktioniert, 573 Tests |
 | Arabische Darstellung: Formung, Bidi, Vokalzeichen | funktioniert und geprüft |
 | Spielprofile, Glossar, OCR-Korrekturen | funktionieren |
 | Anbieterwechsel, Kontingentzählung, Cache | funktioniert |
@@ -312,6 +357,10 @@ Früh, aber es funktioniert.
 | Limit für den Automatikmodus | **funktioniert** |
 | Modus für Video-Untertitel | **funktioniert**, noch nicht an einem langen Film gemessen |
 | Overlay in Aufnahmen | **funktioniert** — standardmäßig aus, siehe Einstellungen → Overlay |
+| Dieselbe Zeile nicht zweimal bezahlen, nur weil ein Komma falsch gelesen wurde | **funktioniert** |
+| Die schwebende Werkzeugleiste | geschrieben, unter Windows noch nicht gelaufen |
+| Der sichtbare Aufnahmerahmen | geschrieben, unter Windows noch nicht gelaufen |
+| Eine Sache einmal übersetzen | geschrieben, unter Windows noch nicht gelaufen |
 | Klicks durch das Overlay hindurch | noch nicht geprüft |
 
 Getestet gegen **Final Fantasy XIV** und mehrere andere Spiele unter Windows über eine lange
@@ -330,6 +379,15 @@ getrennten Zeilen.
 Spiel mit Animation hinter dem Dialog ist sie deshalb nie ausgelöst worden. Nach zwei Minuten warnt
 er auf dem Overlay, nach vier hört er auf, nach Zeit oder nach Verbrauch, je nachdem was zuerst
 kommt. Das Limit lässt sich abschalten.
+
+**Die drei Fensterfunktionen sind das Neueste hier und das am wenigsten Erprobte.** Werkzeugleiste,
+Aufnahmerahmen und Einmalübersetzung wurden alle auf macOS geschrieben und gezeichnet, und was sich
+dort nicht proben lässt, ist genau dies: Bekommt ein Fenster, das den Tastaturfokus verweigert,
+unter Windows trotzdem Mausklicks? Alles, was vom Fokus abhinge, ist bewusst vermieden — die Leiste
+verschiebt sich selbst, statt den Fenstermanager darum zu bitten, der Rahmen speichert beim
+Loslassen statt auf Enter, und keiner von beiden nimmt einen Tastendruck entgegen. Reagiert die
+Leiste am Ende gar nicht, ist Einstellungen → **Overlay** → *Werkzeugleiste darf den Fokus nehmen*
+die Abhilfe — und genau so formuliert, weil das das Symptom ist, das man sähe.
 
 **Kostenlose Modelle werden ohne Vorwarnung abgeschaltet, und beide Anbieter taten es in derselben
 Woche.** Modellnamen stehen in [`data/models.json`](data/models.json), nie im Code — fällt bei einem

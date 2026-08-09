@@ -143,20 +143,26 @@ public static class PlatformServices
     }
 
     /// <summary>
-    /// Click-through, never-focused, always-on-top, and excluded from its own captures. Returns a
-    /// warning when that last part is unavailable, which is the case on Windows builds before 2004.
+    /// Always-on-top and out of Alt-Tab, plus whichever of click-through, never-focused and
+    /// excluded-from-capture <paramref name="options"/> asks for. Returns a warning when the
+    /// exclusion is unavailable, which is the case on Windows builds before 2004.
     /// </summary>
-    public static string? ApplyOverlayWindowStyles(nint windowHandle, bool hideFromCapture = true)
+    public static string? ApplyOverlayWindowStyles(nint windowHandle, OverlayStyleOptions? options = null)
     {
 #if WINDOWS
-        return Windows.OverlayWindowStyles.Apply(windowHandle, hideFromCapture).Warning;
+        return Windows.OverlayWindowStyles.Apply(windowHandle, options).Warning;
 #else
         _ = windowHandle;
-        _ = hideFromCapture;
+        _ = options;
         return null;
 #endif
     }
 
+    /// <summary>
+    /// Puts a floating window back above everything. Called when the game window turns up somewhere
+    /// new, because another topmost window that appeared meanwhile can otherwise sit over ours for
+    /// the rest of the session — and a translation nobody can see is indistinguishable from none.
+    /// </summary>
     public static void ReassertTopmost(nint windowHandle)
     {
 #if WINDOWS

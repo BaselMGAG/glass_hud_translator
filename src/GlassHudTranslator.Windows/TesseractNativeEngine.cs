@@ -109,11 +109,12 @@ public sealed class TesseractNativeEngine : IOcrEngine
 
                 // Same TSV parsing as the CLI engine, so both produce identical output for the same
                 // input - which is what makes macOS development a faithful rehearsal. That includes
-                // the upscale factor: word boxes come back in the preprocessed image's coordinates
-                // and have to be mapped to the frame, and an engine that forgot to pass it would
-                // report boxes at twice the offset with nothing visibly wrong.
+                // both of the coordinate transforms: word boxes come back in the preprocessed
+                // image's coordinates, which are upscaled AND padded, and an engine that forgot
+                // either would report boxes that are wrong while still looking like boxes.
                 return TesseractCliEngine.ParseTsv(page.TsvText, _options.MinWordConfidence,
-                    _options.Preprocess.UpscaleFactor);
+                    _options.Preprocess.UpscaleFactor,
+                    OcrPreprocessor.PaddingFor(_options.Preprocess));
             }
         }, ct).ConfigureAwait(false);
     }

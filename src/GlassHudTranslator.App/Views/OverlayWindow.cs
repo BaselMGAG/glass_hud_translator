@@ -1,3 +1,4 @@
+using GlassHudTranslator.Core.Platform;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -18,7 +19,7 @@ namespace GlassHudTranslator.App.Views;
 /// rather than replacing it and so stays correct when the user changes the font size in Settings.
 /// </para>
 /// </summary>
-public sealed class OverlayWindow : Window
+public sealed class OverlayWindow : FloatingWindow
 {
     /// <summary>Painted the instant a translation is requested, so the ~1 s wait is not dead air.</summary>
     public const string LoadingText = "جارٍ الترجمة...";
@@ -31,12 +32,6 @@ public sealed class OverlayWindow : Window
     public OverlayWindow()
     {
         Title = "Glass HUD Translator overlay";
-        SystemDecorations = SystemDecorations.None;
-        TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
-        Background = Brushes.Transparent;
-        Topmost = true;
-        ShowInTaskbar = false;
-        CanResize = false;
         SizeToContent = SizeToContent.Height;
         Width = 900;
 
@@ -162,12 +157,18 @@ public sealed class OverlayWindow : Window
             if (_hideFromCapture == value) return;
 
             _hideFromCapture = value;
-            if (TryGetPlatformHandle() is { } handle)
-                CaptureExclusionWarning = PlatformServices.ApplyOverlayWindowStyles(handle.Handle, value);
+            ApplyPlatformStyles();
         }
     }
 
     private bool _hideFromCapture = true;
+
+    /// <summary>
+    /// Click-through, always: this panel is the one surface that must never eat a click. The user
+    /// is aiming at the game behind it, and it has no controls of its own to aim at.
+    /// </summary>
+    protected override OverlayStyleOptions StyleOptions =>
+        OverlayStyleOptions.Panel with { HideFromCapture = _hideFromCapture };
 
     public void ShowLoading(string? speaker = null) =>
         Dispatcher.UIThread.Post(() => Render(speaker, LoadingText, warning: null));
@@ -219,20 +220,6 @@ public sealed class OverlayWindow : Window
         _panel.Bounds.Height > 0 ? _panel.Bounds.Height : 160);
 
     /// <summary>
-    /// Whether this build could hide the overlay from its own screen capture, and what to do if
-    /// not. Null when everything is fine.
-    ///
-    /// <para>
-    /// Recorded rather than discarded, which it was until a player reported the overlay covering
-    /// the game's English text and asked whether that was why translation had stopped working. It
-    /// is exactly why it would: with the exclusion unavailable, the capture includes the Arabic
-    /// panel, OCR reads that back, and the pipeline translates its own output. The app already
-    /// knew this had happened and had nowhere to say it.
-    /// </para>
-    /// </summary>
-    public string? CaptureExclusionWarning { get; private set; }
-
-    /// <summary>
     /// True when the user has hidden the HUD by hotkey. Distinct from simply not being shown:
     /// translations keep running and keep being cached while hidden, they just are not drawn, so
     /// unhiding is instant and nothing was missed.
@@ -273,16 +260,6 @@ public sealed class OverlayWindow : Window
 
         // Respect an explicit hide: a new line arriving must not pop the HUD back over the game.
         if (!IsVisible && !HiddenByUser) Show();
-    }
-
-    protected override void OnOpened(EventArgs e)
-    {
-        base.OnOpened(e);
-
-        // Click-through, no-activate, topmost, and excluded from its own captures. No-op off
-        // Windows; Session 2 implements it.
-        if (TryGetPlatformHandle() is { } handle)
-            CaptureExclusionWarning = PlatformServices.ApplyOverlayWindowStyles(handle.Handle, _hideFromCapture);
     }
 
     /// <summary>

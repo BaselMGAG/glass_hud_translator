@@ -31,11 +31,23 @@ public enum HotkeyAction
     /// Added because everything that goes wrong sends the user to Settings, and until now getting
     /// there meant leaving the game and hunting for a window with no taskbar entry of its own.
     /// Reported as «كل ما يحصل مشكله اخش علي الاعدادات نفسها» — every problem means going into
-    /// Settings — alongside a request for a way in from a toolbar. This is the cheap half of that;
-    /// a tray icon is the other half.
+    /// Settings — alongside a request for a way in from a toolbar. This was the cheap half of that;
+    /// the toolbar is the other half.
     /// </para>
     /// </summary>
     OpenSettings,
+
+    /// <summary>
+    /// Drag a box around anything on screen and translate it once, leaving the watched region alone.
+    ///
+    /// <para>
+    /// The toolbar has a button for this, so a binding is not strictly needed — but reaching for
+    /// the mouse to press a button, in order to then use the mouse, is exactly the friction the
+    /// hotkeys exist to remove. It is also the action most likely to be wanted mid-fight, on a
+    /// tooltip or a quest marker that is not where the dialogue box is.
+    /// </para>
+    /// </summary>
+    SnipTranslate,
 }
 
 public sealed record HotkeyRegistration(HotkeyAction Action, Hotkey Hotkey, bool Succeeded, string? Error = null);

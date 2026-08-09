@@ -108,9 +108,12 @@ second, or instantly if that line has been seen before.
 | `Ctrl+Shift+R` | Re-pick the capture region |
 | `Ctrl+Shift+F` | Correct the current translation and pin the correction |
 | `Ctrl+Shift+S` | Open Settings without leaving the game |
+| `Ctrl+Shift+X` | Translate one thing once — drag a box around anything on screen |
 
-All six are rebindable in Settings → **Hotkeys**. Modifiers are Ctrl, Shift, Alt and Win; keys
+All seven are rebindable in Settings → **Hotkeys**. Modifiers are Ctrl, Shift, Alt and Win; keys
 include A–Z, 0–9, F1–F24, arrows, Insert/Delete/Home/End, the numpad and punctuation.
+
+You don't have to remember any of them. There's a toolbar — see below.
 
 **F13–F24 are the safest choices.** They don't exist on physical keyboards, so no game has anything
 bound to them.
@@ -128,6 +131,45 @@ drivers can all do this). Map the side button to a key combination, then bind th
 mouse button 4  →  Ctrl+F13   (in your mouse software)
 Ctrl+F13        →  Translate what is on screen now   (in Settings → Hotkeys)
 ```
+
+### The toolbar
+
+A small strip of buttons that stays over the game, for everything you'd otherwise need a hotkey or
+the Settings window for. Six to start with — translate now, watch automatically, translate one
+thing, choose the region, hide the translation, settings — and one more that opens the rest: the
+capture outline, the dialogue/video switch, the vowel marks, pin a correction, quit.
+
+Drag it by the dots on its left edge, anywhere you like; it remembers where. Shrink it to a single
+handle with the button on its right. Switch it off entirely in Settings → **Overlay** if you'd
+rather work from the hotkeys.
+
+**Hover any button and it tells you what it does in Arabic and English at once**, whichever language
+the interface is set to. A toolbar has no words on it, only shapes — so a label in one language
+leaves someone guessing, and it's a coin flip which someone: the friend helping with the setup, or
+the person this was built for.
+
+### Seeing what's being captured
+
+Settings → **Overlay** → *Show what is being captured* draws a thin outline around the rectangle
+being read. It's the answer to "is it even looking at the right place", which is otherwise a guess.
+
+Clicks pass straight through it, so it doesn't get in the way of playing. Press the toolbar's frame
+button again and it becomes grabbable: drag the middle to move it, a corner to resize. It saves the
+moment you let go — there's no confirm step, because what you're editing is already showing you the
+result.
+
+It can't end up inside the text it's outlining. The border is drawn on the outside of the rectangle,
+and like the translation panel it's invisible to every screen capture including this app's own.
+
+### Translating one thing
+
+`Ctrl+Shift+X`, or the third toolbar button. Drag a box around anything — an item tooltip, a sign, a
+name in a menu — and it's translated the moment you let go.
+
+It doesn't disturb what the app was already doing. Automatic mode keeps running and comes straight
+back to the line it was watching, and the one-off stays out of the conversation in both directions:
+an item description shouldn't be coloured by the dialogue you were just reading, and it certainly
+shouldn't steer the pronouns of the next line.
 
 ### Tips
 
@@ -275,7 +317,7 @@ Early, but working.
 
 | | |
 |---|---|
-| Translation pipeline (OCR → normalise → cache → LLM → render) | working, 542 tests |
+| Translation pipeline (OCR → normalise → cache → LLM → render) | working, 573 tests |
 | Arabic rendering, shaping, bidi, diacritics | working and verified |
 | Game profiles, glossary, OCR corrections | working |
 | Provider failover, quota tracking, caching | working |
@@ -291,6 +333,10 @@ Early, but working.
 | A limit on automatic mode | **working** |
 | Video subtitle mode | **working**, not yet measured against a long film |
 | Recording the overlay | **working** — off by default, see Settings → Overlay |
+| Not paying twice for the same line misread | **working** |
+| The floating toolbar | written, not yet run on Windows |
+| The visible capture outline | written, not yet run on Windows |
+| Translate one thing once | written, not yet run on Windows |
 | Click-through | not yet verified |
 
 Tested against **Final Fantasy XIV** and several other games on Windows across a long session:
@@ -308,6 +354,15 @@ in a game with animation behind the dialogue, it never fired once. It warns on t
 minutes and stops at four, by time or by spend, whichever arrives first. You can switch the limit
 off if you want to.
 
+**The three window features are the newest thing here and the least proven.** The toolbar, the
+capture outline and the one-off translation were all written and rendered on macOS, and the piece
+that can't be rehearsed there is whether a window that refuses to take keyboard focus still receives
+mouse clicks on Windows. Everything that would have depended on focus is avoided on purpose — the
+toolbar moves itself rather than asking the window manager to, the outline saves on release rather
+than on Enter, and neither takes a keystroke. If the toolbar turns out not to respond at all,
+Settings → **Overlay** → *Toolbar may take focus* is the fix, and it's worded that way because
+that's the symptom you'd see.
+
 **Free models retire without warning, and both providers did it in the same week.** Model names
 live in [`data/models.json`](data/models.json), never in code, so when a provider drops one the fix
 is editing a text file rather than waiting for a release. If translation stops and the Diagnostics
@@ -316,20 +371,29 @@ tab says `MODEL GONE`, that is what happened.
 ## How it works
 
 ```
-capture a rectangle  →  has anything changed?  →  OCR  →  clean up the text
-                              ↓ no: stop here
-                                                              ↓
+capture a rectangle  →  has the picture changed?  →  OCR  →  clean up the text
+                              ↓ no: stop here                        ↓
+                                                    is this the same line as before?
+                                                                     ↓ no
    draw Arabic  ←  LLM  ←  add glossary terms  ←  seen this line before?
                                                               ↓ yes: instant, free
 ```
 
-Four things make it practical:
+Five things make it practical:
 
 **Change detection before OCR.** During dialogue, 85–90% of frames are identical to the last one.
 Comparing a 64×24 binarised thumbnail first keeps most frames away from the OCR engine entirely,
 taking a poll from ~120 ms down to ~15 ms. The thumbnail is binarised rather than compared as grey
 levels because dialogue boxes are usually translucent: walk from a dark cave into sunlight and
 every pixel shifts while the text hasn't changed at all.
+
+**And a second check after OCR, on the words rather than the picture.** Comparing pictures can't
+help with a subtitle burnt into moving footage — the film behind it changes every frame while the
+words don't. And text recognition isn't perfectly repeatable anyway: the same pixels a moment later
+come back with a comma turned into a full stop, which is a different line as far as the cache is
+concerned, so it gets translated again and paid for again. A line within a few characters of the one
+already on screen is dropped before anything is sent. Short labels have to match exactly — "yes" and
+"no" are three characters apart and are not the same word.
 
 **Everything is cached.** Each translated line is stored under a hash of its cleaned-up text. Re-read
 a quest, replay a cutscene, roll an alt, and it's free and instant. A dropped connection doesn't

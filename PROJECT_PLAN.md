@@ -138,7 +138,7 @@ GlassHudTranslator.sln
 ├── src/
 │   ├── GlassHudTranslator.Core/           net10.0                  ← all logic, all tests
 │   │   ├── Capture/        IFrameSource, Frame, FolderFrameSource, FrameHasher
-│   │   ├── Ocr/            IOcrEngine, TesseractCliEngine, OcrPreprocessor, StableOcrReader
+│   │   ├── Ocr/            IOcrEngine, TesseractCliEngine, OcrPreprocessor
 │   │   ├── Text/           TextNormalizer, DialogueParser, CacheKey
 │   │   ├── Glossary/       GlossaryStore, GlossaryMatcher, GlossaryTerm
 │   │   ├── Translation/    ITranslationProvider, OpenAiCompatibleProvider, AnthropicProvider,
@@ -274,14 +274,21 @@ public interface IOcrEngine : IDisposable {
 public static class OcrPreprocessor {
     public static Frame Prepare(Frame f, OcrPreprocessOptions? o = null);  // greyscale → contrast →
 }                                                                          // 2× → optional threshold
-// The typewriter fix, brief §7 — OCR is free, API calls are not:
-// The typewriter fix, settling on OCR TEXT. Written in week one and never wired to anything;
-// FrameSettleGate (Capture/) is the one that actually runs, and it settles on the frame SIGNATURE
-// instead, which costs no OCR to decide. This class is kept for the manual-trigger path, which
-// does not use it yet.
-public sealed class StableOcrReader {
-    public StableOcrReader(IOcrEngine ocr, TimeSpan interval, TimeSpan cap);  // 150 ms, 1.5 s
-    public Task<string> ReadStableAsync(Func<Task<Frame>> grab, CancellationToken ct);
+// The typewriter fix, brief §7 — OCR is free, API calls are not. Two gates, at two layers, and
+// neither is the StableOcrReader that used to be specified here: that one re-ran OCR until two
+// reads matched, was written in week one, was never wired to anything, and was deleted in v0.6.0
+// once both of its jobs were being done more cheaply somewhere else.
+//
+//   FrameSettleGate (Capture/)  — settles on the frame SIGNATURE, so deciding to wait costs no
+//                                 OCR at all. Catches a line still typing itself out.
+//   TextSimilarity  (Text/)     — settles on the OCR TEXT, after one recognition and before the
+//                                 cache lookup. Catches what the signature cannot see: a subtitle
+//                                 over moving footage, and OCR that reads the same pixels
+//                                 differently twice.
+public static class TextSimilarity {
+    public const int DefaultRepeatDistance = 3;
+    public static int? DistanceAtMost(string a, string b, int max, bool ignoreCase = false);
+    public static bool LooksLikeARepeat(string? current, string? previous, int max = 3);
 }
 
 // ── Region proposal ────────────────────────────────────────────────────────

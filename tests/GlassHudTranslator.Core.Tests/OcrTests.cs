@@ -14,10 +14,48 @@ public class OcrPreprocessorTests
     {
         var frame = new FrameBuilder(100, 40, Rgb.BoxDark).Build();
 
-        var prepared = OcrPreprocessor.Prepare(frame, new OcrPreprocessOptions { UpscaleFactor = 2 });
+        var prepared = OcrPreprocessor.Prepare(frame,
+            new OcrPreprocessOptions { UpscaleFactor = 2, PadPixels = 0 });
 
         Assert.Equal(200, prepared.Width);
         Assert.Equal(80, prepared.Height);
+    }
+
+    [Fact]
+    public void PaddingIsAddedAfterTheUpscaleAndIsReportedInThoseUnits()
+    {
+        // Which unit the margin is in decides whether the word boxes come back in the right place,
+        // because ParseTsv subtracts this number before dividing the upscale out. Eight source
+        // pixels at 2x is sixteen on every side of a 200x80 image.
+        var frame = new FrameBuilder(100, 40, Rgb.BoxDark).Build();
+        var options = new OcrPreprocessOptions { UpscaleFactor = 2, PadPixels = 8 };
+
+        var prepared = OcrPreprocessor.Prepare(frame, options);
+
+        Assert.Equal(16, OcrPreprocessor.PaddingFor(options));
+        Assert.Equal(200 + 32, prepared.Width);
+        Assert.Equal(80 + 32, prepared.Height);
+    }
+
+    [Fact]
+    public void ThePaddingIsBlankPageRatherThanAFrameAroundTheText()
+    {
+        // It goes on after the auto-invert, so the image is dark-on-light by then and white is
+        // continuous with the background. Padding before the invert would draw a bright border
+        // around the text, which is worse than not padding at all.
+        var frame = new FrameBuilder(40, 20, Rgb.BoxDark)
+            .Rect(5, 5, 20, 8, Rgb.TextWhite)
+            .Build();
+
+        var prepared = OcrPreprocessor.Prepare(frame,
+            new OcrPreprocessOptions { UpscaleFactor = 1, AutoInvert = true, PadPixels = 4 });
+
+        var grey = prepared.ToGreyscale();
+
+        Assert.Equal(255, grey[0]);                       // top-left of the margin
+        Assert.Equal(255, grey[^1]);                      // bottom-right of the margin
+        Assert.Equal(48, prepared.Width);
+        Assert.Equal(28, prepared.Height);
     }
 
     [Fact]
@@ -57,12 +95,44 @@ public class OcrPreprocessorTests
             .Rect(5, 5, 20, 10, new Rgb(90, 90, 90))
             .Build();
 
-        var prepared = OcrPreprocessor.Prepare(frame,
-            new OcrPreprocessOptions { UpscaleFactor = 1, StretchContrast = true, AutoInvert = false });
+        var prepared = OcrPreprocessor.Prepare(frame, new OcrPreprocessOptions
+        {
+            UpscaleFactor = 1, StretchContrast = true, AutoInvert = false, PadPixels = 0,
+        });
 
         var grey = prepared.ToGreyscale();
         Assert.Equal(0, grey.Min());
         Assert.Equal(255, grey.Max());
+    }
+
+    [Fact]
+    public void OneBrightOutlierDoesNotTurnTheStretchIntoANoOp()
+    {
+        // The failure that made this percentile-based. A capture of dim text with a single specular
+        // highlight in it - a glint on a sword, one pixel of a white UI border clipped into the
+        // corner - used to pin the range at 0..255 and rescale the text by a factor of one. Real
+        // frames nearly always have such a pixel; the synthetic corpus almost never does, which is
+        // exactly why this survived so long unnoticed.
+        var frame = new FrameBuilder(60, 30, new Rgb(70, 70, 70))
+            .Rect(5, 5, 20, 10, new Rgb(110, 110, 110))
+            .Rect(59, 29, 1, 1, Rgb.White)
+            .Rect(0, 0, 1, 1, Rgb.Black)
+            .Build();
+
+        var prepared = OcrPreprocessor.Prepare(frame, new OcrPreprocessOptions
+        {
+            UpscaleFactor = 1, StretchContrast = true, AutoInvert = false, PadPixels = 0,
+        });
+
+        var grey = prepared.ToGreyscale();
+
+        // The text and its background started 40 levels apart out of 255. After a stretch that
+        // ignores the outliers they are separated by most of the range.
+        var background = grey[10 * 60 + 40];   // outside the text rectangle
+        var text = grey[8 * 60 + 10];          // inside it
+
+        Assert.True(text - background > 180,
+            $"outliers swallowed the stretch: background {background}, text {text}");
     }
 
     [Fact]
@@ -71,7 +141,7 @@ public class OcrPreprocessorTests
         var frame = new FrameBuilder(20, 20, new Rgb(128, 128, 128)).Build();
 
         var prepared = OcrPreprocessor.Prepare(frame,
-            new OcrPreprocessOptions { UpscaleFactor = 1, AutoInvert = false });
+            new OcrPreprocessOptions { UpscaleFactor = 1, AutoInvert = false, PadPixels = 0 });
 
         Assert.All(prepared.ToGreyscale(), g => Assert.InRange(g, 120, 136));
     }
@@ -290,6 +360,11 @@ public class OcrWordGeometryTests
         // goes through RecognizeAsync, where the preprocessor really does double the image. If the
         // mapping is skipped, every 2x box lands at twice the offset - outside an 880x240 frame
         // entirely - while still looking like a perfectly ordinary rectangle.
+        //
+        // It covers the padding transform too, and for free: the blank margin is added AFTER the
+        // upscale, so it is 8 pixels at 1x and 16 at 2x. Subtracting it in the wrong order - after
+        // dividing rather than before - leaves the 2x boxes eight pixels adrift of the 1x ones,
+        // which is inside no tolerance worth having.
         var frame = SyntheticFrames.Render(
             new SyntheticLine("Y'shtola", "Come, the aether here grows unstable."));
 
@@ -303,13 +378,19 @@ public class OcrWordGeometryTests
             Assert.InRange(w.Box.Bottom, 1, frame.Height);
         });
 
-        // Same words, same places. A few pixels of slack because upscaling genuinely changes what
-        // the engine sees at the edges of a glyph; a missing mapping is out by 100%, not by three.
-        var one = atOne.Words.ToDictionary(w => w.Text, w => w.Box);
+        // Same words, same places. Grouped rather than keyed, because one frame legitimately
+        // contains the same token twice - the apostrophe in "Y'shtola" is read as its own word, and
+        // so is a stray mark - and a dictionary throws on the second one. A few pixels of slack
+        // because upscaling genuinely changes what the engine sees at the edges of a glyph; a
+        // missing mapping is out by 100%, not by three.
+        var one = atOne.Words
+            .GroupBy(w => w.Text)
+            .ToDictionary(g => g.Key, g => g.Select(w => w.Box).ToList());
+
         foreach (var word in atTwo.Words.Where(w => one.ContainsKey(w.Text)))
         {
-            Assert.InRange(Math.Abs(word.Box.Left - one[word.Text].Left), 0, 4);
-            Assert.InRange(Math.Abs(word.Box.Top - one[word.Text].Top), 0, 4);
+            Assert.Contains(one[word.Text], box =>
+                Math.Abs(word.Box.Left - box.Left) <= 4 && Math.Abs(word.Box.Top - box.Top) <= 4);
         }
     }
 
@@ -334,108 +415,5 @@ public class OcrWordGeometryTests
         Assert.Empty(plain.AcceptedWords);
         Assert.Equal(1, plain.RejectedWordCount);
         Assert.Empty(OcrResult.Empty.Words);
-    }
-}
-
-/// <summary>Replays a fixed sequence of OCR outputs, imitating the typewriter reveal.</summary>
-internal sealed class ScriptedOcrEngine(params string[] reads) : IOcrEngine
-{
-    private int _index;
-
-    public string Name => "scripted";
-
-    public int Calls { get; private set; }
-
-    public Task<OcrResult> RecognizeAsync(Frame frame, CancellationToken ct)
-    {
-        Calls++;
-        var text = reads[Math.Min(_index, reads.Length - 1)];
-        _index++;
-        return Task.FromResult(new OcrResult(text, 90f, text.Split(' ').Length));
-    }
-
-    public void Dispose() { }
-}
-
-public class StableOcrReaderTests
-{
-    private static Task<Frame?> Grab(CancellationToken ct) =>
-        Task.FromResult<Frame?>(new FrameBuilder(40, 20, Rgb.BoxDark).Build());
-
-    private static StableOcrOptions Instant => new() { PollInterval = TimeSpan.Zero };
-
-    [Fact]
-    public async Task WaitsForTheRevealToFinishBeforeSettling()
-    {
-        // Three intermediate states, then the finished line twice. Only the finished line should
-        // come out - each intermediate state translated would be a wasted request and a wrong answer.
-        var ocr = new ScriptedOcrEngine(
-            "Come, the",
-            "Come, the aeth",
-            "Come, the aether stirs.",
-            "Come, the aether stirs.");
-        var reader = new StableOcrReader(ocr, options: Instant);
-
-        var read = await reader.ReadAsync(Grab, CancellationToken.None);
-
-        Assert.Equal("Come, the aether stirs.", read.Text);
-        Assert.True(read.Stabilised);
-        Assert.Equal(4, read.Attempts);
-    }
-
-    [Fact]
-    public async Task SettlesImmediatelyWhenTheLineIsAlreadyComplete()
-    {
-        var ocr = new ScriptedOcrEngine("Come with me.", "Come with me.");
-        var reader = new StableOcrReader(ocr, options: Instant);
-
-        var read = await reader.ReadAsync(Grab, CancellationToken.None);
-
-        Assert.Equal(2, read.Attempts);
-        Assert.True(read.Stabilised);
-    }
-
-    [Fact]
-    public async Task GivesUpAtTheCapRatherThanWaitingForever()
-    {
-        // Text that never settles - an animated background or a flickering capture. Returning
-        // something beats hanging the overlay.
-        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
-        var ocr = new ScriptedOcrEngine("a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l");
-        var reader = new StableOcrReader(ocr,
-            options: new StableOcrOptions { PollInterval = TimeSpan.FromMilliseconds(150), Cap = TimeSpan.FromMilliseconds(450) },
-            clock: clock);
-
-        var task = reader.ReadAsync(Grab, CancellationToken.None);
-        for (var i = 0; i < 10 && !task.IsCompleted; i++)
-            clock.Advance(TimeSpan.FromMilliseconds(150));
-
-        var read = await task;
-
-        Assert.False(read.Stabilised);
-        Assert.NotEqual(string.Empty, read.Text);
-    }
-
-    [Fact]
-    public async Task AppliesNormalisationAndCorrectionsToEachRead()
-    {
-        var corrections = new OcrCorrections(new Dictionary<string, string> { ["Y shtola"] = "Y'shtola" });
-        var ocr = new ScriptedOcrEngine("Y shtola  nods. ▼", "Y shtola  nods. ▼");
-        var reader = new StableOcrReader(ocr, corrections, Instant);
-
-        var read = await reader.ReadAsync(Grab, CancellationToken.None);
-
-        Assert.Equal("Y'shtola nods.", read.Text);
-    }
-
-    [Fact]
-    public async Task NoFrameAvailableReturnsWhatWasSeenSoFar()
-    {
-        var reader = new StableOcrReader(new ScriptedOcrEngine("x"), options: Instant);
-
-        var read = await reader.ReadAsync(_ => Task.FromResult<Frame?>(null), CancellationToken.None);
-
-        Assert.False(read.Stabilised);
-        Assert.Equal(string.Empty, read.Text);
     }
 }

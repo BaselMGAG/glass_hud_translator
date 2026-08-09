@@ -136,6 +136,10 @@ public static class DefaultHotkeys
             [HotkeyAction.FlagTranslation] = new(HotkeyModifiers.Control | HotkeyModifiers.Shift, "F"),
             [HotkeyAction.ToggleOverlay] = new(HotkeyModifiers.Control | HotkeyModifiers.Shift, "H"),
             [HotkeyAction.OpenSettings] = new(HotkeyModifiers.Control | HotkeyModifiers.Shift, "S"),
+
+            // X for "cut this out", and one of the few Ctrl+Shift letters neither FFXIV nor
+            // Windows itself has already claimed.
+            [HotkeyAction.SnipTranslate] = new(HotkeyModifiers.Control | HotkeyModifiers.Shift, "X"),
         };
 
     public static string Describe(HotkeyAction action) => action switch
@@ -146,6 +150,7 @@ public static class DefaultHotkeys
         HotkeyAction.FlagTranslation => "Correct the current translation",
         HotkeyAction.ToggleOverlay => "Show / hide the overlay",
         HotkeyAction.OpenSettings => "Open Settings",
+        HotkeyAction.SnipTranslate => "Translate one thing once",
         _ => action.ToString(),
     };
 }

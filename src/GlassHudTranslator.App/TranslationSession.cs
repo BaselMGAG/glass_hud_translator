@@ -135,7 +135,7 @@ public sealed class TranslationSession : IDisposable
                 return;
             }
 
-            await ProcessAsync(frame, ct).ConfigureAwait(false);
+            await ProcessAsync(frame, Trigger.Hotkey, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -165,8 +165,13 @@ public sealed class TranslationSession : IDisposable
         var token = _autoWatch.Token;
 
         // Otherwise switching auto-watch off and straight back on sits on Unchanged until the
-        // player advances the dialogue, which reads as the toggle having done nothing.
+        // player advances the dialogue, which reads as the toggle having done nothing. The repeat
+        // guard needs the same treatment for the same reason and one layer up: the gate would let
+        // the frame through and the pipeline would then drop it as a line it has already shown.
+        // Deliberately NOT ResetContext - the three lines the player was just reading are still the
+        // scene they are in, and throwing them away costs a worse translation for nothing.
         _settle.Reset();
+        _services.Pipeline.ResetRepeatGuard();
         _consecutiveFailures = 0;
         _consecutiveEmpty = 0;
         _overlay.Notice = null;
@@ -306,7 +311,7 @@ public sealed class TranslationSession : IDisposable
                 _busy = true;
                 try
                 {
-                    ProcessAsync(frame, ct, fromAutoWatch: true).GetAwaiter().GetResult();
+                    ProcessAsync(frame, Trigger.Poll, ct).GetAwaiter().GetResult();
                 }
                 finally
                 {
@@ -355,13 +360,36 @@ public sealed class TranslationSession : IDisposable
     }
 
     /// <summary>
-    /// <paramref name="fromAutoWatch"/> changes what "nothing here" means. A hotkey press is a
-    /// question and deserves an answer, even a disappointing one. A poll is not — it is one of
-    /// dozens a minute, and the gap between two subtitles is an empty region by definition, so
-    /// answering it with «لا نصّ في منطقة الالتقاط. هل يظهر صندوق حوار على الشاشة فعلاً؟» flashed
-    /// an error, asking about a dialogue box, over a film, between every single line.
+    /// What asked for this translation. It decides three things that genuinely differ between them
+    /// — whether a repeated line is suppressed, whether the conversation context applies, and what
+    /// "nothing here" means — and a single boolean could only carry one of them.
     /// </summary>
-    private async Task ProcessAsync(Frame frame, CancellationToken ct, bool fromAutoWatch = false)
+    private enum Trigger
+    {
+        /// <summary>A hotkey press, or the toolbar. A question, and it always gets an answer.</summary>
+        Hotkey,
+
+        /// <summary>One tick of auto-watch. One of dozens a minute, and mostly silent.</summary>
+        Poll,
+
+        /// <summary>A box the user dragged around something else on the screen.</summary>
+        Snip,
+    }
+
+    /// <summary>
+    /// The one place a captured frame turns into something on the overlay.
+    ///
+    /// <para>
+    /// <paramref name="trigger"/> changes what "nothing here" means, and that difference is a
+    /// player report rather than a nicety. A hotkey press is a question and deserves an answer,
+    /// even a disappointing one. A poll is not — the gap between two subtitles is an empty region
+    /// by definition, so answering it with «لا نصّ في منطقة الالتقاط. هل يظهر صندوق حوار على الشاشة
+    /// فعلاً؟» flashed an error, asking about a dialogue box, over a film, between every line. A
+    /// snip is a question again: the user just dragged a box around something, and silence there
+    /// reads as the feature being broken.
+    /// </para>
+    /// </summary>
+    private async Task ProcessAsync(Frame frame, Trigger trigger, CancellationToken ct)
     {
         SaveFrameIfRequested(frame);
         _services.Pipeline.Register = _settings.Register;
@@ -372,9 +400,32 @@ public sealed class TranslationSession : IDisposable
         // for, and cached by the time it was discarded.
         _services.Pipeline.MinimumBodyCharacters = _settings.MinimumCharactersToTranslate;
 
+        var (options, regionKey) = trigger switch
+        {
+            Trigger.Poll => (ProcessOptions.Polled, _settings.LastRegionProfile),
+
+            // Its own region key, so the history and the log can tell a snip from the dialogue box
+            // it was taken beside. The cache needs no change for this: the key hashes the body and
+            // the register only, so a snip and a dialogue line reading the same English share one
+            // row - which is right, and is why a snip is often free.
+            Trigger.Snip => (ProcessOptions.Isolated, SnipRegionKey),
+
+            _ => (ProcessOptions.Manual, _settings.LastRegionProfile),
+        };
+
         var outcome = await _services.Pipeline
-            .ProcessAsync(frame, _settings.LastRegionProfile, SourceKind.Screen, ct)
+            .ProcessAsync(frame, regionKey, SourceKind.Screen, options, ct)
             .ConfigureAwait(false);
+
+        // The line already on the overlay, read again with a comma turned into a full stop. Leave
+        // everything exactly as it is: no clear, no error, no empty-read count. Reported to the
+        // status line only, because that is where somebody diagnosing quota use is looking and it
+        // is the one place the saving is visible.
+        if (outcome.Repeat)
+        {
+            Report(Text.SkippedRepeat);
+            return;
+        }
 
         // Null result: nothing was attempted - an empty dialogue box, or a stray glyph or UI
         // border that OCR'd to a character or two, which is not dialogue.
@@ -382,7 +433,7 @@ public sealed class TranslationSession : IDisposable
         {
             var nothingAtAll = outcome.Body.Trim().Length == 0;
 
-            if (!fromAutoWatch)
+            if (trigger != Trigger.Poll)
             {
                 Fail(nothingAtAll
                     ? Text.NoTextInRegion
@@ -415,8 +466,20 @@ public sealed class TranslationSession : IDisposable
             return;
         }
 
-        _consecutiveEmpty = 0;
-        _watch?.Translated();
+        // A snip found nothing about the watched region, in either direction: it must not clear the
+        // empty-read count that is diagnosing that region, and it must not enter the cadence the
+        // adaptive settle deadline is derived from. It does spend a request, so the session cap has
+        // to see it.
+        if (trigger == Trigger.Snip)
+        {
+            _watch?.CountedOutsideTheRhythm();
+        }
+        else
+        {
+            _consecutiveEmpty = 0;
+            if (trigger == Trigger.Poll) _watch?.Translated();
+            else _watch?.CountedOutsideTheRhythm();
+        }
 
         _lastSourceText = outcome.Body;
         _lastArabic = result.Text;
@@ -428,6 +491,70 @@ public sealed class TranslationSession : IDisposable
 
         var source = result.FromCache ? "cache" : $"{result.Provider}/{result.Model}";
         Report($"{source} · {outcome.Total.TotalMilliseconds:F0} ms · OCR confidence {outcome.OcrConfidence:F0}");
+    }
+
+    /// <summary>
+    /// Filed under its own name in the log and the history. A free string as far as the store is
+    /// concerned, so this needed no schema change.
+    /// </summary>
+    public const string SnipRegionKey = "snip";
+
+    /// <summary>
+    /// One translation of one rectangle the user dragged, and then back to whatever was happening.
+    ///
+    /// <para>
+    /// Deliberately does not go near any of the state auto-watch depends on, and the list is longer
+    /// than it looks. It never offers its frame to <see cref="FrameSettleGate"/> — calling a frame
+    /// Ready is not an opinion, it records that frame as the one now on the overlay, so a snip
+    /// offered to the gate would overwrite the watched region's signature and every later poll of
+    /// the real dialogue box would answer Unchanged forever. It does not touch the empty-read
+    /// counter, which is diagnosing a different rectangle. It does not repoint
+    /// <c>LastRegionProfile</c>, so the next hotkey press still reads the dialogue box. It does not
+    /// enter the cadence median. And it does not read or write the conversation context.
+    /// </para>
+    ///
+    /// <para>
+    /// It also ignores <c>_busy</c> rather than being swallowed by it, which is what used to happen
+    /// to anything arriving mid-translation. Dropping a poll costs nothing — another one is half a
+    /// second away — but the user dragged this box by hand, and a hand-dragged box that produces
+    /// nothing at all is indistinguishable from a broken feature.
+    /// </para>
+    /// </summary>
+    public async Task SnipAsync(CaptureRegion region, CancellationToken ct = default)
+    {
+        try
+        {
+            _overlay.ShowLoading();
+
+            var frame = await _frames.GetFrameAsync(region, ct).ConfigureAwait(false);
+            if (frame is null)
+            {
+                Fail(Text.NothingCaptured);
+                return;
+            }
+
+            await ProcessAsync(frame, Trigger.Snip, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            _overlay.Clear();
+        }
+        catch (Exception e)
+        {
+            Fail(string.Format(Text.TranslationFailed, e.Message));
+        }
+        finally
+        {
+            // The watched region's line has been pushed off the overlay by the snip, and the gate
+            // still believes it is displayed - so without this the player would be left looking at
+            // a menu tooltip until the dialogue advanced. Forgetting costs one cache lookup: the
+            // line was translated in this session, so it is already stored, and a hit is free.
+            if (_autoWatch is not null)
+            {
+                _settle.Reset();
+                _services.Pipeline.ResetRepeatGuard();
+            }
+        }
     }
 
     /// <summary>
@@ -482,7 +609,7 @@ public sealed class TranslationSession : IDisposable
         // to a smaller screen. Capturing the overhang would BitBlt undefined pixels into OCR, which
         // surfaces as garbage text and reads as the model getting worse.
         var desktop = PlatformServices.VirtualDesktop();
-        if (desktop.IsEmpty || desktop.Contains(region)) return region;
+        if (desktop.IsEmpty || desktop.Contains(region)) return Announce(region);
 
         var trimmed = region.ClampTo(desktop);
         if (trimmed.IsEmpty)
@@ -497,8 +624,39 @@ public sealed class TranslationSession : IDisposable
             Report(Text.RegionOffScreenTrimmed);
         }
 
-        return trimmed;
+        return Announce(trimmed);
     }
+
+    /// <summary>
+    /// Publishes the rectangle that is about to be captured, so the visible frame can outline it.
+    ///
+    /// <para>
+    /// Only on a change. Auto-watch resolves a region twice a second and the frame's response is to
+    /// move and resize a window, which at that rate would fight the compositor for no benefit —
+    /// the same reason <see cref="GameWindowLocated"/> is raised on a change rather than per tick.
+    /// </para>
+    /// </summary>
+    private CaptureRegion Announce(CaptureRegion region)
+    {
+        if (_lastResolved == region) return region;
+
+        _lastResolved = region;
+        RegionResolved?.Invoke(region);
+        return region;
+    }
+
+    private CaptureRegion? _lastResolved;
+
+    /// <summary>Raised, on whichever thread resolved it, when the captured rectangle changes.</summary>
+    public event Action<CaptureRegion>? RegionResolved;
+
+    /// <summary>
+    /// Where the app would capture from right now, or null with the reason already reported. Used
+    /// by the capture frame, which has to be able to draw itself before anything has been
+    /// translated - otherwise switching it on does nothing until the next dialogue line.
+    /// </summary>
+    public Task<CaptureRegion?> CurrentRegionAsync(CancellationToken ct = default) =>
+        ResolveRegionAsync(ct);
 
     /// <summary>Identifies one region drawn against one window size, for once-only warnings.</summary>
     private string LayoutKey(RegionProfile profile, CaptureRegion client) =>

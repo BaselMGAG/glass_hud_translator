@@ -236,6 +236,21 @@ public sealed class WatchSession(WatchPacing pacing, TimeProvider? clock = null)
     }
 
     /// <summary>
+    /// A translation that happened while this run was going but was not part of it — a hotkey
+    /// press, or a snip of somewhere else on the screen.
+    ///
+    /// <para>
+    /// Counted against the cap and against nothing else, and the split is the whole point. The cap
+    /// is about total spend, so anything that costs a request has to move it. The cadence and the
+    /// floor are about the rhythm of the content being watched, and a person pressing a key is not
+    /// the content: folding a snip in as a gap tells the adaptive settle deadline that the dialogue
+    /// just advanced when it did not, and one such sample can drag the median for the next eight
+    /// lines.
+    /// </para>
+    /// </summary>
+    public void CountedOutsideTheRhythm() => Requests++;
+
+    /// <summary>
     /// Asked once per poll. Measured from when auto-watch was switched ON, never from the last
     /// change: the old idle timer resets on any movement, so over a playing video - or a game with
     /// animation inside the capture region - it can never fire at all. A cap that a moving screen

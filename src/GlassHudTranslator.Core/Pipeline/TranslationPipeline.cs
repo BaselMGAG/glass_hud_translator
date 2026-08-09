@@ -20,10 +20,72 @@ public enum SourceKind
 }
 
 /// <summary>
-/// <paramref name="Result"/> is null when no translation was attempted - the region was empty, or
-/// the body was under the minimum length. That used to be a fabricated fallback result, which read
-/// as "translation failed" in code that inspected it; nothing failing is a different fact from
-/// nothing being tried.
+/// How one call through the pipeline differs from the ordinary one.
+///
+/// <para>
+/// Two flags, and they are separate because the three callers want three combinations of them. A
+/// hotkey press is a question the user asked and always deserves an answer, even a repeated one. A
+/// poll is one of dozens a minute and must not pay for the same line twice. A snip is a question
+/// about something outside the conversation entirely.
+/// </para>
+/// </summary>
+public sealed record ProcessOptions
+{
+    /// <summary>
+    /// A hotkey press, or the toolbar. Never suppressed — but it does become the line later polls
+    /// are measured against, because it is now the line on the overlay.
+    /// </summary>
+    public static readonly ProcessOptions Manual = new();
+
+    /// <summary>One tick of auto-watch. The only mode that can be dropped as a repeat.</summary>
+    public static readonly ProcessOptions Polled = new() { SuppressRepeats = true };
+
+    /// <summary>
+    /// A one-shot translation of somewhere else on the screen — a snip. Outside the conversation
+    /// in both directions: it must not be steered by the last three dialogue lines, and it must not
+    /// steer the next one. It leaves no repeat reference either, or the dialogue the player is
+    /// actually reading would be suppressed as a repeat of a menu tooltip.
+    /// </summary>
+    public static readonly ProcessOptions Isolated = new()
+    {
+        UseContext = false,
+        RemembersLine = false,
+    };
+
+    /// <summary>
+    /// Whether the rolling context is read into the prompt and written back afterwards. Both, or
+    /// neither: reading without writing would let a snip inherit the conversation, and writing
+    /// without reading would let it poison the next line while pretending not to be part of it.
+    /// </summary>
+    public bool UseContext { get; init; } = true;
+
+    /// <summary>
+    /// Whether a body within a few characters of the last one is dropped before it reaches the
+    /// cache or a provider. See <see cref="Text.TextSimilarity"/> for why the frame-level gate
+    /// cannot cover this.
+    /// </summary>
+    public bool SuppressRepeats { get; init; }
+
+    /// <summary>
+    /// Whether this call becomes the line the next poll is compared against.
+    ///
+    /// <para>
+    /// Separate from <see cref="SuppressRepeats"/>, and a test is what forced them apart. A hotkey
+    /// press must never be suppressed — it is a question and it gets an answer — but it does put a
+    /// line on the overlay, so the poll half a second later, reading the same pixels with one comma
+    /// misread, is a repeat of it. Folding the two flags into one meant that poll paid for a fresh
+    /// translation: a different string is a different cache key, so the cache does not save it
+    /// either. Being suppressible and being the reference are simply different questions.
+    /// </para>
+    /// </summary>
+    public bool RemembersLine { get; init; } = true;
+}
+
+/// <summary>
+/// <paramref name="Result"/> is null when no translation was attempted - the region was empty, the
+/// body was under the minimum length, or it was the line already on the overlay. That used to be a
+/// fabricated fallback result, which read as "translation failed" in code that inspected it;
+/// nothing failing is a different fact from nothing being tried.
 /// </summary>
 public sealed record PipelineOutcome(
     string RawOcr,
@@ -36,7 +98,8 @@ public sealed record PipelineOutcome(
     TimeSpan Total,
     string? RegionKey = null,
     SourceKind Source = SourceKind.Screen,
-    int RejectedWordCount = 0)
+    int RejectedWordCount = 0,
+    bool Repeat = false)
 {
     public bool ProducedText => Result is not null && !string.IsNullOrWhiteSpace(Result.Text);
 }
@@ -67,6 +130,14 @@ public sealed class TranslationPipeline(
     private readonly Queue<string> _context = new();
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private DateTimeOffset _contextAt;
+
+    /// <summary>
+    /// The last body a repeat-suppressing caller translated. Guarded by the same lock as the
+    /// context queue - not because it is a queue, but because the hotkey handler, the auto-watch
+    /// worker and the Settings test button all reach this one pipeline from three threads, and a
+    /// torn read here suppresses a real line or pays for a repeated one.
+    /// </summary>
+    private string? _lastBody;
 
     private GlossaryMatcher _glossary = glossary;
     private OcrCorrections _corrections = corrections ?? OcrCorrections.Empty;
@@ -127,15 +198,33 @@ public sealed class TranslationPipeline(
     public void ResetContext()
     {
         lock (_context) _context.Clear();
+        ResetRepeatGuard();
+    }
+
+    /// <summary>
+    /// Forgets the last line, so the very next capture counts as new whatever it says.
+    ///
+    /// <para>
+    /// Separate from <see cref="ResetContext"/> because switching auto-watch on has to do this and
+    /// must not do that: the player may have been reading manually a moment ago, and throwing away
+    /// three lines of conversation is a real cost paid for nothing. Toggling off and on again, on
+    /// the other hand, has to translate whatever is on screen — otherwise the toggle looks broken.
+    /// </para>
+    /// </summary>
+    public void ResetRepeatGuard()
+    {
+        lock (_context) _lastBody = null;
     }
 
     public async Task<PipelineOutcome> ProcessAsync(
         Frame frame,
         string? regionKey = null,
         SourceKind source = SourceKind.Screen,
+        ProcessOptions? options = null,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(frame);
+        var how = options ?? ProcessOptions.Manual;
 
         var started = Stopwatch.GetTimestamp();
         var requestedAt = DateTimeOffset.UtcNow;
@@ -163,13 +252,24 @@ public sealed class TranslationPipeline(
                 regionKey, source, recognised.RejectedWordCount);
         }
 
+        // The second net, and the same rule as the one above it: ahead of the cache, ahead of the
+        // router, ahead of everything with a side effect. A line already on the overlay, read again
+        // with a comma turned into a full stop, is not a new line - but it is a new cache key, so
+        // by the time anything downstream could notice, the request has been sent and paid for.
+        if (how.SuppressRepeats && IsRepeatOfLastBody(body))
+        {
+            return new PipelineOutcome(recognised.RawText, normalized, speaker, body, [], null,
+                recognised.Confidence, Stopwatch.GetElapsedTime(started),
+                regionKey, source, recognised.RejectedWordCount, Repeat: true);
+        }
+
         var key = CacheKey.For(body, Register);
         var cached = await cache.TryGetAsync(key, ct).ConfigureAwait(false);
         if (cached is not null)
         {
             var hit = new TranslationResult(cached.Arabic, ProviderNames.Cache, cached.Model, true,
                 Stopwatch.GetElapsedTime(started), TranslationLogOutcomes.Cached);
-            PushContext(body);
+            Remember(body, how);
             await LogAsync(recognised, normalized, speaker, hit, game, regionKey, ct).ConfigureAwait(false);
 
             return new PipelineOutcome(recognised.RawText, normalized, speaker, body, [], Present(hit),
@@ -179,7 +279,8 @@ public sealed class TranslationPipeline(
 
         var hits = _glossary.Match(body);
         var result = await router.TranslateAsync(
-            new TranslationRequest(body, speaker, hits, SnapshotContext(), Register, requestedAt,
+            new TranslationRequest(body, speaker, hits,
+                how.UseContext ? SnapshotContext() : [], Register, requestedAt,
                 game, styleHint, Diacritics), ct)
             .ConfigureAwait(false);
 
@@ -187,9 +288,17 @@ public sealed class TranslationPipeline(
         // permanently - the next lookup would hit and never retry the provider.
         if (result.Outcome == TranslationLogOutcomes.Ok)
         {
+            // Deliberately NOT under ct. By this point a provider has answered, which means the
+            // request has been sent, counted against a daily quota and paid for - and cancellation
+            // is ordinary here: auto-watch switching off, the app closing, a snip superseded. Every
+            // one of those used to throw between the answer arriving and the row being written, so
+            // the app discarded something it had already bought and paid for it again the next time
+            // the player read that line. Storing it is a local write measured in microseconds.
             await cache.PutAsync(new CachedTranslation(key, body, result.Text, result.Provider,
-                result.Model, false, DateTimeOffset.UtcNow, 0), ct).ConfigureAwait(false);
-            PushContext(body);
+                result.Model, false, DateTimeOffset.UtcNow, 0), CancellationToken.None)
+                .ConfigureAwait(false);
+
+            Remember(body, how);
         }
 
         await LogAsync(recognised, normalized, speaker, result, game, regionKey, ct).ConfigureAwait(false);
@@ -197,6 +306,38 @@ public sealed class TranslationPipeline(
         return new PipelineOutcome(recognised.RawText, normalized, speaker, body, hits, Present(result),
             recognised.Confidence, Stopwatch.GetElapsedTime(started),
             regionKey, source, recognised.RejectedWordCount);
+    }
+
+    /// <summary>
+    /// Records what was just shown, for the two things that need to remember it - the rolling
+    /// context and the repeat guard - each only for the callers that participate in it.
+    ///
+    /// <para>
+    /// A snip leaves neither trace: it is not part of the conversation, and it must not become the
+    /// line the next poll is compared against, or the dialogue the player is actually reading would
+    /// be suppressed as a repeat of a menu tooltip. Everything else records both - including a
+    /// hotkey press, which cannot itself be suppressed but has just put a line on the overlay, so
+    /// the poll that arrives half a second later reading the same pixels is a repeat OF it.
+    /// </para>
+    /// </summary>
+    private void Remember(string body, ProcessOptions how)
+    {
+        if (how.UseContext) PushContext(body);
+        if (how.RemembersLine) lock (_context) _lastBody = body;
+    }
+
+    /// <summary>
+    /// <para>
+    /// Deliberately does NOT update <c>_lastBody</c> on a match. The reference stays the last line
+    /// actually shown, so a caption that drifts one character at a time - a scoreboard, a timer
+    /// counting up inside the captured rectangle - eventually moves far enough from it to be
+    /// translated. Advancing the reference on every near-match would let an arbitrarily large
+    /// change through three characters at a time and never translate any of it.
+    /// </para>
+    /// </summary>
+    private bool IsRepeatOfLastBody(string body)
+    {
+        lock (_context) return TextSimilarity.LooksLikeARepeat(body, _lastBody);
     }
 
     /// <summary>

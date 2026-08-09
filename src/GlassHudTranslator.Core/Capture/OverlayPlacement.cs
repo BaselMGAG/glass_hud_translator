@@ -52,6 +52,34 @@ public static class OverlayPlacement
     }
 
     /// <summary>
+    /// The same placement, given the panel's size in device-independent pixels and the DPI scale of
+    /// the monitor it is going to.
+    ///
+    /// <para>
+    /// This overload exists because the conversion is where the mistake was, and the conversion had
+    /// been living in the App where nothing could test it. Every UI toolkit reports window sizes in
+    /// DIPs and screen coordinates in physical pixels, and mixing them is silent at 100% scaling —
+    /// the two units are the same number there, which is the machine most of this gets written on.
+    /// At 125% a 900-DIP panel is 1125 pixels wide, so a placement computed from 900 puts a quarter
+    /// of it off the edge. Stating the unit in the signature is the only version of this that stays
+    /// fixed.
+    /// </para>
+    /// </summary>
+    public static (int X, int Y) Within(
+        CaptureRegion area, double panelWidthDips, double panelHeightDips, double scaling,
+        double horizontal, double vertical)
+    {
+        // A zero, negative or NaN scale would collapse the panel to nothing or multiply a size into
+        // a coordinate off every screen. Both look like the overlay having disappeared.
+        var scale = double.IsNaN(scaling) || scaling <= 0 ? 1.0 : scaling;
+
+        return Within(area,
+            (int)Math.Ceiling(Math.Max(0, panelWidthDips) * scale),
+            (int)Math.Ceiling(Math.Max(0, panelHeightDips) * scale),
+            horizontal, vertical);
+    }
+
+    /// <summary>
     /// Settings files are hand-editable and a value from one is not to be trusted. A fraction
     /// outside 0-1 would put the panel off the screen entirely, which looks exactly like the app
     /// having stopped working.
