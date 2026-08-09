@@ -43,6 +43,35 @@ public sealed class TranslationSession : IDisposable
     /// </summary>
     private readonly FrameSettleGate _settle = new();
 
+    /// <summary>
+    /// The pacing and the caps for the run currently in progress, and the only thing that measures
+    /// how fast the watched content actually changes. Null when auto-watch is off.
+    /// </summary>
+    private WatchSession? _watch;
+
+    /// <summary>
+    /// Consecutive polls that threw. One bad frame used to end the whole run: the try/catch was
+    /// around the entire loop, so a single OCR failure on an unfamiliar font stopped auto-watch
+    /// permanently — and said so only on the Settings status line, which nobody playing a game is
+    /// looking at. Reported from Wuthering Waves as «كلام مش عارف يترجمه فا يقف خالص»: text it
+    /// cannot translate, and it stops dead.
+    /// </summary>
+    private int _consecutiveFailures;
+
+    /// <summary>
+    /// Consecutive polls that read nothing at all. A region that has stopped matching the game —
+    /// the window resized, the HUD layout changed, the wrong rectangle was saved — looks exactly
+    /// like a quiet moment, and the app used to say "no text in the capture region" once per poll
+    /// and leave the user to guess. After enough of them in a row it says the useful thing instead.
+    /// </summary>
+    private int _consecutiveEmpty;
+
+    /// <summary>How many empty reads in a row before the region itself becomes the suspect.</summary>
+    private const int EmptyReadsBeforeBlamingTheRegion = 12;
+
+    /// <summary>How many polls in a row may throw before the run is genuinely abandoned.</summary>
+    private const int FailuresBeforeGivingUp = 5;
+
     private string? _lastSourceText;
     private string? _lastArabic;
     private bool _busy;
@@ -56,6 +85,21 @@ public sealed class TranslationSession : IDisposable
     }
 
     public bool IsAutoWatching => _autoWatch is not null;
+
+    /// <summary>
+    /// What the current run has measured, for the Diagnostics tab. Null when auto-watch is off.
+    ///
+    /// <para>
+    /// Surfaced rather than kept internal on purpose. The pacing adapts itself now, and an
+    /// adaptation nobody can see is indistinguishable from a bug — if the overlay feels slow, the
+    /// first useful question is what rhythm the app thinks it is watching, and this is the only
+    /// place that answers it.
+    /// </para>
+    /// </summary>
+    public (TimeSpan? Cadence, int Requests, TimeSpan Elapsed, bool Outrunning)? WatchStats =>
+        _watch is { } watch
+            ? (watch.Cadence, watch.Requests, watch.Elapsed, watch.OutrunningTheFloor)
+            : null;
 
     /// <summary>
     /// When set, every captured region is written here as a PNG. This is how a real frame corpus
@@ -123,6 +167,20 @@ public sealed class TranslationSession : IDisposable
         // Otherwise switching auto-watch off and straight back on sits on Unchanged until the
         // player advances the dialogue, which reads as the toggle having done nothing.
         _settle.Reset();
+        _consecutiveFailures = 0;
+        _consecutiveEmpty = 0;
+        _overlay.Notice = null;
+
+        // The mode is read here rather than per tick, so one run has one set of caps and one
+        // cadence estimate. Switching mode mid-run would silently reset the clock the caps are
+        // measured against, which is the one thing a cap must not allow.
+        var pacing = WatchPacing.For(_settings.WatchMode);
+        if (_settings.SecondsBetweenTranslations > 0)
+            pacing = pacing with { MinimumInterval = TimeSpan.FromSeconds(_settings.SecondsBetweenTranslations) };
+
+        _watch = new WatchSession(pacing) { Unbounded = _settings.WatchWithoutLimit };
+        _watch.Start();
+        _settle.Retune(_watch.Settle());
 
         var worker = new Thread(() => AutoWatchLoop(token))
         {
@@ -135,29 +193,70 @@ public sealed class TranslationSession : IDisposable
         };
         worker.Start();
 
-        Report(string.Format(Text.AutoWatchOn, _settings.AutoWatchExpirySeconds));
+        // On the overlay too, not only in Settings. Switching it on is the moment to say what it
+        // will cost and when it will stop by itself — afterwards the player is looking at the game.
+        var announcement = string.Format(Text.AutoWatchOn,
+            _settings.WatchMode == WatchMode.Video ? Text.WatchModeVideo : Text.WatchModeDialogue,
+            _watch.Unbounded ? Text.NoLimit : pacing.StopAfter.TotalMinutes.ToString("0"));
+
+        Report(announcement);
+        _overlay.ShowMessage(announcement);
     }
 
     private void AutoWatchLoop(CancellationToken ct)
     {
-        var interval = TimeSpan.FromSeconds(1.0 / Math.Max(0.5, _settings.AutoWatchFps));
+        var watch = _watch!;
+        var pacing = watch.Pacing;
+
+        // The mode's rate unless the settings file overrides it. Read once: changing it mid-run
+        // would mean re-deriving the sleep on every tick for a number nobody adjusts mid-cutscene.
+        var interval = _settings.AutoWatchFps > 0
+            ? TimeSpan.FromSeconds(1.0 / _settings.AutoWatchFps)
+            : pacing.PollInterval;
+
         var expiry = TimeSpan.FromSeconds(_settings.AutoWatchExpirySeconds);
         var lastChange = Stopwatch.GetTimestamp();
 
-        try
+        while (!ct.IsCancellationRequested)
         {
-            while (!ct.IsCancellationRequested)
+            try
             {
                 Thread.Sleep(interval);
                 if (ct.IsCancellationRequested) break;
 
-                // A toggle left on during an AFK is the main way to leak API quota, so this expiry
-                // is not optional.
+                // The session cap, measured from switch-on. The idle expiry below cannot do this
+                // job: it resets on any movement, so over a playing video - or a game with
+                // animation anywhere in the capture region - it never fires at all. A guard that a
+                // moving screen switches off is not a guard.
+                switch (watch.Check())
+                {
+                    case WatchVerdict.Stop:
+                        StopAutoWatch(string.Format(Text.AutoWatchReachedLimit,
+                            watch.Elapsed.TotalMinutes.ToString("0"), watch.Requests), onOverlay: true);
+                        return;
+
+                    case WatchVerdict.Warn:
+                        // Sticky, because it has to survive the translations that keep arriving
+                        // after it. This is the line the whole cap exists to deliver.
+                        _overlay.Notice = string.Format(Text.AutoWatchStillRunning,
+                            watch.Elapsed.TotalMinutes.ToString("0"), watch.Requests);
+                        Report(_overlay.Notice);
+                        break;
+                }
+
+                // The AFK expiry stays, unchanged, for what it was always good at: a toggle left on
+                // in front of a genuinely static screen.
                 if (Stopwatch.GetElapsedTime(lastChange) > expiry)
                 {
-                    StopAutoWatch(string.Format(Text.AutoWatchExpired, expiry.TotalSeconds.ToString("0")));
+                    StopAutoWatch(string.Format(Text.AutoWatchExpired, expiry.TotalSeconds.ToString("0")),
+                        onOverlay: true);
                     return;
                 }
+
+                // The floor, asked before the frame reaches the gate for the same reason the busy
+                // check is: calling a frame Ready commits it, so a frame refused afterwards would
+                // be remembered as handled and the screen would sit unchanged for good.
+                if (!watch.MayTranslate()) continue;
 
                 var region = ResolveRegionAsync(ct).GetAwaiter().GetResult();
                 if (region is null) continue;
@@ -188,6 +287,13 @@ public sealed class TranslationSession : IDisposable
                 // translated and must never reach OCR - and a frame that HAS changed is not
                 // translated until it stops changing, so a line that types itself out on screen
                 // costs one request rather than one per revealed chunk.
+                // Retuned every poll from what the content has turned out to be. Cheap - it is a
+                // record assignment - and it is the whole of the adaptation: a dialogue box that
+                // advances every eight seconds gets a patient deadline, and the same code watching
+                // subtitles that change every three gets an impatient one, without anybody saying
+                // which is which.
+                _settle.Retune(watch.Settle());
+
                 var signature = FrameSignature.Compute(frame);
                 var verdict = _settle.Offer(signature);
                 if (verdict == FrameVerdict.Unchanged) continue;
@@ -200,33 +306,62 @@ public sealed class TranslationSession : IDisposable
                 _busy = true;
                 try
                 {
-                    ProcessAsync(frame, ct).GetAwaiter().GetResult();
+                    ProcessAsync(frame, ct, fromAutoWatch: true).GetAwaiter().GetResult();
                 }
                 finally
                 {
                     _busy = false;
                 }
+
+                _consecutiveFailures = 0;
             }
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected on shutdown.
-        }
-        catch (Exception e)
-        {
-            StopAutoWatch(string.Format(Text.AutoWatchStopped, e.Message));
+            catch (OperationCanceledException)
+            {
+                break;   // shutdown, or the toggle was switched off mid-poll
+            }
+            catch (Exception e)
+            {
+                // Per POLL, not per run. One frame that OCR chokes on, one transient database
+                // hiccup, one provider throwing something unexpected - none of those is a reason to
+                // end a session the user is in the middle of. Only a run of them is.
+                if (++_consecutiveFailures < FailuresBeforeGivingUp)
+                {
+                    Report(string.Format(Text.AutoWatchSkippedFrame, e.Message));
+                    continue;
+                }
+
+                StopAutoWatch(string.Format(Text.AutoWatchStopped, e.Message), onOverlay: true);
+                return;
+            }
         }
     }
 
-    private void StopAutoWatch(string message)
+    /// <summary>
+    /// <paramref name="onOverlay"/> for anything the user did not ask for. Switching it off by
+    /// hotkey needs no announcement — they just pressed the key — but stopping by itself, hitting a
+    /// cap, or giving up after a run of errors must reach the screen the player is actually
+    /// looking at. Every one of these used to go to the Settings status line alone.
+    /// </summary>
+    private void StopAutoWatch(string message, bool onOverlay = false)
     {
         _autoWatch?.Cancel();
         _autoWatch?.Dispose();
         _autoWatch = null;
+        _watch = null;
+        _overlay.Notice = null;
+
         Report(message);
+        if (onOverlay) _overlay.ShowMessage(message);
     }
 
-    private async Task ProcessAsync(Frame frame, CancellationToken ct)
+    /// <summary>
+    /// <paramref name="fromAutoWatch"/> changes what "nothing here" means. A hotkey press is a
+    /// question and deserves an answer, even a disappointing one. A poll is not — it is one of
+    /// dozens a minute, and the gap between two subtitles is an empty region by definition, so
+    /// answering it with «لا نصّ في منطقة الالتقاط. هل يظهر صندوق حوار على الشاشة فعلاً؟» flashed
+    /// an error, asking about a dialogue box, over a film, between every single line.
+    /// </summary>
+    private async Task ProcessAsync(Frame frame, CancellationToken ct, bool fromAutoWatch = false)
     {
         SaveFrameIfRequested(frame);
         _services.Pipeline.Register = _settings.Register;
@@ -245,11 +380,43 @@ public sealed class TranslationSession : IDisposable
         // border that OCR'd to a character or two, which is not dialogue.
         if (outcome.Result is not { } result)
         {
-            Fail(outcome.Body.Trim().Length == 0
-                ? Text.NoTextInRegion
-                : string.Format(Text.TooShortToTranslate, outcome.Body.Trim()));
+            var nothingAtAll = outcome.Body.Trim().Length == 0;
+
+            if (!fromAutoWatch)
+            {
+                Fail(nothingAtAll
+                    ? Text.NoTextInRegion
+                    : string.Format(Text.TooShortToTranslate, outcome.Body.Trim()));
+                return;
+            }
+
+            // Clear, do not complain. Silence is the correct answer to a poll that found nothing,
+            // and leaving the previous line up would caption one subtitle with the one before it.
+            _overlay.Clear();
+
+            if (!nothingAtAll)
+            {
+                _consecutiveEmpty = 0;
+                return;
+            }
+
+            // Unless it has been nothing for a long time. Then the region is the story, and this is
+            // the answer to «ممكن ما يشوفش الكلام لازم اعيد تحديد المكان» - said once, naming the
+            // hotkey, instead of once per poll or not at all.
+            if (++_consecutiveEmpty == EmptyReadsBeforeBlamingTheRegion)
+            {
+                var advice = string.Format(Text.RegionSeemsWrong,
+                    _settings.HotkeyFor(HotkeyAction.PickRegion).ToString());
+
+                Report(advice);
+                _overlay.ShowMessage(advice);
+            }
+
             return;
         }
+
+        _consecutiveEmpty = 0;
+        _watch?.Translated();
 
         _lastSourceText = outcome.Body;
         _lastArabic = result.Text;

@@ -3,6 +3,57 @@
 Notable changes. Started once the app was working end to end, so everything before the first entry
 is "the thing being described in the README".
 
+## v0.5.3 — 9 August 2026
+
+Almost all of this came from one player's feedback after an evening with Wuthering Waves, and from
+finally measuring something that had only ever been assumed.
+
+### Fixed
+
+- **Automatic mode stopped dead on text it could not read, and did not say so.** One bad frame —
+  an unusual font, a moment of bad luck in the text recognition — ended the whole session, because
+  the error handling wrapped the entire loop rather than one frame of it. Worse, it announced this
+  only on the Settings status line, which nobody playing a fullscreen game is looking at. So it
+  simply stopped, and the only way to find out why was to go into Settings. It now skips the bad
+  frame and carries on, gives up only after five failures in a row, and says so **on the overlay**.
+- **The gap between two subtitles was reported as an error.** Between one line and the next there is
+  no text, which is normal — and the app answered every one of those with "no text in the capture
+  region, is a dialogue box actually on screen?" flashed over the film. Automatic mode now clears
+  the overlay and says nothing, which is the correct answer to a question nobody asked.
+- **A region that has stopped working now says so.** If nothing has been readable for a while, the
+  app tells you once, and names the key to draw the box again, instead of leaving you to guess why
+  it went quiet.
+- **The 90-second idle stop could never fire on anything that moves.** It counted time with *no new
+  text at all*, and any movement in the captured area reset it — so on a video, or in a game with
+  animation behind the dialogue, it never fired once. It is still there for a genuinely still
+  screen, and a real limit now sits alongside it.
+
+### Added
+
+- **A limit on automatic mode, measured from when you switch it on.** It tells you on the overlay
+  after two minutes that it is still running and what it has spent, and switches itself off after
+  four — or sooner if it has spent more than expected, because four minutes of cutscene is a dozen
+  translations and four minutes of film is eighty. There is a switch to let it run without a limit.
+- **A mode for watching video.** Subtitles appear whole and leave after a few seconds, so waiting
+  for the text to "settle" — right for a game that types dialogue out character by character — meant
+  the Arabic arrived after the line it translated had already gone. Measured: **4.6 seconds** on a
+  moving picture, against a subtitle that lives three. Video mode checks more often, waits far less,
+  keeps a minimum gap between translations, and is honest that a film costs a large part of a day's
+  free allowance.
+- **Control over the pace.** Settings → Hotkeys now has both the mode and the seconds between
+  translations, neither of which was adjustable outside a JSON file before. Asked for directly.
+- **It works out the rhythm for itself.** The app times the gaps between lines and tightens its own
+  deadline to match, so a dialogue box that advances every eight seconds and subtitles that change
+  every three get different timings without anyone choosing. What it has worked out is shown in
+  Diagnostics, and when the text is genuinely arriving faster than it can be read, it says that
+  rather than quietly skipping lines. It is measurement, not a model — nothing is stored, nothing is
+  sent, and every decision is a number you can read off the screen.
+- **`Ctrl+Shift+S` opens Settings** without leaving the game. Everything that goes wrong sends you
+  there, and until now getting back to it meant hunting for a window with no taskbar entry.
+- **An option to let screen recorders see the overlay.** It is hidden from capture by default so the
+  app cannot read its own Arabic back and translate that instead — which is why the translation was
+  missing from recordings and from the Nvidia app. That is now your choice, with the reason stated.
+
 ## v0.5.2 — 9 August 2026
 
 Three things that were quietly wasting your free tier, and one you asked for.

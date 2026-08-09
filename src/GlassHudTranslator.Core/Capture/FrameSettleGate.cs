@@ -73,8 +73,9 @@ public enum FrameVerdict
 /// </summary>
 public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider? clock = null)
 {
-    private readonly SettleOptions _options = options ?? new SettleOptions();
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
+
+    private SettleOptions _options = options ?? new SettleOptions();
 
     private FrameSignature? _translated;
     private FrameSignature? _pending;
@@ -151,5 +152,23 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
         _translated = null;
         _pending = null;
         _stillTicks = 0;
+    }
+
+    /// <summary>
+    /// Swaps the timings mid-run, without forgetting what is already on the overlay.
+    ///
+    /// <para>
+    /// Needed because the cap is adaptive now: <see cref="WatchSession"/> measures how fast the
+    /// content actually changes and tightens the deadline to match, which it cannot do to an
+    /// object whose options were fixed at construction. Deliberately does NOT reset the frame
+    /// state - a retune is a change of pace, not a change of screen, and clearing
+    /// <c>_translated</c> here would make the very next poll re-translate the line already shown.
+    /// </para>
+    /// </summary>
+    public void Retune(SettleOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        _options = options;
     }
 }

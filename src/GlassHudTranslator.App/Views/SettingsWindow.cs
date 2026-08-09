@@ -64,6 +64,7 @@ public sealed class SettingsWindow : Window
     private Slider _opacity = null!;
     private TextBlock _quota = null!;
     private TextBlock _cache = null!;
+    private TextBlock _pace = null!;
     private TextBlock _status = null!;
     private TextBox _routerLog = null!;
     private TextBlock _updateStatus = null!;
@@ -143,6 +144,10 @@ public sealed class SettingsWindow : Window
         // direction they read back to front, and the quota line's order is the lane order.
         _quota = Readout(machine: true);
         _cache = Readout(machine: true);
+
+        // Not machine text: it is a sentence about what the app has worked out, and it is the
+        // only window onto the adaptive pacing. In Arabic it should mirror like any other.
+        _pace = Readout();
         _correction = new TextBox { Watermark = _text.CorrectedArabic, Width = 380 };
         _routerLog = new TextBox
         {
@@ -788,6 +793,25 @@ public sealed class SettingsWindow : Window
         if (_overlay.CaptureExclusionWarning is not null)
             stack.Children.Add(Warning(_text.OverlayCaptureWarning));
 
+        // The answer to "why is the translation missing from my recording". It is deliberate, and
+        // until now there was no way to say so or to change it.
+        var recordable = new CheckBox
+        {
+            Content = _text.AllowRecording,
+            IsChecked = !_settings.HideOverlayFromCapture,
+        };
+        recordable.IsCheckedChanged += (_, _) =>
+        {
+            _settings.HideOverlayFromCapture = recordable.IsChecked != true;
+            _settings.Save();
+
+            // Applied to the live window, not just stored. A setting whose effect needs a restart
+            // is a setting people conclude does not work.
+            _overlay.HideFromCapture = _settings.HideOverlayFromCapture;
+        };
+        stack.Children.Add(recordable);
+        stack.Children.Add(Note(_text.AllowRecordingNote));
+
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         buttons.Children.Add(Button(_text.PreviewOverlay, () =>
             _overlay.ShowTranslation("Y'shtola", "تعال، فالأثير هنا يزداد اضطراباً.")));
@@ -836,6 +860,62 @@ public sealed class SettingsWindow : Window
         manual.Children.Add(Button(_text.ToggleAutoWatch, _session.ToggleAutoWatch));
         stack.Children.Add(manual);
 
+        // Beside the toggle, because this is where someone who has just switched auto-watch on is
+        // looking. Until now neither of its two numbers was adjustable anywhere but a JSON file.
+        stack.Children.Add(Section(_text.WatchMode));
+
+        var mode = new ComboBox
+        {
+            ItemsSource = new[] { _text.WatchModeDialogue, _text.WatchModeVideo },
+            SelectedIndex = _settings.WatchMode == WatchMode.Video ? 1 : 0,
+            Width = 240,
+        };
+        mode.SelectionChanged += (_, _) =>
+        {
+            _settings.WatchMode = mode.SelectedIndex == 1 ? WatchMode.Video : WatchMode.Dialogue;
+            _settings.Save();
+            _status.Text = string.Format(_text.WatchModeSetTo,
+                _settings.WatchMode == WatchMode.Video ? _text.WatchModeVideo : _text.WatchModeDialogue);
+        };
+        stack.Children.Add(Row(_text.WatchMode, mode, labelWidth: 190));
+        stack.Children.Add(Note(_text.WatchModeNote));
+
+        // Zero is "Automatic", shown as a word rather than a 0 - a number that means "no number"
+        // is a puzzle, and this control exists because someone asked to be able to set it plainly.
+        var seconds = new ComboBox
+        {
+            ItemsSource = new[] { _text.SecondsBetweenAutomatic, "1", "2", "3", "4", "5", "8" },
+            Width = 240,
+        };
+        seconds.SelectedIndex = _settings.SecondsBetweenTranslations switch
+        {
+            <= 0 => 0,
+            <= 1 => 1, <= 2 => 2, <= 3 => 3, <= 4 => 4, <= 5 => 5, _ => 6,
+        };
+        seconds.SelectionChanged += (_, _) =>
+        {
+            _settings.SecondsBetweenTranslations = seconds.SelectedIndex switch
+            {
+                <= 0 => 0, 6 => 8, var i => i,
+            };
+            _settings.Save();
+        };
+        stack.Children.Add(Row(_text.SecondsBetweenTranslations, seconds, labelWidth: 190));
+        stack.Children.Add(Note(_text.SecondsBetweenNote));
+
+        var unlimited = new CheckBox
+        {
+            Content = _text.WatchWithoutLimit,
+            IsChecked = _settings.WatchWithoutLimit,
+        };
+        unlimited.IsCheckedChanged += (_, _) =>
+        {
+            _settings.WatchWithoutLimit = unlimited.IsChecked == true;
+            _settings.Save();
+        };
+        stack.Children.Add(unlimited);
+        stack.Children.Add(Note(_text.WatchWithoutLimitNote));
+
         return stack;
     }
 
@@ -850,6 +930,7 @@ public sealed class SettingsWindow : Window
             $"OCR: {_services.Ocr.Name} — {_services.Ocr.Diagnostics ?? "-"}", machine: true));
         stack.Children.Add(_quota);
         stack.Children.Add(_cache);
+        stack.Children.Add(_pace);
 
         // Above the router log, which is a tall box that would otherwise push this below the fold.
         // The off switch for the only request the app makes that is not a translation should not
@@ -1436,6 +1517,28 @@ public sealed class SettingsWindow : Window
         await RefreshAsync();
     }
 
+    /// <summary>
+    /// What auto-watch has measured about the thing it is watching, in a sentence.
+    ///
+    /// <para>
+    /// Everything else in this app runs on a number somebody chose in advance. The pacing does not:
+    /// it times the gaps between lines and tightens its own deadline to match, so a dialogue box
+    /// that advances every eight seconds and subtitles that change every three get different
+    /// timings without anyone being asked which is which. This line is that made visible — if the
+    /// overlay feels slow, the first useful question is what rhythm the app thinks it is watching.
+    /// </para>
+    /// </summary>
+    private string DescribePace()
+    {
+        if (_session.WatchStats is not { } stats) return "";
+
+        if (stats.Outrunning) return _text.OutrunningTheFloor;
+
+        return stats.Cadence is { } cadence
+            ? string.Format(_text.LearnedPace, cadence.TotalSeconds.ToString("0.0"))
+            : _text.LearnedPaceUnknown;
+    }
+
     private async Task RefreshAsync()
     {
         try
@@ -1453,6 +1556,7 @@ public sealed class SettingsWindow : Window
             {
                 _quota.Text = $"{_text.QuotaToday}  " +
                               string.Join("   ·   ", quota.Select(q => q.ToString()));
+                _pace.Text = DescribePace();
                 _cache.Text = $"{_text.Cache}  {stats.Entries} {_text.Entries} " +
                               $"({stats.Overrides} {_text.Corrected})   ·   " +
                               $"{stats.Hits}/{stats.Lookups} {_text.Hits} ({stats.HitRate:P0})";

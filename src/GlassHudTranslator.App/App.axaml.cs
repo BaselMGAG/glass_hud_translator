@@ -91,6 +91,8 @@ public partial class App : Application
         // through a frame at all: Settings' "Test translation" button calls ProcessAsync directly.
         // Without this it ran on defaults until the first real capture, so someone who had chosen
         // Egyptian, restarted, and pressed Test got Modern Standard back and no reason for it.
+        _overlay.HideFromCapture = settings.HideOverlayFromCapture;
+
         _services.Pipeline.Register = settings.Register;
         _services.Pipeline.Diacritics = settings.Diacritics;
         _services.Pipeline.MinimumBodyCharacters = settings.MinimumCharactersToTranslate;
@@ -148,6 +150,13 @@ public partial class App : Application
                     settingsWindow.ReportStatus(overlay.ToggleHidden()
                         ? text.OverlayShown
                         : text.OverlayHidden);
+                    break;
+                case HotkeyAction.OpenSettings:
+                    // Settings has no taskbar button of its own, so once it is behind a fullscreen
+                    // game there is no way back to it without leaving the game and hunting. Every
+                    // failure this app can have sends the user here.
+                    settingsWindow.Show();
+                    settingsWindow.Activate();
                     break;
             }
         });

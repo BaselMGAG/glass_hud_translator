@@ -107,8 +107,9 @@ second, or instantly if that line has been seen before.
 | `Ctrl+Shift+H` | Show/hide the overlay (translation keeps running underneath) |
 | `Ctrl+Shift+R` | Re-pick the capture region |
 | `Ctrl+Shift+F` | Correct the current translation and pin the correction |
+| `Ctrl+Shift+S` | Open Settings without leaving the game |
 
-All five are rebindable in Settings → **Hotkeys**. Modifiers are Ctrl, Shift, Alt and Win; keys
+All six are rebindable in Settings → **Hotkeys**. Modifiers are Ctrl, Shift, Alt and Win; keys
 include A–Z, 0–9, F1–F24, arrows, Insert/Delete/Home/End, the numpad and punctuation.
 
 **F13–F24 are the safest choices.** They don't exist on physical keyboards, so no game has anything
@@ -144,10 +145,21 @@ During a long cutscene, `Ctrl+Shift+A` lets it follow along by itself. It waits 
 moving before translating, so a line that types itself out on screen costs one request rather than
 one per revealed chunk.
 
-It is not a hands-off mode, though: it only stops itself after 90 seconds with **no new text at
-all**, so a conversation that keeps advancing keeps it running and keeps spending your daily
-allowance. Press `Ctrl+Shift+A` again when the cutscene ends. A time limit with a warning is the
-next thing being built.
+It tells you on the overlay after two minutes that it is still on and what it has spent, and
+switches itself off after four — or sooner if it has spent more than four minutes of dialogue
+normally would. There is a switch in Settings to let it run without a limit.
+
+**Watching a video? Say so.** Settings → **Hotkeys** → *What is on screen*. Subtitles appear whole
+and leave after a few seconds, so waiting for the text to settle — right for a game that types
+dialogue out one character at a time — means the Arabic lands after the line has gone. Measured on a
+moving picture, that wait was 4.6 seconds against a subtitle that lives three. Video mode checks
+more often and waits far less. It also costs far more: roughly one request per subtitle, so a film
+is a large slice of a day's free allowance rather than a rounding error.
+
+**It works out the pace on its own.** The app times the gaps between lines and tightens its own
+deadline to match, so a slow dialogue box and a fast subtitle track get different timings without
+you choosing. Diagnostics shows what it has worked out — and if the text really is arriving faster
+than it can be translated, it says so rather than quietly skipping lines.
 
 **Fix a bad name once.** If a character's name comes out wrong, press `Ctrl+Shift+F` and correct
 it. That correction is pinned and beats the model for that line from then on. For a name that
@@ -263,7 +275,7 @@ Early, but working.
 
 | | |
 |---|---|
-| Translation pipeline (OCR → normalise → cache → LLM → render) | working, 524 tests |
+| Translation pipeline (OCR → normalise → cache → LLM → render) | working, 542 tests |
 | Arabic rendering, shaping, bidi, diacritics | working and verified |
 | Game profiles, glossary, OCR corrections | working |
 | Provider failover, quota tracking, caching | working |
@@ -276,6 +288,9 @@ Early, but working.
 | Display scaling above 100% | **working** |
 | More than one key per provider | **working** |
 | Diacritics on or off | **working** |
+| A limit on automatic mode | **working** |
+| Video subtitle mode | **working**, not yet measured against a long film |
+| Recording the overlay | **working** — off by default, see Settings → Overlay |
 | Click-through | not yet verified |
 
 Tested against **Final Fantasy XIV** and several other games on Windows across a long session:
@@ -287,11 +302,11 @@ accuracy against a real game font hasn't been measured properly. I develop on ma
 Windows machine, so Windows fixes arrive in batches — which is why "written" and "verified" are
 separate rows above.
 
-**Auto-watch has no time limit yet.** Once it is on it keeps translating until you turn it off —
-it only stops itself after 90 seconds with *no new text at all*, so a long conversation keeps it
-running. It no longer pays several times over for one sentence appearing (it waits for the text to
-settle first), but a session left on can still spend quota you did not mean to spend. A cap and a
-warning are coming.
+**Automatic mode has a limit now**, measured from when you switch it on rather than from the last
+time anything changed — the old rule counted only time with *no new text at all*, so on a video, or
+in a game with animation behind the dialogue, it never fired once. It warns on the overlay at two
+minutes and stops at four, by time or by spend, whichever arrives first. You can switch the limit
+off if you want to.
 
 **Free models retire without warning, and both providers did it in the same week.** Model names
 live in [`data/models.json`](data/models.json), never in code, so when a provider drops one the fix

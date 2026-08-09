@@ -221,6 +221,30 @@ public sealed class FrameSettleGate {
     public FrameSettleGate(SettleOptions? o = null, TimeProvider? clock = null);
     public FrameVerdict Offer(FrameSignature signature);            // call on EVERY poll
     public void Reset();                                            // on auto-watch switch-on
+    public void Retune(SettleOptions options);                      // adaptive; keeps frame state
+}
+
+// Auto-watch pacing. Two modes that disagree about every number, because there is no single set
+// that is defensible for both a dialogue box and a subtitle over moving picture.
+public enum WatchMode { Dialogue, Video }
+public sealed record WatchPacing {
+    double PollsPerSecond; int RequiredStillTicks; TimeSpan SettleCap; TimeSpan MinimumInterval;
+    TimeSpan WarnAfter; int WarnAfterRequests; TimeSpan StopAfter; int StopAfterRequests;
+    public static WatchPacing For(WatchMode mode);
+    public TimeSpan PollInterval { get; }
+}
+public enum WatchVerdict { Run, Warn, Stop }        // Warn is returned ONCE, on the crossing poll
+public sealed class WatchSession {
+    public WatchSession(WatchPacing pacing, TimeProvider? clock = null);
+    public bool Unbounded { get; init; }            // warns, never stops
+    public void Start();                            // the cap is measured from HERE, not last change
+    public bool MayTranslate();                     // the floor. Asked BEFORE the gate is offered a frame
+    public void Translated();                       // records the request and folds in the gap
+    public WatchVerdict Check();                    // time OR requests, whichever arrives first
+    public SettleOptions Settle();                  // the mode's cap, tightened to cadence/3
+    public TimeSpan? Cadence { get; }               // median of the last 8 gaps, null under 3
+    public bool OutrunningTheFloor { get; }         // content faster than the floor = lines skipped
+    public int Requests { get; }  public TimeSpan Elapsed { get; }
 }
 
 // ── OCR ────────────────────────────────────────────────────────────────────

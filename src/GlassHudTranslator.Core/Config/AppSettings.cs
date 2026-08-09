@@ -55,8 +55,50 @@ public sealed record AppSettings
     [JsonPropertyName("overlayVertical")]
     public double OverlayVertical { get; set; } = Capture.OverlayPlacement.DefaultVertical;
 
-    /// <summary>Auto-watch poll rate. 2 fps rather than 3 keeps headroom on weak hardware.</summary>
-    [JsonPropertyName("autoWatchFps")] public double AutoWatchFps { get; set; } = 2;
+    /// <summary>
+    /// What auto-watch is looking at. Decides the poll rate, how long it waits for the text to
+    /// settle, the shortest gap between two translations, and both session caps — see
+    /// <see cref="Capture.WatchPacing"/>, where every one of those numbers differs between the two.
+    /// </summary>
+    [JsonPropertyName("watchMode")] public Capture.WatchMode WatchMode { get; set; } = Capture.WatchMode.Dialogue;
+
+    /// <summary>
+    /// Whether the overlay hides itself from screen recorders. True, and the default has to stay
+    /// true: without it our own capture includes the Arabic we just drew, OCR reads it back, and
+    /// the app translates its own output. False is for someone who wants the translation in a
+    /// recording or a stream, which is a fair thing to want and used to be impossible.
+    /// </summary>
+    [JsonPropertyName("hideOverlayFromCapture")] public bool HideOverlayFromCapture { get; set; } = true;
+
+    /// <summary>
+    /// Lets auto-watch run without a session cap. Off, and deliberately not the default: the cap
+    /// exists because the idle timer it replaced could never fire on moving content, so switching
+    /// this on is switching off the only guard there is. It still warns.
+    /// </summary>
+    [JsonPropertyName("watchWithoutLimit")] public bool WatchWithoutLimit { get; set; }
+
+    /// <summary>
+    /// The shortest gap between two translations, in seconds. Zero means "whatever the mode says",
+    /// which is what almost everyone should leave it at.
+    ///
+    /// <para>
+    /// Asked for directly by a player — «البرنامج محتاج أن المستخدم يتحكم في عدد ثواني الترجمه بدل
+    /// انو تلقائي». This is the honest reading of that: the useful knob is not the poll rate, which
+    /// only decides how quickly a change is noticed, but how often a translation is allowed to
+    /// arrive. Turning it up slows the overlay down and spends less; turning it down does the
+    /// reverse, up to the point where the text is arriving faster than it can be read.
+    /// </para>
+    /// </summary>
+    [JsonPropertyName("secondsBetweenTranslations")]
+    public double SecondsBetweenTranslations { get; set; }
+
+    /// <summary>
+    /// Overrides the mode's poll rate when above zero; zero uses the mode's own. Hand-edit only,
+    /// and left that way on purpose: after measuring, the poll rate turned out to be worth about
+    /// 300 ms of a 4.6-second delay, so exposing it would invite people to spend CPU on the wrong
+    /// thing. The settle cap is what mattered, and that is adaptive now.
+    /// </summary>
+    [JsonPropertyName("autoWatchFps")] public double AutoWatchFps { get; set; }
 
     /// <summary>
     /// Auto-watch turns itself off after this long with no change on screen. A toggle left on

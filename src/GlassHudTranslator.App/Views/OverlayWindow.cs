@@ -107,6 +107,68 @@ public sealed class OverlayWindow : Window
         }
     }
 
+    /// <summary>
+    /// A line that stays under the translation until it is cleared, across any number of new
+    /// translations. Everything else on this panel is one-shot.
+    ///
+    /// <para>
+    /// It exists because auto-watch had no way to tell anyone anything. Every message it produces —
+    /// switched on, expired, stopped by an error — went to the Settings status line, which a player
+    /// in a fullscreen game is not looking at. A player reported the symptom exactly: it stops, and
+    /// «كل ما يحصل مشكله اخش علي الاعدادات نفسها» — every time something goes wrong he has to go
+    /// into Settings to find out what. A notice about spending is worth nothing where it cannot be
+    /// read.
+    /// </para>
+    /// </summary>
+    public string? Notice
+    {
+        get => _notice;
+        set
+        {
+            _notice = value;
+            Dispatcher.UIThread.Post(() =>
+            {
+                // Only repaint the slot; a live translation must not be disturbed by a notice
+                // arriving underneath it.
+                if (_warning.IsVisible && _stickyShown != true) return;
+
+                _warning.Text = value;
+                _warning.IsVisible = value is not null;
+                _stickyShown = value is not null;
+            });
+        }
+    }
+
+    private string? _notice;
+    private bool _stickyShown;
+
+    /// <summary>
+    /// Whether the overlay hides itself from screen capture.
+    ///
+    /// <para>
+    /// True is the safe default and the reason the flag exists at all: without it our own BitBlt
+    /// includes the Arabic we just drew, OCR reads it back, and the pipeline translates its own
+    /// output. False is for the player who wants to record or stream with the translation visible —
+    /// reported as «البرنامج بيمنع تصوير اي برنامج زي Nvidia app», which is a real thing to want
+    /// and something the app simply refused. Re-applied live, so the switch takes effect without a
+    /// restart.
+    /// </para>
+    /// </summary>
+    public bool HideFromCapture
+    {
+        get => _hideFromCapture;
+        set
+        {
+            if (_hideFromCapture == value) return;
+
+            _hideFromCapture = value;
+            if (TryGetPlatformHandle() is { } handle)
+                CaptureExclusionWarning = PlatformServices.ApplyOverlayWindowStyles(handle.Handle, value);
+        }
+    }
+
+    private bool _hideFromCapture = true;
+
     public void ShowLoading(string? speaker = null) =>
         Dispatcher.UIThread.Post(() => Render(speaker, LoadingText, warning: null));
 
@@ -201,8 +263,13 @@ public sealed class OverlayWindow : Window
         _body.FlowDirection = englishBody ? FlowDirection.LeftToRight : FlowDirection.RightToLeft;
         _body.TextAlignment = englishBody ? TextAlignment.Left : TextAlignment.Right;
 
-        _warning.Text = warning;
-        _warning.IsVisible = warning is not null;
+        // A one-shot warning wins for this line; otherwise the sticky notice fills the slot. One
+        // control, two lifetimes - a second TextBlock would push the panel taller for a line that
+        // is usually absent.
+        var shown = warning ?? _notice;
+        _warning.Text = shown;
+        _warning.IsVisible = shown is not null;
+        _stickyShown = warning is null && _notice is not null;
 
         // Respect an explicit hide: a new line arriving must not pop the HUD back over the game.
         if (!IsVisible && !HiddenByUser) Show();
@@ -215,7 +282,7 @@ public sealed class OverlayWindow : Window
         // Click-through, no-activate, topmost, and excluded from its own captures. No-op off
         // Windows; Session 2 implements it.
         if (TryGetPlatformHandle() is { } handle)
-            CaptureExclusionWarning = PlatformServices.ApplyOverlayWindowStyles(handle.Handle);
+            CaptureExclusionWarning = PlatformServices.ApplyOverlayWindowStyles(handle.Handle, _hideFromCapture);
     }
 
     /// <summary>

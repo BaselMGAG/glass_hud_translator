@@ -23,6 +23,19 @@ public enum HotkeyAction
     /// the way - a boss mechanic under the text box, or a screenshot worth taking clean.
     /// </summary>
     ToggleOverlay,
+
+    /// <summary>
+    /// Bring the Settings window up from inside the game.
+    ///
+    /// <para>
+    /// Added because everything that goes wrong sends the user to Settings, and until now getting
+    /// there meant leaving the game and hunting for a window with no taskbar entry of its own.
+    /// Reported as «كل ما يحصل مشكله اخش علي الاعدادات نفسها» — every problem means going into
+    /// Settings — alongside a request for a way in from a toolbar. This is the cheap half of that;
+    /// a tray icon is the other half.
+    /// </para>
+    /// </summary>
+    OpenSettings,
 }
 
 public sealed record HotkeyRegistration(HotkeyAction Action, Hotkey Hotkey, bool Succeeded, string? Error = null);

@@ -34,7 +34,7 @@ solution level it tries to force `net10.0` onto the Windows-only projects and fa
 dotnet test
 ```
 
-524 tests, all runnable on macOS and Linux.
+542 tests, all runnable on macOS and Linux.
 
 ```bash
 dotnet run --project tools/Replay -- --no-cache
@@ -370,6 +370,43 @@ OCR text, which is what keeps deciding-to-wait free. `tools/Replay` deliberately
 it: its corpus is a set of distinct frames rather than a time series off one screen, so a settle
 gate there would skip most of the frames the harness exists to push through.
 
+**Auto-watch pacing is per mode, and the two modes disagree about every number.** `WatchPacing.For`
+is the only place they are written down. Dialogue waits for text to finish appearing because it
+types itself out and then stays; video cannot afford to, because a subtitle lives three seconds and
+leaves whether or not anything was translated. Measured on a moving picture, the old settings put
+the Arabic on screen **4.6 seconds** after the line appeared. The cause was not the poll rate —
+raising it from 2 fps to 6 buys 334 ms of that 4,625 and triples the CPU. It is that
+`MaxDifferingCells = 2` out of 1536 can never be satisfied by full-motion video, so the gate never
+settles and every release comes from the cap. **Tune the cap, not the poll rate.**
+
+**A session cap must be measured from switch-on.** The 90-second idle expiry cannot do this job and
+never could: `lastChange` resets on any movement, so on a video — or in a game with animation
+anywhere in the capture region — it never fires at all. The guard the readmes promised for three
+releases was already inoperative in the workload it was written for. Both caps are counted, time
+*and* requests, because four minutes of cutscene is a dozen translations and four minutes of film is
+eighty; neither unit alone means anything.
+
+**A per-poll failure must not end the run.** The try/catch used to wrap the entire `while`, so one
+OCR throw on an unfamiliar font killed auto-watch permanently — and `StopAutoWatch` reported to the
+Settings status line, which a player in a fullscreen game never sees. It stopped, silently, and the
+only way to learn why was to open Settings. Anything auto-watch does that the user did not ask for
+goes to the **overlay**: `StopAutoWatch(..., onOverlay: true)`, and `OverlayWindow.Notice` for
+anything that has to survive the translations arriving after it.
+
+**Silence is the right answer to a poll that found nothing.** A hotkey press is a question and gets
+an answer; a poll is one of dozens a minute, and the gap between two subtitles is an empty region by
+definition. Answering those with «لا نصّ في منطقة الالتقاط. هل يظهر صندوق حوار على الشاشة فعلاً؟»
+flashed an error, asking about a dialogue box, over a film, between every line. `ProcessAsync` takes
+`fromAutoWatch` for exactly this, and a long *run* of empty reads is the only case worth reporting —
+that one means the region, not the moment.
+
+**The adaptive pacing may only tighten.** `WatchSession` times the gaps between lines and cuts the
+settle deadline to a third of the observed cadence, floored at `MinimumSettleCap`. It can never
+exceed the mode's own cap: a human chose that as the longest defensible wait, and no measurement
+should be able to argue the app into being lazier than a number somebody reasoned about. It is a
+median over eight samples, kept in memory, never persisted and never sent — and it is surfaced in
+Diagnostics because an adaptation nobody can see is indistinguishable from a bug.
+
 **Set the bundled font whenever Arabic is on screen.** `Fonts.Arabic` is bundled for the reason
 `NOTICE` gives: a Windows machine with no Arabic font installed renders every Arabic string as
 empty boxes. Relying on OS fallback works on macOS and hides the problem — the Arabic tab headers
@@ -560,6 +597,34 @@ Kept current with the changelog.
   taking the highest, so clearing box 1 of a two-key setup left key 2 authenticating every line with
   no box to see or clear it — while the lane summary on the same screen listed it. Emptying the
   visible boxes then reported "All keys cleared. Nothing will be translated", which was false.
+
+**Found by one player, one evening, one game nobody here had tried (v0.5.3):**
+
+Wuthering Waves, and a message that was mostly praise with five defects buried in it. Every one had
+been in the code for weeks; none had been found by testing, because they only appear to someone
+using the app the way it was meant to be used rather than the way it was written.
+
+- **«كلام مش عارف يترجمه فا يقف خالص» — it stops dead on text it cannot translate.** One frame
+  throwing ended the whole session, because the try/catch wrapped the loop rather than the frame.
+  Exactly the kind of bug that survives every test: no test ever throws in the middle of a poll.
+- **«كل ما يحصل مشكله اخش علي الاعدادات نفسها» — every problem means going into Settings.** Not a
+  feature request. It is the *consequence* of the one above: the app had one reporting channel for
+  auto-watch and it was the Settings status line. The user was describing our error handling from
+  the outside without knowing it.
+- **«البرنامج بيمنع تصوير اي برنامج زي Nvidia app» — the overlay blocks screen recording.** True,
+  deliberate, correct, and never explained anywhere. `WDA_EXCLUDEFROMCAPTURE` is there so the app
+  cannot read its own Arabic back — but wanting to record what you are playing, with the translation
+  in it, is an obvious thing to want and the app simply refused without saying why.
+- **«ممكن ما يشوفش الكلام لازم اعيد تحديد المكان» — sometimes it cannot see the text and the region
+  has to be redrawn.** The app knew: it was getting empty reads poll after poll. It said "no text in
+  the capture region" once per poll and never once said "the region is probably wrong now".
+- **«يتحكم في عدد ثواني الترجمه بدل انو تلقائي» — let the user set the seconds.** Both auto-watch
+  numbers existed and neither had any UI at all; they were hand-edited JSON. Nobody had noticed
+  because nobody who knew they existed needed the control.
+
+The pattern worth keeping: **four of the five were failures of REPORTING, not of behaviour.** The
+app already knew it had stopped, knew the region was dead, knew it was hiding from the recorder. It
+had nowhere to say any of it that the person in a fullscreen game would ever look.
 
 **Latent, found by inspection and not yet hit in the wild:** the bundled `NotoSansArabic-Regular.ttf`
 contains **no Latin at all** — not `A`, not `%`, and none of `✓ ✗ ⚠ → · ⏎`. Every Latin word in the

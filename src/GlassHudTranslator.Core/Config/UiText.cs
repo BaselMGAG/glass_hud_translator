@@ -162,6 +162,38 @@ public sealed class UiText
     public required string AutoWatchOn { get; init; }
     public required string AutoWatchExpired { get; init; }
     public required string AutoWatchStopped { get; init; }
+
+    /// <summary>One poll threw and was skipped. Status line only - it is not worth the overlay.</summary>
+    public required string AutoWatchSkippedFrame { get; init; }
+
+    /// <summary>The session cap, reached. Goes to the overlay: nobody asked for this to happen.</summary>
+    public required string AutoWatchReachedLimit { get; init; }
+
+    /// <summary>
+    /// The warning the cap exists to deliver, and the reason it is sticky on the overlay rather
+    /// than a line in Settings: a player in a fullscreen game reads one of those two.
+    /// </summary>
+    public required string AutoWatchStillRunning { get; init; }
+
+    /// <summary>Said once, after a long run of empty reads, naming the re-pick hotkey.</summary>
+    public required string RegionSeemsWrong { get; init; }
+
+    public required string WatchMode { get; init; }
+    public required string WatchModeDialogue { get; init; }
+    public required string WatchModeVideo { get; init; }
+    public required string WatchModeNote { get; init; }
+    public required string WatchModeSetTo { get; init; }
+    public required string SecondsBetweenTranslations { get; init; }
+    public required string SecondsBetweenAutomatic { get; init; }
+    public required string SecondsBetweenNote { get; init; }
+    public required string WatchWithoutLimit { get; init; }
+    public required string WatchWithoutLimitNote { get; init; }
+    public required string NoLimit { get; init; }
+    public required string AllowRecording { get; init; }
+    public required string AllowRecordingNote { get; init; }
+    public required string LearnedPace { get; init; }
+    public required string LearnedPaceUnknown { get; init; }
+    public required string OutrunningTheFloor { get; init; }
     public required string NoTextInRegion { get; init; }
     public required string TooShortToTranslate { get; init; }
     public required string GameWindowNotFound { get; init; }
@@ -289,6 +321,7 @@ public sealed class UiText
         HotkeyAction.ToggleAutoWatch => HotkeyToggleAutoWatch,
         HotkeyAction.FlagTranslation => HotkeyFlagTranslation,
         HotkeyAction.ToggleOverlay => HotkeyToggleOverlay,
+        HotkeyAction.OpenSettings => HotkeyOpenSettings,
         _ => action.ToString(),
     };
 
@@ -297,6 +330,7 @@ public sealed class UiText
     public required string HotkeyToggleAutoWatch { get; init; }
     public required string HotkeyFlagTranslation { get; init; }
     public required string HotkeyToggleOverlay { get; init; }
+    public required string HotkeyOpenSettings { get; init; }
 
     public static UiText For(UiLanguage language) => language == UiLanguage.Arabic ? Ar : En;
 
@@ -421,7 +455,7 @@ public sealed class UiText
         ApplyHotkeys = "Apply hotkeys",
         ResetToDefaults = "Reset to defaults",
         ManualControls = "Manual controls",
-        ManualControlsNote = "The same five actions, for when a hotkey is unavailable or clashes.",
+        ManualControlsNote = "The same actions, for when a hotkey is unavailable or clashes.",
         TranslateNow = "Translate now",
         ToggleAutoWatch = "Toggle auto-watch",
 
@@ -440,9 +474,51 @@ public sealed class UiText
         NothingCaptured = "Nothing was captured. Is the game running in Borderless Windowed mode?",
         TranslationFailed = "Translation failed: {0}",
         AutoWatchOff = "Auto-watch off.",
-        AutoWatchOn = "Auto-watch on. It stops itself after {0} seconds with no new text.",
+        AutoWatchOn = "Auto-watch on, {0}. It stops itself after {1} minutes.",
         AutoWatchExpired = "Auto-watch stopped after {0} seconds with no new text.",
         AutoWatchStopped = "Auto-watch stopped: {0}",
+        AutoWatchSkippedFrame = "Skipped a frame: {0}",
+        AutoWatchReachedLimit =
+            "Auto-watch switched itself off after {0} minutes and {1} translations. "
+            + "Press the auto-watch key again to carry on.",
+        AutoWatchStillRunning =
+            "Auto-watch is still on — {0} minutes, {1} translations so far.",
+        RegionSeemsWrong =
+            "Nothing has been readable in the capture region for a while. If the game's layout "
+            + "changed, press {0} to draw the box again.",
+
+        WatchMode = "What is on screen",
+        WatchModeDialogue = "Game dialogue",
+        WatchModeVideo = "Video subtitles",
+        WatchModeSetTo = "Auto-watch set to {0}.",
+        WatchModeNote =
+            "Game dialogue waits for the text to finish appearing, which is right for a line that "
+            + "types itself out and stays put. Video subtitles appear whole and leave after a few "
+            + "seconds, so that mode checks more often, waits far less, and keeps a minimum gap "
+            + "between translations. Video is much more expensive: roughly one request per "
+            + "subtitle, so a film is a large part of a day's free allowance.",
+        SecondsBetweenTranslations = "Seconds between translations",
+        SecondsBetweenAutomatic = "Automatic",
+        SecondsBetweenNote =
+            "Leave this on Automatic unless you want the pace to be your decision. Higher is "
+            + "slower and cheaper; lower is faster, up to the point where the Arabic arrives "
+            + "quicker than anyone can read it.",
+        WatchWithoutLimit = "Let auto-watch run without a time limit",
+        WatchWithoutLimitNote =
+            "Off by default. The limit is the only thing that stops a forgotten session spending "
+            + "your whole daily allowance — the older 90-second rule cannot help, because it only "
+            + "counts time with no new text at all. With this on you still get the warning.",
+        NoLimit = "no limit",
+        AllowRecording = "Let screen recorders see the overlay",
+        AllowRecordingNote =
+            "Off by default, which is why the translation is missing from recordings and from the "
+            + "Nvidia app. It is hidden from capture so that the app cannot read its own Arabic "
+            + "back and translate that instead. Turn it on to record or stream with the "
+            + "translation visible — and keep the overlay clear of the capture region if you do.",
+        LearnedPace = "Pace learned from what you are watching: a new line about every {0} seconds.",
+        LearnedPaceUnknown = "Pace: still measuring.",
+        OutrunningTheFloor =
+            "Text is changing faster than the gap you have set, so some lines are being skipped.",
         NoTextInRegion = "No text in the capture region. Is a dialogue box actually on screen?",
         TooShortToTranslate = "Only \"{0}\" found — too short to be dialogue.",
         GameWindowNotFound = "Could not find a window for {0}. Is the game running, and not minimised?",
@@ -591,6 +667,7 @@ public sealed class UiText
         HotkeyToggleAutoWatch = "Toggle auto-watch",
         HotkeyFlagTranslation = "Correct the current translation",
         HotkeyToggleOverlay = "Show / hide the overlay",
+        HotkeyOpenSettings = "Open Settings",
     };
 
     public static readonly UiText Ar = new()
@@ -706,7 +783,7 @@ public sealed class UiText
         ApplyHotkeys = "طبّق الاختصارات",
         ResetToDefaults = "استعادة الافتراضي",
         ManualControls = "تحكّم يدوي",
-        ManualControlsNote = "الإجراءات الخمسة نفسها، لحين تعذّر اختصار أو تعارضه.",
+        ManualControlsNote = "الإجراءات نفسها، لحين تعذّر اختصار أو تعارضه.",
         TranslateNow = "ترجم الآن",
         ToggleAutoWatch = "تشغيل/إيقاف المتابعة",
 
@@ -725,9 +802,48 @@ public sealed class UiText
         NothingCaptured = "لم يُلتقط شيء. هل اللعبة شغّالة بوضع النافذة بلا إطار؟",
         TranslationFailed = "أخفقت الترجمة: {0}",
         AutoWatchOff = "أُوقفت المتابعة التلقائية.",
-        AutoWatchOn = "المتابعة التلقائية شغّالة. وتتوقّف وحدها بعد {0} ثانية بلا نص جديد.",
+        AutoWatchOn = "المتابعة التلقائية شغّالة، {0}. وتتوقّف وحدها بعد {1} دقائق.",
         AutoWatchExpired = "توقّفت المتابعة التلقائية بعد {0} ثانية بلا نص جديد.",
         AutoWatchStopped = "توقّفت المتابعة التلقائية: {0}",
+        AutoWatchSkippedFrame = "تخطّى لقطة: {0}",
+        AutoWatchReachedLimit =
+            "أوقفت المتابعة التلقائية نفسها بعد {0} دقيقة و {1} ترجمة. "
+            + "اضغط مفتاح المتابعة مرة أخرى للاستمرار.",
+        AutoWatchStillRunning =
+            "المتابعة التلقائية ما زالت شغّالة — {0} دقيقة، و {1} ترجمة حتى الآن.",
+        RegionSeemsWrong =
+            "لم يُقرأ أي نص في منطقة الالتقاط منذ فترة. إن تغيّر شكل واجهة اللعبة، "
+            + "اضغط {0} لتحديد المنطقة من جديد.",
+
+        WatchMode = "ما الذي على الشاشة",
+        WatchModeDialogue = "حوار لعبة",
+        WatchModeVideo = "ترجمة فيديو",
+        WatchModeSetTo = "ضُبطت المتابعة التلقائية على {0}.",
+        WatchModeNote =
+            "حوار اللعبة ينتظر النص حتى يكتمل ظهوره، وهذا هو الصواب لسطر يُكتب حرفاً حرفاً ثم "
+            + "يثبت. أما ترجمة الفيديو فتظهر كاملة وتختفي بعد ثوانٍ، فيتابعها البرنامج أسرع، "
+            + "وينتظر أقل بكثير، ويترك فاصلاً أدنى بين ترجمة وأخرى. والفيديو أغلى كثيراً: طلب "
+            + "لكل سطر تقريباً، فالفيلم الواحد يلتهم جزءاً كبيراً من حصة اليوم المجانية.",
+        SecondsBetweenTranslations = "الثواني بين ترجمة وأخرى",
+        SecondsBetweenAutomatic = "تلقائي",
+        SecondsBetweenNote =
+            "اتركه على «تلقائي» إلا إذا أردت أن يكون الإيقاع قرارك أنت. فالرقم الأكبر أبطأ وأقل "
+            + "تكلفة، والأصغر أسرع، إلى الحدّ الذي تصل فيه العربية أسرع مما يستطيع أحد قراءته.",
+        WatchWithoutLimit = "دع المتابعة التلقائية تعمل بلا حدّ زمني",
+        WatchWithoutLimitNote =
+            "مطفأ افتراضياً. الحدّ هو الشيء الوحيد الذي يمنع جلسة منسيّة من استهلاك حصتك اليومية "
+            + "كلها — وقاعدة الـ٩٠ ثانية القديمة لا تنفع، لأنها تعدّ الوقت الخالي من أي نص جديد "
+            + "فقط. ومع تشغيل هذا الخيار يبقى التنبيه يظهر.",
+        NoLimit = "بلا حدّ",
+        AllowRecording = "اسمح لبرامج التسجيل برؤية الطبقة",
+        AllowRecordingNote =
+            "مطفأ افتراضياً، ولهذا لا تظهر الترجمة في التسجيلات ولا في تطبيق Nvidia. فهي مخفيّة "
+            + "عن الالتقاط حتى لا يقرأ البرنامج عربيته هو ويترجمها من جديد. شغّله لتسجّل أو تبثّ "
+            + "والترجمة ظاهرة — وأبقِ الطبقة بعيدة عن منطقة الالتقاط إن فعلت.",
+        LearnedPace = "الإيقاع المستنتَج مما تشاهده: سطر جديد كل {0} ثانية تقريباً.",
+        LearnedPaceUnknown = "الإيقاع: ما زال قيد القياس.",
+        OutrunningTheFloor =
+            "النص يتغيّر أسرع من الفاصل الذي ضبطته، فتُتخطّى بعض السطور.",
         NoTextInRegion = "لا نصّ في منطقة الالتقاط. هل يظهر صندوق حوار على الشاشة فعلاً؟",
         TooShortToTranslate = "لم يُقرأ سوى «{0}» — أقصر من أن يكون حواراً.",
         GameWindowNotFound = "لم يُعثر على نافذة لـ {0}. هل اللعبة شغّالة وغير مصغَّرة؟",
@@ -872,5 +988,6 @@ public sealed class UiText
         HotkeyToggleAutoWatch = "تشغيل/إيقاف المتابعة التلقائية",
         HotkeyFlagTranslation = "تصحيح الترجمة الحالية",
         HotkeyToggleOverlay = "إظهار / إخفاء الطبقة",
+        HotkeyOpenSettings = "فتح الإعدادات",
     };
 }

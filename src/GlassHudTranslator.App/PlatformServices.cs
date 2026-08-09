@@ -146,12 +146,13 @@ public static class PlatformServices
     /// Click-through, never-focused, always-on-top, and excluded from its own captures. Returns a
     /// warning when that last part is unavailable, which is the case on Windows builds before 2004.
     /// </summary>
-    public static string? ApplyOverlayWindowStyles(nint windowHandle)
+    public static string? ApplyOverlayWindowStyles(nint windowHandle, bool hideFromCapture = true)
     {
 #if WINDOWS
-        return Windows.OverlayWindowStyles.Apply(windowHandle).Warning;
+        return Windows.OverlayWindowStyles.Apply(windowHandle, hideFromCapture).Warning;
 #else
         _ = windowHandle;
+        _ = hideFromCapture;
         return null;
 #endif
     }

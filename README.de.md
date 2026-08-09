@@ -113,8 +113,9 @@ Arabische erscheint nach etwa einer Sekunde, oder sofort, wenn diese Zeile schon
 | `Strg+Umschalt+H` | Overlay ein-/ausblenden (die Übersetzung läuft darunter weiter) |
 | `Strg+Umschalt+R` | Aufnahmebereich neu festlegen |
 | `Strg+Umschalt+F` | Aktuelle Übersetzung korrigieren und die Korrektur festhalten |
+| `Strg+Umschalt+S` | Einstellungen öffnen, ohne das Spiel zu verlassen |
 
-Alle fünf lassen sich unter Einstellungen → **Hotkeys** neu belegen. Als Modifikatoren gehen Strg,
+Alle sechs lassen sich unter Einstellungen → **Hotkeys** neu belegen. Als Modifikatoren gehen Strg,
 Umschalt, Alt und Windows; als Tasten A–Z, 0–9, F1–F24, Pfeiltasten, Einfg/Entf/Pos1/Ende, der
 Ziffernblock und Satzzeichen.
 
@@ -154,10 +155,22 @@ Anfrage kostet. In einer langen Zwischensequenz lässt `Strg+Umschalt+A` das Pro
 mitlaufen. Es wartet, bis der Text stillsteht, bevor es übersetzt — eine Zeile, die sich Zeichen für
 Zeichen aufbaut, kostet also eine Anfrage statt einer pro sichtbar gewordenem Stück.
 
-Ein Modus zum Vergessen ist es aber nicht: es schaltet sich erst nach 90 Sekunden **ganz ohne neuen
-Text** selbst ab. Ein Gespräch, das weitergeht, hält es also am Laufen — und verbraucht weiter dein
-Tageskontingent. Drück `Strg+Umschalt+A` noch einmal, wenn die Sequenz vorbei ist. Ein Zeitlimit mit
-Warnung ist das Nächste, was gebaut wird.
+Nach zwei Minuten sagt es dir auf dem Overlay, dass es noch läuft und was es verbraucht hat, und
+nach vier schaltet es sich selbst ab — oder früher, wenn es mehr ausgegeben hat, als vier Minuten
+Dialog normalerweise kosten. In den Einstellungen gibt es einen Schalter, um ohne Limit zu laufen.
+
+**Du schaust ein Video? Sag es ihm.** Einstellungen → **Hotkeys** → *Was auf dem Bildschirm ist*.
+Untertitel erscheinen komplett und sind nach wenigen Sekunden wieder weg — auf den Stillstand des
+Textes zu warten, richtig für ein Spiel, das Dialog Zeichen für Zeichen tippt, heißt hier, dass das
+Arabische ankommt, wenn die Zeile schon fort ist. Gemessen über bewegtem Bild: 4,6 Sekunden, gegen
+einen Untertitel, der drei lebt. Der Videomodus prüft öfter und wartet weit weniger. Er kostet auch
+weit mehr: ungefähr eine Anfrage pro Untertitel, ein Film also ein gutes Stück des Tageskontingents.
+
+**Das Tempo findet es selbst heraus.** Die Anwendung misst die Abstände zwischen den Zeilen und zieht
+ihre eigene Frist nach — eine langsame Dialogbox und eine schnelle Untertitelspur bekommen also
+unterschiedliche Zeiten, ohne dass du etwas wählst. Was sie herausgefunden hat, steht unter
+Diagnostics; und wenn der Text wirklich schneller kommt, als übersetzt werden kann, sagt sie das,
+statt stillschweigend Zeilen auszulassen.
 
 **Einen falschen Namen einmal richtigstellen.** Kommt der Name einer Figur falsch heraus, drück
 `Strg+Umschalt+F` und korrigiere ihn. Die Korrektur wird festgehalten und schlägt von da an das
@@ -283,7 +296,7 @@ Früh, aber es funktioniert.
 
 | | |
 |---|---|
-| Übersetzungskette (OCR → bereinigen → Cache → LLM → zeichnen) | funktioniert, 524 Tests |
+| Übersetzungskette (OCR → bereinigen → Cache → LLM → zeichnen) | funktioniert, 542 Tests |
 | Arabische Darstellung: Formung, Bidi, Vokalzeichen | funktioniert und geprüft |
 | Spielprofile, Glossar, OCR-Korrekturen | funktionieren |
 | Anbieterwechsel, Kontingentzählung, Cache | funktioniert |
@@ -296,6 +309,9 @@ Früh, aber es funktioniert.
 | Anzeigeskalierung über 100 % | **funktioniert** |
 | Mehr als ein Schlüssel pro Anbieter | **funktioniert** |
 | Vokalzeichen an oder aus | **funktioniert** |
+| Limit für den Automatikmodus | **funktioniert** |
+| Modus für Video-Untertitel | **funktioniert**, noch nicht an einem langen Film gemessen |
+| Overlay in Aufnahmen | **funktioniert** — standardmäßig aus, siehe Einstellungen → Overlay |
 | Klicks durch das Overlay hindurch | noch nicht geprüft |
 
 Getestet gegen **Final Fantasy XIV** und mehrere andere Spiele unter Windows über eine lange
@@ -309,11 +325,11 @@ ordentlich gemessen worden. Ich entwickle auf macOS und teste auf einem Windows-
 kommen Windows-Korrekturen schubweise — und deshalb stehen „geschrieben" und „geprüft" oben in
 getrennten Zeilen.
 
-**Auto-Watch hat noch kein Zeitlimit.** Einmal an, übersetzt es weiter, bis du es abschaltest — es
-beendet sich selbst erst nach 90 Sekunden *ganz ohne neuen Text*, ein langes Gespräch hält es also
-am Laufen. Es zahlt zwar nicht mehr mehrfach für einen einzigen Satz, der sich aufbaut (es wartet
-erst, bis der Text stillsteht), aber eine vergessene Sitzung kann trotzdem Kontingent verbrauchen,
-das du nicht ausgeben wolltest. Ein Limit und eine Warnung kommen.
+**Der Automatikmodus hat jetzt ein Limit**, gemessen ab dem Einschalten statt ab der letzten
+Änderung — die alte Regel zählte nur Zeit *ganz ohne neuen Text*, und über einem Video oder in einem
+Spiel mit Animation hinter dem Dialog ist sie deshalb nie ausgelöst worden. Nach zwei Minuten warnt
+er auf dem Overlay, nach vier hört er auf, nach Zeit oder nach Verbrauch, je nachdem was zuerst
+kommt. Das Limit lässt sich abschalten.
 
 **Kostenlose Modelle werden ohne Vorwarnung abgeschaltet, und beide Anbieter taten es in derselben
 Woche.** Modellnamen stehen in [`data/models.json`](data/models.json), nie im Code — fällt bei einem

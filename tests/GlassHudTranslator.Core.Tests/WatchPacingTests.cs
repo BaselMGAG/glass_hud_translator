@@ -1,0 +1,297 @@
+using GlassHudTranslator.Core.Capture;
+using Microsoft.Extensions.Time.Testing;
+using Xunit;
+
+namespace GlassHudTranslator.Core.Tests;
+
+/// <summary>
+/// The pacing policy: how long auto-watch may run, how often it may spend, and how it tightens
+/// itself to the rhythm of whatever it turns out to be watching.
+/// </summary>
+public class WatchPacingTests
+{
+    [Fact]
+    public void VideoIsImpatientAndDialogueIsNot()
+    {
+        var dialogue = WatchPacing.For(WatchMode.Dialogue);
+        var video = WatchPacing.For(WatchMode.Video);
+
+        // The number that fixes the reported delay. Over moving picture the stillness test can
+        // never pass, so every release comes from this cap - at three seconds the Arabic arrived
+        // after the subtitle it translated had already left the screen.
+        Assert.True(video.SettleCap < dialogue.SettleCap);
+        Assert.True(video.PollsPerSecond > dialogue.PollsPerSecond);
+
+        // And the other half: without a floor, "translate as soon as it changes" over video is a
+        // request per poll.
+        Assert.True(video.MinimumInterval > TimeSpan.Zero);
+        Assert.Equal(TimeSpan.Zero, dialogue.MinimumInterval);
+    }
+
+    [Fact]
+    public void DialogueKeepsTheTwoAndFourMinuteCapsItWasAskedFor()
+    {
+        var dialogue = WatchPacing.For(WatchMode.Dialogue);
+
+        Assert.Equal(TimeSpan.FromMinutes(2), dialogue.WarnAfter);
+        Assert.Equal(TimeSpan.FromMinutes(4), dialogue.StopAfter);
+    }
+
+    [Fact]
+    public void VideoIsMeasuredInTheLengthOfWhatIsBeingWatched()
+    {
+        // Stopping a film every four minutes would be worse than not capping at all: the user
+        // would simply switch the cap off, and then nothing guards anything.
+        var video = WatchPacing.For(WatchMode.Video);
+
+        Assert.True(video.StopAfter >= TimeSpan.FromMinutes(40));
+        Assert.True(video.StopAfterRequests >= 1000);
+    }
+}
+
+public class WatchSessionTests
+{
+    private static (WatchSession Session, FakeTimeProvider Clock) Fresh(WatchMode mode = WatchMode.Dialogue)
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var session = new WatchSession(WatchPacing.For(mode), clock);
+        session.Start();
+        return (session, clock);
+    }
+
+    [Fact]
+    public void TheCapIsMeasuredFromSwitchOnAndNothingResetsIt()
+    {
+        // The whole point. The old guard was an idle timer that reset on any movement, so over a
+        // playing video - or a game with animation in the capture region - it could never fire at
+        // all. Translating constantly must bring the cap CLOSER, not push it away.
+        var (session, clock) = Fresh();
+
+        for (var minute = 0; minute < 4; minute++)
+        {
+            clock.Advance(TimeSpan.FromMinutes(1));
+            session.Translated();
+        }
+
+        Assert.Equal(WatchVerdict.Stop, session.Check());
+    }
+
+    [Fact]
+    public void TheWarningIsGivenOnceAndNotOnEveryPollAfterIt()
+    {
+        var (session, clock) = Fresh();
+
+        clock.Advance(TimeSpan.FromMinutes(2));
+        Assert.Equal(WatchVerdict.Warn, session.Check());
+
+        // Otherwise a sticky overlay notice would be rewritten twice a second for two minutes.
+        Assert.Equal(WatchVerdict.Run, session.Check());
+        Assert.Equal(WatchVerdict.Run, session.Check());
+    }
+
+    [Fact]
+    public void SpendingFastEnoughTripsTheCapBeforeTheClockDoes()
+    {
+        // Four minutes of cutscene is a dozen requests; four minutes of film is eighty. Time is a
+        // poor proxy for spend, so both are counted and the first one to arrive wins.
+        var (session, _) = Fresh(WatchMode.Video);
+
+        for (var i = 0; i < WatchPacing.For(WatchMode.Video).StopAfterRequests; i++)
+            session.Translated();
+
+        Assert.Equal(WatchVerdict.Stop, session.Check());
+    }
+
+    [Fact]
+    public void UnboundedStillWarnsButNeverStops()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var session = new WatchSession(WatchPacing.For(WatchMode.Dialogue), clock) { Unbounded = true };
+        session.Start();
+
+        clock.Advance(TimeSpan.FromMinutes(2));
+        Assert.Equal(WatchVerdict.Warn, session.Check());
+
+        clock.Advance(TimeSpan.FromHours(3));
+        Assert.Equal(WatchVerdict.Run, session.Check());
+    }
+
+    [Fact]
+    public void TheFloorHoldsBackTheNextTranslationAndThenReleasesIt()
+    {
+        var (session, clock) = Fresh(WatchMode.Video);
+        var floor = WatchPacing.For(WatchMode.Video).MinimumInterval;
+
+        Assert.True(session.MayTranslate());   // nothing has been shown yet
+        session.Translated();
+
+        Assert.False(session.MayTranslate());
+        clock.Advance(floor - TimeSpan.FromMilliseconds(1));
+        Assert.False(session.MayTranslate());
+
+        clock.Advance(TimeSpan.FromMilliseconds(1));
+        Assert.True(session.MayTranslate());
+    }
+
+    [Fact]
+    public void DialogueHasNoFloorBecauseNobodyCanOutrunOneByHand()
+    {
+        var (session, _) = Fresh();
+
+        session.Translated();
+        Assert.True(session.MayTranslate());
+    }
+
+    // ── the adaptive part ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void CadenceStaysUnknownUntilThereIsSomethingToTakeAMedianOf()
+    {
+        var (session, clock) = Fresh();
+
+        session.Translated();
+        Assert.Null(session.Cadence);
+
+        clock.Advance(TimeSpan.FromSeconds(4));
+        session.Translated();
+        Assert.Null(session.Cadence);
+    }
+
+    [Fact]
+    public void CadenceIsTheMedianSoOnePauseDoesNotSkewIt()
+    {
+        // A player who stops to read for half a minute must not make the next ten lines patient.
+        var (session, clock) = Fresh();
+
+        foreach (var gap in new[] { 3, 3, 40, 3, 3 })
+        {
+            session.Translated();
+            clock.Advance(TimeSpan.FromSeconds(gap));
+        }
+
+        session.Translated();
+
+        Assert.Equal(TimeSpan.FromSeconds(3), session.Cadence);
+    }
+
+    [Fact]
+    public void AFastRhythmTightensTheDeadline()
+    {
+        // Subtitles every three seconds. A three-second deadline means the translation lands as the
+        // line leaves; a third of the cadence means it lands while the line is still there.
+        var (session, clock) = Fresh();
+        var before = session.Settle().Cap;
+
+        for (var i = 0; i < 5; i++)
+        {
+            session.Translated();
+            clock.Advance(TimeSpan.FromSeconds(3));
+        }
+
+        var after = session.Settle().Cap;
+
+        Assert.Equal(WatchPacing.For(WatchMode.Dialogue).SettleCap, before);
+        Assert.Equal(TimeSpan.FromSeconds(1), after);
+    }
+
+    [Fact]
+    public void ASlowRhythmNeverMakesItSlowerThanTheModeAllows()
+    {
+        // Adaptation may only tighten. A human picked the mode's cap as the longest defensible
+        // wait, and no measurement should be able to argue the app into being lazier than that.
+        var (session, clock) = Fresh();
+
+        for (var i = 0; i < 5; i++)
+        {
+            session.Translated();
+            clock.Advance(TimeSpan.FromSeconds(60));
+        }
+
+        Assert.Equal(WatchPacing.For(WatchMode.Dialogue).SettleCap, session.Settle().Cap);
+    }
+
+    [Fact]
+    public void TheDeadlineHasAFloorOfItsOwn()
+    {
+        // Below this a deadline stops meaning "it is never going to hold still" and starts
+        // guaranteeing a translation of a half-drawn frame, which costs a request for half a line.
+        var (session, clock) = Fresh();
+
+        for (var i = 0; i < 5; i++)
+        {
+            session.Translated();
+            clock.Advance(TimeSpan.FromMilliseconds(300));
+        }
+
+        Assert.Equal(WatchSession.MinimumSettleCap, session.Settle().Cap);
+    }
+
+    [Fact]
+    public void ItSaysWhenTheContentIsFasterThanTheGapAllows()
+    {
+        // Skipping lines silently reads as "this tool is unreliable". Saying so reads as "this
+        // content is faster than this setting", which is true and is something the user can act on.
+        var (session, clock) = Fresh(WatchMode.Video);
+
+        for (var i = 0; i < 5; i++)
+        {
+            session.Translated();
+            clock.Advance(TimeSpan.FromMilliseconds(600));
+        }
+
+        Assert.True(session.OutrunningTheFloor);
+    }
+
+    [Fact]
+    public void ANormalSubtitleTrackIsNotReportedAsOutrunningAnything()
+    {
+        var (session, clock) = Fresh(WatchMode.Video);
+
+        for (var i = 0; i < 5; i++)
+        {
+            session.Translated();
+            clock.Advance(TimeSpan.FromSeconds(3.5));
+        }
+
+        Assert.False(session.OutrunningTheFloor);
+    }
+
+    [Fact]
+    public void StartingAgainForgetsTheLastRun()
+    {
+        var (session, clock) = Fresh();
+
+        for (var i = 0; i < 5; i++)
+        {
+            session.Translated();
+            clock.Advance(TimeSpan.FromSeconds(3));
+        }
+
+        clock.Advance(TimeSpan.FromMinutes(10));
+        session.Start();
+
+        Assert.Null(session.Cadence);
+        Assert.Equal(0, session.Requests);
+        Assert.Equal(WatchVerdict.Run, session.Check());
+    }
+}
+
+public class SettleGateRetuneTests
+{
+    [Fact]
+    public void RetuningChangesThePaceWithoutForgettingTheScreen()
+    {
+        // The adaptation retunes the gate on every poll. If that also cleared what is on the
+        // overlay, every poll would re-translate the line already showing.
+        var frame = new FrameBuilder(200, 80, Rgb.DarkScene).Rect(20, 20, 120, 30, Rgb.TextWhite).Build();
+        var signature = FrameSignature.Compute(frame);
+
+        var gate = new FrameSettleGate();
+        gate.Offer(signature);
+        Assert.Equal(FrameVerdict.Ready, gate.Offer(signature));
+
+        gate.Retune(new SettleOptions { RequiredStillTicks = 1, Cap = TimeSpan.FromSeconds(1) });
+
+        Assert.Equal(FrameVerdict.Unchanged, gate.Offer(signature));
+    }
+}
