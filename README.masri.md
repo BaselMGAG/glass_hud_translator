@@ -6,7 +6,7 @@
 
 *بيقرأ الكلام اللي ظاهر في اللعبة، يترجمه بالـAI، ويحطه فوق اللعبة.*
 
-[English](README.md) · [العربية الفصحى](README.ar.md) · [مصري](README.masri.md)
+[English](README.md) · [العربية الفصحى](README.ar.md) · [مصري](README.masri.md) · [Deutsch](README.de.md)
 
 [![التحميل](https://img.shields.io/badge/%D9%86%D8%B2%D9%84%20%D8%A7%D9%84%D8%A8%D8%B1%D9%86%D8%A7%D9%85%D8%AC-Windows%2064--bit-2ea44f?style=for-the-badge)](https://github.com/basel2000de/glass_hud_translator/releases/latest)
 
