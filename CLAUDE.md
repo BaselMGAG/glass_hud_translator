@@ -34,7 +34,7 @@ solution level it tries to force `net10.0` onto the Windows-only projects and fa
 dotnet test
 ```
 
-446 tests, all runnable on macOS and Linux.
+524 tests, all runnable on macOS and Linux.
 
 ```bash
 dotnet run --project tools/Replay -- --no-cache
@@ -189,6 +189,46 @@ than the model. A lane cools down only when *every* model it tried was rate limi
 puts the biggest daily allowance first in each lane: **order within a lane is the quota policy**,
 and it is not the same as quality order.
 
+**`maxOutputTokens` is what a provider *reserves*, and on Groq that is a throughput setting.** Groq
+admits a request against `prompt_tokens + max_tokens` — not against what the answer costs — against
+a ceiling of **8,000 tokens a minute** for the gpt-oss models and 12,000 for llama. So the lane-wide
+4096, set in good faith to stop reasoning models returning empty completions, reserved more than
+half of one minute's allowance on every line: the *second* line inside any minute was refused, all
+three models were refused in turn, the lane went into a sixty-second cooldown, and the log said
+`groq in cooldown, skipping` for the rest of the session. Groq was never slow — 0.09 to 0.74 s
+measured — and never refusing on principle. The comment in `models.json` that said "tokens cost
+nothing that matters here, the workload is request-limited" was true of Gemini and false of Groq,
+and nobody checked. Budgets are per model now, and `reasoningEffort: "low"` is what makes a small
+one safe: gpt-oss spends ~360 tokens thinking about a subtitle at default effort and 5 at low.
+**Those two numbers have to move together**, which is why they live on the same entry.
+
+**A models.json entry is a string or an object, and both are read forever.** The string form is what
+every installation already has. `ProviderConfig.Models` stays a computed `string[]` so every reader
+is unchanged; `ModelFor(id)` is how a provider finds the overrides. A malformed entry degrades to a
+reported problem rather than refusing to load — this file is meant to be hand-edited, and an
+unstartable app is a poor answer to a stray comma.
+
+**`reasoning_effort` is per model because one lane needs two request shapes.**
+`llama-3.3-70b-versatile` answers 400 to the very parameter its two gpt-oss lane-mates require. The
+parameter is omitted from the JSON entirely when unset — a `null` is still the parameter.
+
+**A rate-limit cooldown honours the provider's own `retry-after`, clamped.** Groq asks for about
+four seconds when it is a per-minute limit and over an hour when it is a daily one; a fixed minute
+was wrong in both directions. Clamped into `[MinimumCooldown, RateLimitCooldown]`: the floor stops a
+provider answering "0" from turning the fallback walk into a spin, and the ceiling stops an
+unverified header taking a lane out of the whole session. When several models refuse, the *soonest*
+of them decides — one model out of tokens for the day beside one out for four seconds is the normal
+Groq mixture.
+
+**One provider is one lane per key, and the expansion happens in `ProviderFactory`, not the
+router.** Slot 1 keeps the plain secret name — `GeminiApiKey`, not `GeminiApiKey#1` — because every
+existing installation has a key filed under it and a rename would silently log all of them out with
+the English fallback as the only symptom. Every slot is built whether or not it holds a key, so a
+key pasted into Settings works without a restart; `AnnouncesMissingKey` is false for slots 2 and 3
+so their emptiness, which is the normal state, stays out of the router's "No API key for:" line.
+Lane names reach the quota ledger and `translations.provider` as ordinary data — the cache key does
+not include the provider, so nothing becomes unreachable.
+
 **`RouterOptions.TotalBudget` exists because everything falls through now.** With seven models
 across two free lanes, a run of timeouts could otherwise spend a minute before the overlay said
 anything. Most failures are instant — a 404 or a 429 costs milliseconds — so the cap only bites on
@@ -309,6 +349,27 @@ what a capture region is, and the intended reader is not technical and may not r
 are 13px at `#c8ccd0` (10.3:1 against the window, up from 6.3:1), with `LineSpacing` — never
 `LineHeight` — and more of it in Arabic, where the wrapped paragraphs are denser.
 
+**Tashkeel is stripped on the way OUT, and the cache keeps what the provider actually said.**
+`TranslationPipeline.Present` runs on both return sites — the live one and the cache hit — and
+nowhere else. That placement is the whole design: a display preference must not be baked into a row
+that outlives it, and stripping before the cache write would mean turning the switch on only
+affected sentences the player had not reached yet. It also has to stay *above* the overlay:
+`OverlayWindow.Render` is shared by «جارٍ الترجمة» and «تعذّرت الترجمة», both of which carry
+deliberate diacritics, and `ArabicRenderTestWindow` has a case that exists to prove they render.
+The prompt asks for plain Arabic too — that is not redundancy, it stops us paying output tokens for
+marks we then delete, and on Groq output tokens are the metered resource.
+
+**Auto-watch waits for the frame to stop changing before it translates.** `FrameSettleGate` is the
+gate; FFXIV reveals dialogue a character at a time and every partial line used to count as a new
+one, so one sentence cost four requests to show four progressively less wrong versions of itself.
+The asymmetry that makes it safe is the one `StableOcrReader` was written around: another poll is a
+BitBlt and a 64×24 thumbnail, another translation is a metered request, so the gate spends polls to
+avoid requests and never the reverse. `SettleOptions.Cap` is not optional — without it a game whose
+subtitles animate continuously settles never and translates never. It compares *signatures*, not
+OCR text, which is what keeps deciding-to-wait free. `tools/Replay` deliberately does **not** apply
+it: its corpus is a set of distinct frames rather than a time series off one screen, so a settle
+gate there would skip most of the frames the harness exists to push through.
+
 **Set the bundled font whenever Arabic is on screen.** `Fonts.Arabic` is bundled for the reason
 `NOTICE` gives: a Windows machine with no Arabic font installed renders every Arabic string as
 empty boxes. Relying on OS fallback works on macOS and hides the problem — the Arabic tab headers
@@ -357,8 +418,17 @@ timing for the overlay styles — both turned out fine.
 the cache survived, translation worked, keys persisted across a restart, and the overlay position
 sliders moved the panel over a running game.
 
-Still unverified: click-through, display scaling above 100%, auto-watch under sustained load,
-cache hit rate over a real session, and multi-monitor behaviour of any kind.
+**Multi-monitor and display scaling are verified now**, by a long session across several games on a
+two-screen setup at different DPIs. That retires the two oldest entries on this list.
+
+**v0.5.2's provider work was verified against live keys**, not reasoned about: thirteen frames
+through `tools/Replay --provider groq`, one real 429 on `gpt-oss-120b` mid-run, fall-through to
+`gpt-oss-20b`, thirteen translations, no cooldown and no English fallback. The refusal that used to
+kill the lane now costs one model.
+
+Still unverified: click-through, cache hit rate over a real session, and the settle gate against a
+real game — it is tested against synthetic reveals, and FFXIV's actual reveal speed against a 2 fps
+poll is arithmetic nobody has measured.
 
 ### What a day of real use cost, and what it taught
 
@@ -435,6 +505,62 @@ Kept current with the changelog.
   was listed as `baldur-s-gate-3`. Tolerable while the only two shipped with the app; not once
   anyone could add one. Same defect as building a button caption out of a stored key.
 
+**Found by a day of real play, and the most expensive assumption in the file (v0.5.2):**
+
+- **"Tokens cost nothing that matters here, the workload is request-limited."** That sentence was
+  written in `models.json` while fixing the empty-completion disaster, it was true of Gemini, and it
+  was never checked against Groq. Groq admits a request against `prompt_tokens + max_tokens` — what
+  you reserve, not what you spend — against 8,000 tokens a *minute*. So `maxOutputTokens: 4096`
+  meant one line a minute, and the second one 429'd. Three models refused in turn, the lane went
+  into a sixty-second cooldown, and every line after that logged `groq in cooldown, skipping`. The
+  report was "groq seems not to be utilized" and the obvious readings were all wrong: not slow (it
+  answers in under a second), not refusing, not deprecated. **A rate limit names its own unit, and
+  the unit was in the error text the whole time** — `on tokens per minute (TPM): Limit 8000, Used
+  7629, Requested 508`. Read the refusal before theorising about the provider.
+- The same 4096 was doing this on every model of the lane at once, including the two that needed
+  perhaps 200 tokens. Per-lane was the wrong granularity and there was no evidence it was the right
+  one; it was simply where the field already existed.
+- **Automatic mode was paying four times over for one sentence.** FFXIV types dialogue out a
+  character at a time, and every intermediate state is a different frame, a different OCR string, a
+  different cache key and a new request. The user saw it as "it translates the same frame more than
+  once till it adjusts". `StableOcrReader` had been written for exactly this in the first week and
+  was never wired to anything, so the codebase had a fix for a bug it was still shipping.
+- **The models were adding tashkeel unevenly** — same conversation, half vowelled, half not,
+  depending which model in the fallback chain answered which line. Nobody had asked for it either
+  way; it was simply never specified, and unspecified means the model decides differently each time.
+
+**Caught in review before v0.5.2 shipped, and worth keeping because each was introduced by a fix:**
+
+- **The settle gate committed a frame as translated before the caller could refuse it.** `Offer`
+  returning `Ready` is not an opinion, it is a side effect — it records that frame as the one now on
+  the overlay. The `_busy` check sat *after* it, so a frame arriving while the manual hotkey was
+  mid-translation was dropped and simultaneously remembered as done, and that line was then never
+  translated at all. The old code had the same ordering and got away with it: a typewriter reveal
+  produced four or five candidate frames, so losing one cost nothing. Making it exactly one per line
+  is precisely what turned a harmless drop into a lost line.
+- **The total-time ceiling stopped being a ceiling.** Every lane is guaranteed one attempt even out
+  of budget — added in v0.5.1 so a slow Gemini could not starve Groq. With one provider becoming
+  three lanes, six configured lanes against a stalled provider measured **35 seconds for one line**
+  against a documented ceiling of twenty. The fix is the distinction the guarantee was always really
+  about: a different *provider* may answer, a different *key on the same endpoint* will not.
+- **The new config parser threw on the exact edit its own comment invited.** `"maxOutputTokens":
+  "700"` — a quoted number, beside the quoted `"low"` that belongs next to it — took `GetInt32` on a
+  string token, out through a `Load` that catches nothing, and the app came up as a bare overlay
+  reading "Startup failed" with no Settings window and so no way to reach the `Problems()` list that
+  would have named the field. A `null` in `models[]` did worse: it bypassed the converter entirely
+  and made `Problems()` itself throw. **When a file is documented as hand-editable, every reader of
+  it has to degrade, not just the ones you thought of.**
+- **A truncated answer was cached forever.** `finish_reason: "length"` was only consulted when the
+  answer was *empty*; a sentence cut off mid-word was returned as a success and written to the
+  cache, where every later capture of that line replayed the fragment permanently. Unreachable while
+  the lane reserved 4096 tokens — cutting the reservation is what made it live, which is the general
+  shape worth remembering: a change that makes something cheaper usually makes some other failure
+  reachable for the first time.
+- **The key-slot count hid a live key.** Settings counted how many slots held a key instead of
+  taking the highest, so clearing box 1 of a two-key setup left key 2 authenticating every line with
+  no box to see or clear it — while the lane summary on the same screen listed it. Emptying the
+  visible boxes then reported "All keys cleared. Nothing will be translated", which was false.
+
 **Latent, found by inspection and not yet hit in the wild:** the bundled `NotoSansArabic-Regular.ttf`
 contains **no Latin at all** — not `A`, not `%`, and none of `✓ ✗ ⚠ → · ⏎`. Every Latin word in the
 Arabic interface is already resolved by OS fallback. That works today, but the whole reason the font
@@ -444,8 +570,15 @@ codepoint to an Arabic string, check it against the font.
 
 ### Still unverified
 
-Click-through, display scaling above 100%, auto-watch under sustained load, cache hit rate over a
-real session, and multi-monitor behaviour of any kind.
+Click-through, and cache hit rate over a real session. Multi-monitor and display scaling above 100%
+came off this list in v0.5.2, verified by a long session across several games on two screens.
+
+The settle gate is the newest thing here and the least measured. It is tested against synthetic
+reveals, but whether FFXIV's actual reveal — against a 2 fps poll and `FrameSignature`'s six-cell
+threshold, which the file itself calls provisional — produces two identical consecutive polls is
+arithmetic nobody has run against a real capture. If it settles too eagerly the symptom is the old
+one, a half-typed line translated; if too slowly, a poll of extra latency. Both are recoverable,
+which is why it shipped, but neither is measured.
 
 `test-frames/` holds **synthetic** frames drawn by `SyntheticFrames`. They exercise every stage of
 the pipeline but say nothing about a real game's typeface, its translucency, or a moving 3D scene

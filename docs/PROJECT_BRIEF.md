@@ -133,11 +133,12 @@ contribute to**, not a finished product.
 | | |
 |---|---|
 | Translation speed | ~1 second per new line; instant for anything seen before |
-| Running cost | Free — the two free-tier providers cover roughly 3,500 translations a day between them, which is more play than anyone manages |
+| Running cost | Free — the two free-tier providers cover roughly 3,500 translations a day between them, which is more play than anyone manages, and roughly that again for each extra account you add a key for |
+| Keys per provider | Up to 3, tried in order — a free allowance belongs to the account, so a second key only helps from a second account |
 | Providers supported | 4 — two free (Google Gemini, Groq), two paid and opt-in (OpenAI, Anthropic Claude) |
 | Interface languages | 2 — English and Arabic, English by default |
 | Credit card needed | No |
-| Automated tests | 446 |
+| Automated tests | 524 |
 | Glossary | 86 Final Fantasy XIV proper nouns pinned so far |
 | Configurable hotkeys | 5 |
 | Licence | Apache 2.0 |

@@ -76,6 +76,12 @@ overlay draw over it.
 Windows account. Each provider shows whether it's free or billed per line, and where to get a key.
 Any provider you leave blank is switched off.
 
+You can add up to three keys per provider with **+ Add another key**. They're tried in order before
+moving on to the next provider, so all your Google keys are used before Groq is touched. One thing
+decides whether that's worth doing: a free allowance belongs to the **account**, not the key — two
+keys from the same Google account share one allowance and buy you nothing. A second key only helps
+if it comes from a second account.
+
 The first control on that tab is the interface language, labelled **Language · اللغة** in both
 scripts so it's findable either way. The whole interface is available in Arabic, right-to-left —
 see [below](#the-interface-speaks-arabic-too).
@@ -134,8 +140,14 @@ the panel moves as you drag them. Its position is measured inside the game's win
 put when the game moves or changes monitor.
 
 **Auto-watch for cutscenes.** Manual triggering is the default because each line costs a request.
-During a long cutscene, `Ctrl+Shift+A` lets it follow along by itself. It stops after 90 seconds
-with no new text, so leaving it on while you're away can't quietly drain your quota.
+During a long cutscene, `Ctrl+Shift+A` lets it follow along by itself. It waits for the text to stop
+moving before translating, so a line that types itself out on screen costs one request rather than
+one per revealed chunk.
+
+It is not a hands-off mode, though: it only stops itself after 90 seconds with **no new text at
+all**, so a conversation that keeps advancing keeps it running and keeps spending your daily
+allowance. Press `Ctrl+Shift+A` again when the cutscene ends. A time limit with a warning is the
+next thing being built.
 
 **Fix a bad name once.** If a character's name comes out wrong, press `Ctrl+Shift+F` and correct
 it. That correction is pinned and beats the model for that line from then on. For a name that
@@ -209,6 +221,27 @@ when they are exactly what a non-technical user has to read to finish setup.
 
 <br>
 
+**Two dialects, and the difference is not cosmetic.** Modern Standard is the default and suits
+FFXIV's deliberately archaic narrative voice. Egyptian is what most Arabic speakers actually talk
+in, and it lands far better for merchants, banter and comic relief — though it reads as comedy on
+the lips of Elezen nobility, which is either a problem or the point.
+
+<div align="center">
+<img src="docs/images/in_game_egyptian_dialect.jpeg" alt="Arabic translation drawn over Final Fantasy XIV, with the translation written in Egyptian Arabic rather than Modern Standard" width="880">
+<br>
+<sub>The same overlay set to Egyptian Arabic. One line of the prompt changes; nothing else does.</sub>
+</div>
+
+<br>
+
+**Diacritics are off by default.** The models add the short-vowel marks (تشكيل) unevenly — the same
+conversation comes back half vowelled and half not, depending on which model answered which line —
+and fully vowelled text reads as scripture or a school book rather than a subtitle. There's a switch
+on the Translating tab if you want them. It changes what's on screen straight away, including lines
+already translated.
+
+<br>
+
 <div align="center">
 <img src="docs/images/diagnostics.png" alt="The diagnostics panel showing native Tesseract loaded, per-provider quota, cache statistics, and a router log entry recording that a Gemini model returned 404 and the router fell through to another" width="820">
 <br>
@@ -230,7 +263,7 @@ Early, but working.
 
 | | |
 |---|---|
-| Translation pipeline (OCR → normalise → cache → LLM → render) | working, 446 tests |
+| Translation pipeline (OCR → normalise → cache → LLM → render) | working, 524 tests |
 | Arabic rendering, shaping, bidi, diacritics | working and verified |
 | Game profiles, glossary, OCR corrections | working |
 | Provider failover, quota tracking, caching | working |
@@ -241,6 +274,8 @@ Early, but working.
 | Moving the overlay where you want it | **working** |
 | A game on a second monitor | **working** |
 | Display scaling above 100% | **working** |
+| More than one key per provider | **working** |
+| Diacritics on or off | **working** |
 | Click-through | not yet verified |
 
 Tested against **Final Fantasy XIV** and several other games on Windows across a long session:
@@ -254,8 +289,9 @@ separate rows above.
 
 **Auto-watch has no time limit yet.** Once it is on it keeps translating until you turn it off —
 it only stops itself after 90 seconds with *no new text at all*, so a long conversation keeps it
-running. That is the intended behaviour today, but it means a session left on can spend quota you
-did not mean to spend. A cap and a warning are coming.
+running. It no longer pays several times over for one sentence appearing (it waits for the text to
+settle first), but a session left on can still spend quota you did not mean to spend. A cap and a
+warning are coming.
 
 **Free models retire without warning, and both providers did it in the same week.** Model names
 live in [`data/models.json`](data/models.json), never in code, so when a provider drops one the fix
@@ -386,10 +422,14 @@ Nothing, in normal use. Rough arithmetic for a heavy story session:
 | Lines of dialogue in cutscene-dense play | 100–200 |
 | API requests after cache hits | ~120 |
 | Free-tier daily budget across both free providers | ~3,500 translations |
+| The same again, per extra account you add a key for | ~3,500 |
 
 You would need to play for well over a day straight to run out. The realistic way to burn quota
 isn't long sessions — it's a bug where the same line hashes two different ways and gets paid for
-twice, which is why so much care goes into normalising text before hashing it.
+twice, which is why so much care goes into normalising text before hashing it. Two of those have
+been found and fixed so far: one line becoming several while it typed itself onto the screen, and
+Groq refusing every second request in a minute because this app was reserving half its per-minute
+token allowance on each one.
 
 ## Try it without a game
 

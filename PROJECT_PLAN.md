@@ -207,6 +207,22 @@ public sealed class FrameSignature {
     public double InkRatio { get; }
 }
 
+// Auto-watch's gate. A CHANGED frame is not translated until it stops changing, so a line that
+// types itself onto the screen costs one request rather than one per revealed chunk. Compares
+// signatures, not OCR text, so deciding to wait costs nothing. The cap is not optional: without
+// it a game whose subtitles animate continuously settles never and translates never.
+// tools/Replay deliberately does NOT apply this - its corpus is distinct frames, not a time series.
+public enum FrameVerdict { Unchanged, Settling, Ready }
+public sealed record SettleOptions {
+    public int RequiredStillTicks { get; init; } = 2;               // at 2 fps, half a second
+    public TimeSpan Cap { get; init; } = TimeSpan.FromSeconds(3);
+}
+public sealed class FrameSettleGate {
+    public FrameSettleGate(SettleOptions? o = null, TimeProvider? clock = null);
+    public FrameVerdict Offer(FrameSignature signature);            // call on EVERY poll
+    public void Reset();                                            // on auto-watch switch-on
+}
+
 // ── OCR ────────────────────────────────────────────────────────────────────
 // Boxes are in the coordinate space of the FRAME, not of the image the engine read. OCR runs on an
 // upscaled copy (2× by default), so each engine divides back down before returning - a box left in
@@ -235,6 +251,10 @@ public static class OcrPreprocessor {
     public static Frame Prepare(Frame f, OcrPreprocessOptions? o = null);  // greyscale → contrast →
 }                                                                          // 2× → optional threshold
 // The typewriter fix, brief §7 — OCR is free, API calls are not:
+// The typewriter fix, settling on OCR TEXT. Written in week one and never wired to anything;
+// FrameSettleGate (Capture/) is the one that actually runs, and it settles on the frame SIGNATURE
+// instead, which costs no OCR to decide. This class is kept for the manual-trigger path, which
+// does not use it yet.
 public sealed class StableOcrReader {
     public StableOcrReader(IOcrEngine ocr, TimeSpan interval, TimeSpan cap);  // 150 ms, 1.5 s
     public Task<string> ReadStableAsync(Func<Task<Frame>> grab, CancellationToken ct);
@@ -263,6 +283,14 @@ public static class TextNormalizer {
 }
 public static class DialogueParser {
     public static (string? Speaker, string Body) Parse(string normalized);
+}
+// The Arabic side, as opposed to TextNormalizer, which cleans up what OCR read. Applied by
+// TranslationPipeline on the way OUT, at BOTH return sites, so the cache and the log keep what the
+// provider actually said and the switch re-presents lines already translated. It must stay above
+// OverlayWindow: the overlay's own chrome («جارٍ الترجمة», «تعذّرت الترجمة») carries deliberate marks.
+// U+0653-U+0655 are deliberately NOT stripped - they spell أ إ آ, so removing them changes letters.
+public static class ArabicText {
+    public static string WithoutDiacritics(string text);
 }
 // The canonical string is a FROZEN WIRE FORMAT, not an implementation detail: ~100 shipped
 // caches are keyed by it. Register is a newline-delimited PREFIX, added in v0.2.0 because without
@@ -300,6 +328,7 @@ public interface ITranslationProvider {
     string Name { get; }
     IReadOnlyList<string> Models { get; }               // ordered fallback list from models.json
     bool IsConfigured => true;                          // false = no key yet, skip in silence
+    bool AnnouncesMissingKey => true;                   // false for key slots 2-3: empty is normal
     Task<string> TranslateAsync(TranslationRequest req, string model, CancellationToken ct);
 }
 public sealed class TokenBucket   { public TokenBucket(int perMinute); public bool TryTake(); }
@@ -314,6 +343,12 @@ public sealed class ProviderRouter { /* ordered chain, §5. Never throws. */ }
 // exercises the same wiring the overlay does.
 public static class ProviderFactory {
     public static ITranslationProvider Create(ProviderConfig c, HttpClient http, ISecretStore s);
+    public static ITranslationProvider Create(ProviderConfig c, HttpClient http, ISecretStore s, int slot);
+
+    // Every key slot, key or no key: a slot built only when a key existed at STARTUP would mean a
+    // key pasted into Settings did nothing until restart.
+    public static IEnumerable<(ITranslationProvider Provider, int Rpm)> CreateLanes(
+        ProviderConfig c, HttpClient http, ISecretStore s);
 }
 
 // ── Interface language ─────────────────────────────────────────────────────
@@ -488,8 +523,17 @@ Two things this shape is load-bearing for, both learned the hard way:
     { "name": "gemini", "displayName": "Google Gemini", "tier": "free",
       "keyUrl": "https://aistudio.google.com/apikey",
       "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
-      "secret": "GeminiApiKey", "rpm": 13, "rpd": 1000,
-      "models": ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-flash-lite"] },
+      "secret": "GeminiApiKey", "rpm": 14, "rpd": 540,
+      "models": ["gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"] },
+    { "name": "groq", "displayName": "Groq", "tier": "free",
+      "keyUrl": "https://console.groq.com/keys",
+      "baseUrl": "https://api.groq.com/openai/v1",
+      "secret": "GroqApiKey", "rpm": 28, "rpd": 3000, "maxOutputTokens": 4096,
+      "models": [
+        { "id": "openai/gpt-oss-120b", "maxOutputTokens": 700, "reasoningEffort": "low" },
+        { "id": "openai/gpt-oss-20b",  "maxOutputTokens": 700, "reasoningEffort": "low" },
+        { "id": "llama-3.3-70b-versatile", "maxOutputTokens": 1024 }
+      ] },
     { "name": "openai", "displayName": "OpenAI", "tier": "paid",
       "keyUrl": "https://platform.openai.com/api-keys",
       "baseUrl": "https://api.openai.com/v1",
@@ -509,10 +553,24 @@ Two things this shape is load-bearing for, both learned the hard way:
 | `kind` | `anthropic` selects the SDK-based lane; anything else (or absent) is the OpenAI shape. Kept as a raw string so a typo degrades one lane instead of failing the whole file to parse. |
 | `tier` | `free` / `paid` / `local`. Drives the label beside the key box, so the cost choice is explicit rather than buried in a paragraph. |
 | `displayName`, `keyUrl` | Settings generates its key fields from this file, so a new lane gets a labelled box and a "where to get one" line with no code change. |
-| `maxOutputTokens` | Was hardcoded at 300. Fine for one subtitle, truncates any model that spends output tokens reasoning before it answers. |
+| `maxOutputTokens` | Was hardcoded at 300. Fine for one subtitle, truncates any model that spends output tokens reasoning before it answers. Overridable **per model**, because on Groq it is what a request RESERVES against an 8,000-token-a-minute ceiling, not what the answer costs — the lane-wide 4096 allowed one request a minute. |
+| `reasoningEffort` | Per model, `low`/`medium`/`high`, omitted from the request entirely when unset. What makes a small `maxOutputTokens` safe: gpt-oss spends ~360 tokens thinking about a subtitle by default and 5 at `low`. Per model rather than per lane because `llama-3.3-70b-versatile` answers 400 to the parameter its two lane-mates need. |
 | `devOnly` | Skipped unless `--dev` — the shipped app must never wait on a localhost port that does not exist (brief §2.7). |
 
+A `models[]` entry is **either a plain string or an object** with `id` plus the overrides above.
+Both forms are read forever: the string form is what every installed copy already has, and
+`ProviderConfig.Models` stays a computed `string[]` so no reader had to change. A malformed entry
+degrades to a `Problems()` warning rather than failing the load — this file is meant to be edited
+by hand.
+
 **Order is the cost policy**, not a preference: the router walks the list top to bottom.
+
+**One provider becomes one lane per key.** Up to `ProviderConfig.MaxKeys` (3). Slot 1 reads the
+plain `secret` name and is called by the provider's own name; slots 2 and 3 read `<secret>#2` /
+`<secret>#3` and are called `<name>#2` / `<name>#3`. Slot 1 keeping the unsuffixed name is
+load-bearing — every existing installation has a key filed under it. Expansion happens in
+`ProviderFactory.CreateLanes`, so the router is unchanged: an ordered list of lanes already gives
+"every Gemini key, then Groq".
 
 ### SQLite — one file, `%APPDATA%\GlassHudTranslator\glasshud.db`, WAL
 

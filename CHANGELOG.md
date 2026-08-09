@@ -3,6 +3,56 @@
 Notable changes. Started once the app was working end to end, so everything before the first entry
 is "the thing being described in the README".
 
+## v0.5.2 — 9 August 2026
+
+Three things that were quietly wasting your free tier, and one you asked for.
+
+### Fixed
+
+- **Groq was being throttled by this app, not by Groq.** It kept dropping into a one-minute
+  cooldown, and the reason was ours: Groq admits a request against the tokens you *reserve*, not
+  the ones the answer uses, and we were reserving 4,096 of an 8,000-a-minute allowance on every
+  single line. The second line inside any minute was refused, all three models were refused in
+  turn, and the whole provider was set aside for sixty seconds while the log said it was rate
+  limited. It never was slow either — measured against a live key it answers in **0.09 to 0.74
+  seconds**. Each model now reserves what it actually needs, and the two that think before
+  answering are told to think less. Verified live: thirteen lines in eight seconds, one 429 in the
+  middle, fell through to the next model and translated every one.
+- **A provider that asks to be tried again in four seconds now waits four seconds, not sixty.**
+  Groq's per-minute limit clears almost immediately and its daily one does not; the app used to
+  treat both the same and take the provider off the board either way.
+- **Automatic mode translated the same sentence four or five times while it appeared on screen.**
+  Final Fantasy XIV reveals dialogue one character at a time, and every partial line counted as a
+  new one — so a single sentence cost four requests to show you four progressively less wrong
+  versions of itself. It now waits for the text to stop moving. A screen that never stops moving is
+  still translated, after three seconds, so this cannot leave you looking at nothing.
+
+### Added
+
+- **More than one key per provider.** Up to three each, tried in order before moving on to the next
+  provider — so all your Google keys are used before Groq is touched. The Settings screen says the
+  part that decides whether it is worth doing: a free allowance belongs to the **account**, not the
+  key, so a second key from the same account shares one allowance and buys you nothing. Your
+  existing key is untouched and stays exactly where it was.
+- **Diacritics (تشكيل) are now a switch, and off by default.** The models were adding the
+  short-vowel marks unevenly — the same conversation coming back half vowelled and half not,
+  depending on which model answered which line — and fully vowelled text reads as scripture or a
+  school book rather than a subtitle. The switch changes what is on screen straight away, including
+  lines already translated, because what the provider sent is kept as-is and the marks are removed
+  on the way to the overlay.
+
+### Verified
+
+On Windows against a real game, and against live keys with Groq's per-minute ceiling genuinely
+reached: ten translations in a row on one model, a real refusal, a fall-through to the next model,
+and every line translated. Multiple keys work; how far they scale has not been stress-tested yet.
+
+### Still true, and worth repeating
+
+Automatic mode has no time limit yet. It stops after 90 seconds with **no new text at all**, so
+leaving it on during a conversation keeps it running and keeps spending your daily allowance. A cap
+with a warning is the next thing being built.
+
 ## v0.5.1 — 8 August 2026
 
 One fix, and it is the difference between the free tier lasting an evening and lasting all day.
