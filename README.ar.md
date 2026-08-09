@@ -9,7 +9,7 @@
 [English](README.md) · [العربية](README.ar.md) · [مصري](README.masri.md) · [Deutsch](README.de.md)
 
 [![build](https://github.com/basel2000de/glass_hud_translator/actions/workflows/build.yml/badge.svg)](https://github.com/basel2000de/glass_hud_translator/actions/workflows/build.yml)
-[![licence](https://img.shields.io/badge/licence-Apache--2.0-blue.svg)](LICENSE)
+[![licence](https://img.shields.io/badge/licence-AGPL--3.0-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4.svg)](https://dotnet.microsoft.com/)
 
 </div>
@@ -603,6 +603,15 @@ Groq نفسها — كلها بدأت هكذا.
 
 ## الرخصة
 
-[Apache License 2.0](LICENSE). حرّ للاستخدام والتعديل والتوزيع، تجارياً أيضاً.
+[رخصة جنو AGPL 3.0](LICENSE)، ابتداءً من الإصدار 0.6.0. حرّ في الاستخدام والدراسة والتعديل
+والمشاركة، بشرط واحد: أن يبقى كل ما يُبنى عليه مفتوحاً بالطريقة نفسها. فإن وزّعت نسخة معدَّلة، أو
+شغّلتها بحيث يستخدمها آخرون عبر الشبكة، فمن حقّ مستخدميها أن يحصلوا على شيفرتك كذلك.
+
+**وكل ما صدر حتى الإصدار 0.5.3 يبقى تحت رخصة Apache 2.0**، ولا سبيل إلى الرجوع في ذلك. فإن كانت
+تلك الشروط تناسبك فالشيفرة ما زالت موجودة تحت وسمها، وما زالت لك تفعل بها ما تشاء.
+
+والتغيير ليس عن المال — فلا أحد يُطالَب بدفع شيء هنا، ومفتاح المزوّد مفتاحك أنت. إنما هو أن يبقى
+العمل متاحاً لمن كُتب من أجلهم. فبرنامج يترجم لقارئ أُقصي عن ألعابه لا ينبغي أن يكون شيئاً يُغلَق
+ويُعاد تلوينه ثم يُباع له.
 
 </div>

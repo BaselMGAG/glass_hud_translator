@@ -121,4 +121,6 @@ order is the cost policy.
 
 ## Licence
 
-Apache 2.0. By contributing you agree your contribution is licensed the same way.
+GNU AGPL 3.0 from v0.6.0 onward; everything up to v0.5.3 was released under Apache 2.0 and stays
+that way. By contributing you agree your contribution is licensed under the AGPL the same as the
+rest.

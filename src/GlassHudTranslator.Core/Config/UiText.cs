@@ -273,6 +273,13 @@ public sealed class UiText
     public required string UpdateCheckDisabled { get; init; }
     public required string DevelopmentBuildNoUpdates { get; init; }
 
+    // ── licence ────────────────────────────────────────────────────────────────────────────
+    // Shown in Diagnostics rather than only in a readme. Under the AGPL, whoever ends up with a
+    // copy is entitled to the source it was built from, and a link in a file on GitHub does not
+    // travel with a zip somebody was handed by a friend.
+    public required string LicenceSection { get; init; }
+    public required string LicenceNote { get; init; }
+
     // ── region picker ──────────────────────────────────────────────────────────────────────
     public required string SelectRegionTitle { get; init; }
     public required string PickerHintFrozen { get; init; }
@@ -680,6 +687,13 @@ public sealed class UiText
         DevelopmentBuildNoUpdates =
             "Running from source, so there is no released version to compare against.",
 
+        LicenceSection = "Licence and source",
+        LicenceNote =
+            "Free software under the GNU Affero General Public License, version 3 or later — use "
+            + "it, study it, change it, pass it on. The one condition is that anything built on it "
+            + "stays open the same way. The full text is in the LICENSE file beside the program, "
+            + "and the source is here:",
+
         SelectRegionTitle = "Select the {0} region",
         PickerHintFrozen =
             "Drag a box over the {0} text. This is a frozen screenshot, so nothing will move while "
@@ -1052,6 +1066,12 @@ public sealed class UiText
         UpdateCheckOffline = "آخر تحقّق: {0}.",
         UpdateCheckDisabled = "التحقّق من التحديثات مُعطَّل. ولا يُرسَل شيء إلى GitHub.",
         DevelopmentBuildNoUpdates = "تعمل النسخة من المصدر، فلا إصدار منشور تُقارَن به.",
+
+        LicenceSection = "الرخصة والشيفرة",
+        LicenceNote =
+            "برنامج حرّ تحت رخصة جنو AGPL الإصدار الثالث أو ما بعده — استعمله، وادرسه، وغيّره، "
+            + "وانقله لغيرك. والشرط الوحيد أن يبقى كل ما يُبنى عليه مفتوحاً بالطريقة نفسها. ونصّ "
+            + "الرخصة كاملاً في ملف LICENSE بجوار البرنامج، والشيفرة هنا:",
 
         SelectRegionTitle = "حدّد منطقة {0}",
         PickerHintFrozen =

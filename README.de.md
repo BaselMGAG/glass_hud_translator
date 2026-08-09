@@ -9,7 +9,7 @@
 [English](README.md) · [العربية](README.ar.md) · [مصري](README.masri.md) · [Deutsch](README.de.md)
 
 [![build](https://github.com/basel2000de/glass_hud_translator/actions/workflows/build.yml/badge.svg)](https://github.com/basel2000de/glass_hud_translator/actions/workflows/build.yml)
-[![licence](https://img.shields.io/badge/licence-Apache--2.0-blue.svg)](LICENSE)
+[![licence](https://img.shields.io/badge/licence-AGPL--3.0-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4.svg)](https://dotnet.microsoft.com/)
 
 </div>
@@ -634,4 +634,15 @@ License. Aufgebaut auf [Tesseract](https://github.com/tesseract-ocr/tesseract),
 
 ## Lizenz
 
-[Apache 2.0](LICENSE). Frei nutzbar, veränderbar und verteilbar, auch kommerziell.
+[GNU AGPL 3.0](LICENSE), ab v0.6.0. Frei zu benutzen, zu studieren, zu verändern und
+weiterzugeben — die eine Bedingung ist, dass alles, was darauf aufbaut, auf dieselbe Weise offen
+bleibt. Wer eine veränderte Fassung verteilt oder eine betreibt, die andere über ein Netzwerk
+benutzen, schuldet diesen Leuten auch den Quelltext.
+
+**Alles bis einschließlich v0.5.3 bleibt Apache 2.0**, und das lässt sich nicht zurücknehmen. Wem
+diese Bedingungen lieber sind: der Code liegt weiterhin unter seinem Tag und gehört weiterhin allen.
+
+Es geht dabei nicht ums Geld — hier zahlt niemand etwas, und der Anbieterschlüssel ist der eigene.
+Es geht darum, dass die Arbeit denen zur Verfügung steht, für die sie geschrieben wurde. Ein
+Übersetzer für Leser, die man aus ihren eigenen Spielen ausgeschlossen hat, sollte nichts sein, das
+man schließen, neu anstreichen und ihnen zurückverkaufen kann.

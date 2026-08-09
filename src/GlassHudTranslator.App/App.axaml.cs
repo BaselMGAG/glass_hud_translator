@@ -214,6 +214,10 @@ public partial class App : Application
 
         settingsWindow.FloatingWindowsChanged += () => _ = ApplyFloatingWindowsAsync(settings);
 
+        // The mode has two controls now - the Translating tab and the toolbar - and either has to
+        // repaint the other, or the toolbar shows dialogue while the app is watching a film.
+        settingsWindow.WatchModeChanged += () => RefreshToolbar(settings);
+
         settingsWindow.Opened += (_, _) => _ = ApplyFloatingWindowsAsync(settings);
         _ = toolbar;
     }

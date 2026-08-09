@@ -9,7 +9,7 @@
 [English](README.md) · [العربية](README.ar.md) · [مصري](README.masri.md) · [Deutsch](README.de.md)
 
 [![build](https://github.com/basel2000de/glass_hud_translator/actions/workflows/build.yml/badge.svg)](https://github.com/basel2000de/glass_hud_translator/actions/workflows/build.yml)
-[![licence](https://img.shields.io/badge/licence-Apache--2.0-blue.svg)](LICENSE)
+[![licence](https://img.shields.io/badge/licence-AGPL--3.0-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4.svg)](https://dotnet.microsoft.com/)
 
 </div>
@@ -603,4 +603,15 @@ and [SkiaSharp](https://github.com/mono/SkiaSharp). See [NOTICE](NOTICE).
 
 ## Licence
 
-[Apache 2.0](LICENSE). Free to use, modify and distribute, including commercially.
+[GNU AGPL 3.0](LICENSE), from v0.6.0 onward. Free to use, study, modify and share — the one
+condition is that anything built on it stays open the same way. If you distribute a modified
+version, or run one where other people can use it over a network, the people using it are entitled
+to your source too.
+
+**Everything up to and including v0.5.3 remains Apache 2.0**, and that cannot be taken back. If you
+prefer those terms, that code is still there under its tag and still yours to use however you like.
+
+The change is not about money — nobody is being charged for anything here, and every provider key is
+your own. It is about the work staying available to the people it was written for. A translator for
+readers who have been left out of their own games should not be something that can be taken closed,
+reskinned, and sold back to them.

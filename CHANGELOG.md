@@ -9,6 +9,23 @@ You can see what the app is looking at, reach everything it does without memoris
 combination, and translate one thing without disturbing the thing it was already watching. Two bugs
 that had been sitting on the paths all of that uses are fixed underneath.
 
+### The licence changes, from this release onward
+
+**GNU AGPL 3.0** replaces Apache 2.0, starting here. Use it, study it, change it, pass it on — the
+one condition is that anything built on it stays open the same way, including a modified version
+someone runs as a service over a network.
+
+**Everything up to and including v0.5.3 remains Apache 2.0 and always will.** That grant cannot be
+withdrawn, and it isn't being: those tags are still there and still yours on the old terms.
+
+The reason is not money. Nobody is charged for anything here and every provider key is the user's
+own. It is that a translator written for readers who were left out of their own games should not be
+something that can be taken closed, reskinned, and sold back to them. The AGPL is the version of
+that which keeps the project open source rather than merely restricted.
+
+The licence text now ships inside the download as `LICENSE.txt`, which it should have been doing
+under Apache too, and Settings → Diagnostics says where the source is.
+
 ### Added
 
 - **A floating toolbar.** Six buttons over the game — translate now, watch automatically, translate

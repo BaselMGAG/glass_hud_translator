@@ -10,6 +10,17 @@
       the project could plausibly reach, and every release would look like an update to a developer.
     -->
     <Version>0.0.0-dev</Version>
+
+    <!--
+      Stamped into every assembly, so a binary someone was handed carries its own licence and
+      copyright rather than depending on a LICENSE file that travels separately. AGPL from v0.6.0;
+      everything up to v0.5.3 shipped under Apache-2.0 and stays available under those terms.
+      "or-later" is the FSF's own recommendation and is what makes a future move to AGPL-4 possible
+      without tracking down every contributor.
+    -->
+    <Copyright>Copyright 2026 Basel</Copyright>
+    <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
+
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>

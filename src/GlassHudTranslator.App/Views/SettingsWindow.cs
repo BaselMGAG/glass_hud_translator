@@ -714,6 +714,11 @@ public sealed class SettingsWindow : Window
         }
         stack.Children.Add(regionButtons);
 
+        // What is on screen, and how fast it should be read. Here rather than on the Hotkeys tab,
+        // where these three first landed: what is being translated is this tab's whole subject, and
+        // nobody looking for it goes to a tab named after key bindings.
+        AddWatchPacing(stack);
+
         stack.Children.Add(Section(_text.Corrections));
         stack.Children.Add(Note(_text.CorrectionsNote));
         var correctRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -905,8 +910,23 @@ public sealed class SettingsWindow : Window
         manual.Children.Add(Button(_text.ToggleAutoWatch, _session.ToggleAutoWatch));
         stack.Children.Add(manual);
 
-        // Beside the toggle, because this is where someone who has just switched auto-watch on is
-        // looking. Until now neither of its two numbers was adjustable anywhere but a JSON file.
+        return stack;
+    }
+
+    /// <summary>
+    /// What is on screen, how often a translation may arrive, and whether the session cap applies.
+    ///
+    /// <para>
+    /// On the Translating tab, not beside the auto-watch button on Hotkeys where these first
+    /// landed. That placement had a rationale — it is where someone who has just switched auto-watch
+    /// on is looking — and it was wrong: a tab called Hotkeys is where you go to change a key
+    /// binding, so three settings that have nothing to do with keys were invisible to anyone not
+    /// already told they were there. Whether the screen holds a dialogue box or a film is a fact
+    /// about what is being translated, which is what this tab is for.
+    /// </para>
+    /// </summary>
+    private void AddWatchPacing(StackPanel stack)
+    {
         stack.Children.Add(Section(_text.WatchMode));
 
         var mode = new ComboBox
@@ -919,8 +939,11 @@ public sealed class SettingsWindow : Window
         {
             _settings.WatchMode = mode.SelectedIndex == 1 ? WatchMode.Video : WatchMode.Dialogue;
             _settings.Save();
-            _status.Text = string.Format(_text.WatchModeSetTo,
-                _settings.WatchMode == WatchMode.Video ? _text.WatchModeVideo : _text.WatchModeDialogue);
+            _status.Text = string.Format(_text.WatchModeSetTo, _text.WatchModeName(_settings.WatchMode));
+
+            // The toolbar carries the same switch, so it has to follow one changed here or the two
+            // disagree about what the app is doing.
+            WatchModeChanged?.Invoke();
         };
         stack.Children.Add(Row(_text.WatchMode, mode, labelWidth: 190));
         stack.Children.Add(Note(_text.WatchModeNote));
@@ -960,9 +983,10 @@ public sealed class SettingsWindow : Window
         };
         stack.Children.Add(unlimited);
         stack.Children.Add(Note(_text.WatchWithoutLimitNote));
-
-        return stack;
     }
+
+    /// <summary>Raised when the watch mode is changed here, so the toolbar's button can follow.</summary>
+    public event Action? WatchModeChanged;
 
     private Control BuildDiagnosticsTab()
     {
@@ -976,6 +1000,14 @@ public sealed class SettingsWindow : Window
         stack.Children.Add(_quota);
         stack.Children.Add(_cache);
         stack.Children.Add(_pace);
+
+        // Where the source is. Under the AGPL that is not a courtesy - the whole point of the
+        // licence is that whoever ends up with a copy can get the code it was built from - and a
+        // link in a readme does not travel with a zip somebody was handed. The URL is machine text,
+        // so it stays left-to-right in the mirrored layout.
+        stack.Children.Add(Section(_text.LicenceSection));
+        stack.Children.Add(Note(_text.LicenceNote));
+        stack.Children.Add(Note("https://github.com/BaselMGAG/glass_hud_translator", machine: true));
 
         // Above the router log, which is a tall box that would otherwise push this below the fold.
         // The off switch for the only request the app makes that is not a translation should not

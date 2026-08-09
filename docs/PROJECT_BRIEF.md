@@ -6,7 +6,8 @@ to claim" section near the end matters as much as the rest.*
 **Download:** https://github.com/basel2000de/glass_hud_translator/releases
 
 **Repository:** https://github.com/basel2000de/glass_hud_translator
-**Licence:** Apache 2.0 (open source, free to use and modify, commercially too)
+**Licence:** GNU AGPL 3.0 from v0.6.0 (open source; anything built on it stays open the same way).
+Releases up to v0.5.3 were Apache 2.0 and remain so.
 **Creator:** Basel — Frankfurt, Germany
 
 ---
@@ -141,7 +142,7 @@ contribute to**, not a finished product.
 | Automated tests | 573 |
 | Glossary | 86 Final Fantasy XIV proper nouns pinned so far |
 | Configurable hotkeys | 7 |
-| Licence | Apache 2.0 |
+| Licence | GNU AGPL 3.0 (Apache 2.0 up to v0.5.3) |
 | Platform | Windows 10/11 to use; developed on macOS |
 | Install footprint | Download a folder, run it. No installer, no admin rights, nothing to configure |
 

@@ -60,6 +60,12 @@ jobs:
           # relative path - so leaving it out puts a dead link in front of exactly the reader it
           # was written for, on the screen where they have no other instructions.
           Copy-Item README.masri.md out/README.masri.md
+          # The licence has to travel with the binary, not only with the repository. AGPL section 4
+          # requires a copy of the licence to accompany the program, and most people who end up
+          # with this zip will never see the GitHub page it came from. This was missing under
+          # Apache-2.0 as well, which had the same requirement.
+          Copy-Item LICENSE out/LICENSE.txt
+          Copy-Item NOTICE out/NOTICE.txt
         shell: pwsh
 
       # The native Tesseract libraries and eng.traineddata have to survive publishing, or OCR
@@ -73,6 +79,8 @@ jobs:
           if (-not (Test-Path out/data/models.json))             { $missing += 'data/models.json' }
           if (-not (Test-Path out/1-test-no-api-key.bat))        { $missing += '1-test-no-api-key.bat' }
           if (-not (Test-Path out/README.masri.md))              { $missing += 'README.masri.md' }
+          if (-not (Test-Path out/LICENSE.txt))                  { $missing += 'LICENSE.txt' }
+          if (-not (Test-Path out/NOTICE.txt))                   { $missing += 'NOTICE.txt' }
 
           # The exact failure that reached the overlay on the first real run. These two DLLs are
           # what the managed wrapper P/Invokes into; without them OCR cannot start at all.
