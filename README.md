@@ -455,6 +455,39 @@ Check that Arabic renders correctly on your machine:
 dotnet run --project src/GlassHudTranslator.App -f net10.0 -- --render-test
 ```
 
+## Where the feedback comes from
+
+There is no bug tracker for this project in any useful sense. The people it is for do not have
+GitHub accounts, and asking them to open an issue would be asking them to learn a tool harder than
+the one they came for. So it gets posted in Arabic gaming groups instead, and the comment thread is
+the bug tracker.
+
+<div align="center">
+<img src="docs/images/facebook_feedback.png" alt="A Facebook post in an Arabic gaming group announcing the tool, written in Egyptian Arabic, with a screenshot of the overlay running over Final Fantasy XIV. It has over nine hundred reactions." width="680">
+<br>
+<sub>The post that most of the current users came from — over nine hundred reactions, a few hundred
+comments, and around five hundred downloads of the release it pointed at.</sub>
+</div>
+
+<br>
+
+That is also where nearly everything in the recent releases came from, and none of it arrived as a
+bug report. It arrived as someone describing a symptom in their own words — *the translation covers
+the text I need to read*, *it says translation failed but my key works* — which is a harder thing to
+diagnose and a much better thing to receive, because it is the actual experience rather than
+somebody's theory about the cause. The overlay position sliders, the key that tested successfully
+without ever being saved, and Groq being throttled by this app rather than by Groq all started that
+way.
+
+It is why the documentation is shaped the way it is: three readmes, one of them a plain
+Egyptian-Arabic manual with no jargon in it, and an interface that can be switched to Arabic before
+you have entered anything. Someone who cannot read the setup instructions has not been given a tool.
+
+And the personal reason, since open source usually has one: game subtitles and overlays are a large
+part of how I learned English as a child, at an age when nothing else would have held my attention
+for that many hours. If this gives a few people a better time in their own language, that is the
+debt paid in the direction it can be paid.
+
 ## Contributing
 
 Issues and pull requests welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Most useful right now:
