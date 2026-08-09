@@ -32,6 +32,24 @@ maybe half the story in a game that is almost entirely story.
 <sub>Running over Final Fantasy XIV. The game's English dialogue is at the bottom; the Arabic is drawn above it.</sub>
 </div>
 
+### See it running
+
+<div align="center">
+
+https://github.com/BaselMGAG/glass_hud_translator/raw/main/docs/videos/in_game_manual_and_auto.mp4
+
+<sub>Fifty seconds in Final Fantasy XIV: pressing the hotkey line by line, then switching to auto-watch and letting it follow the conversation on its own.
+(<a href="docs/videos/in_game_manual_and_auto.mp4">download</a> if the player does not load)</sub>
+
+<br>
+
+https://github.com/BaselMGAG/glass_hud_translator/raw/main/docs/videos/In_Game_Auto.mp4
+
+<sub>Auto-watch alone, during a cutscene — nothing to press.
+(<a href="docs/videos/In_Game_Auto.mp4">download</a>)</sub>
+
+</div>
+
 ## Get started
 
 You need **Windows 10 or 11**, a game running in **borderless windowed** mode, and one API key.
@@ -221,16 +239,23 @@ Early, but working.
 | End-to-end translation in game | **working** — about 1 second per line |
 | Checking an API key from Settings | **working** |
 | Moving the overlay where you want it | **working** |
-| A game on a second monitor | written, not yet verified on hardware |
-| Click-through, 125%/150% display scaling | not yet verified |
+| A game on a second monitor | **working** |
+| Display scaling above 100% | **working** |
+| Click-through | not yet verified |
 
-Tested against **Final Fantasy XIV** on Windows: capture, OCR, hotkeys, the overlay and the full
-round trip all run against the live game at roughly a second a line.
+Tested against **Final Fantasy XIV** and several other games on Windows across a long session:
+capture, OCR, hotkeys, the overlay and the full round trip run against the live game at roughly a
+second a line, across two monitors and at more than one display scale.
 
-Expect rough edges. Click-through, display scaling above 100% and anything involving a second
-monitor are unverified, the glossary is a first draft, and OCR accuracy against a real game font
-hasn't been measured properly. I develop on macOS and test on a borrowed Windows laptop, so Windows
-fixes arrive in batches — which is also why "written" and "verified" are separate rows above.
+Expect rough edges. Click-through is still unverified, the glossary is a first draft, and OCR
+accuracy against a real game font hasn't been measured properly. I develop on macOS and test on a
+Windows machine, so Windows fixes arrive in batches — which is why "written" and "verified" are
+separate rows above.
+
+**Auto-watch has no time limit yet.** Once it is on it keeps translating until you turn it off —
+it only stops itself after 90 seconds with *no new text at all*, so a long conversation keeps it
+running. That is the intended behaviour today, but it means a session left on can spend quota you
+did not mean to spend. A cap and a warning are coming.
 
 **Free models retire without warning, and both providers did it in the same week.** Model names
 live in [`data/models.json`](data/models.json), never in code, so when a provider drops one the fix
