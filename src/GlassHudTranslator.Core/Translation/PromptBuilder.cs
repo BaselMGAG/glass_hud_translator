@@ -31,11 +31,21 @@ public static class PromptBuilder
             ? "Match the tone of the original rather than flattening it into neutral prose."
             : request.StyleHint.Trim();
 
+        // Asked for explicitly, because models add tashkeel unevenly - the same conversation comes
+        // back half vowelled and half not, depending which model in the fallback chain answered
+        // which line. The overlay strips them when they are unwanted regardless; this stops us
+        // spending output tokens on them first, which is the scarce resource on the Groq lane.
+        var diacritics = request.Diacritics
+            ? "Vowel the text fully (تشكيل كامل)."
+            : "Do NOT add تشكيل - no fatha, kasra, damma, shadda or sukun. Plain unvowelled Arabic, "
+              + "the way a subtitle is normally written.";
+
         return $"""
             You translate on-screen text from the video game {request.GameName} into Arabic.
 
             Rules:
             - DIALECT, and this is not negotiable: {dialect}
+            - Diacritics: {diacritics}
             - Tone: {voice}
               Express that tone *within* the dialect above. If the tone and the dialect pull in
               different directions, the dialect wins - an archaic source still gets translated into

@@ -47,6 +47,14 @@ public sealed class SettingsWindow : Window
     /// <summary>Key box per secret name. Built from models.json, never hardcoded.</summary>
     private readonly Dictionary<string, TextBox> _keyBoxes = [];
 
+    /// <summary>
+    /// How many key slots to show per provider. Deliberately NOT cleared by <see cref="Build"/>:
+    /// revealing a slot rebuilds the window, and forgetting it there would close the box the user
+    /// had just asked for. Grows on request and from whatever is already saved; never shrinks
+    /// within a session, so clearing a key does not make its box vanish under the cursor.
+    /// </summary>
+    private readonly Dictionary<string, int> _keySlotsShown = [];
+
     private TextBlock _hotkeyStatus = null!;
     private TextBlock _laneSummary = null!;
     private TextBlock _profileNote = null!;
@@ -366,11 +374,22 @@ public sealed class SettingsWindow : Window
         foreach (var provider in _services.Models.Providers.Where(p => p.Secret is not null))
         {
             stack.Children.Add(Section(provider.Label));
-            stack.Children.Add(KeyRow(provider));
+
+            var shown = SlotsShownFor(provider);
+            for (var slot = 1; slot <= shown; slot++)
+                stack.Children.Add(KeyRow(provider, slot));
+
+            // Offered only on the free lanes. A second paid key is the same bill twice over, so
+            // the button would be an invitation to do nothing useful.
+            if (shown < ProviderConfig.MaxKeys && !provider.IsPaid)
+                stack.Children.Add(Button(_text.AddAnotherKey, () => RevealAnotherKeySlot(provider)));
         }
 
         if (_services.Models.Providers.Any(p => !p.IsPaid && p.Secret is not null))
+        {
             stack.Children.Add(Note(_text.FreeProvidersNote));
+            stack.Children.Add(Note(_text.ExtraKeysNote));
+        }
 
         stack.Children.Add(Note(_text.TestKeysNote));
 
@@ -389,10 +408,47 @@ public sealed class SettingsWindow : Window
         return stack;
     }
 
-    private Control KeyRow(ProviderConfig provider)
+    /// <summary>
+    /// One box for the first key, plus one for every extra key already saved, plus any the user has
+    /// asked for this session. Never fewer than one and never more than the router can use.
+    /// </summary>
+    private int SlotsShownFor(ProviderConfig provider)
     {
+        // The HIGHEST slot holding a key, not how many hold one. Counting them hides a key
+        // whenever the occupied slots have a gap - clear box 1 of a two-key setup and slot 2's
+        // key still authenticates every line, still shows up in the lane summary on this same
+        // screen, and has no box to see it in, edit it or clear it. Emptying the boxes that ARE
+        // shown then reports "All keys cleared. Nothing will be translated until one is entered."
+        // while translation carries on, which is the one sentence this screen must never get wrong.
+        var highestSaved = provider.KeySlots()
+            .Where(slot => _services.Secrets.Has(provider.SecretSlot(slot)))
+            .DefaultIfEmpty(1)
+            .Max();
+
+        var asked = _keySlotsShown.GetValueOrDefault(provider.Name, 1);
+
+        return Math.Clamp(Math.Max(highestSaved, asked), 1, ProviderConfig.MaxKeys);
+    }
+
+    /// <summary>
+    /// Rebuilds the window with one more key box for this provider. Safe to lose the typed text:
+    /// clicking the button moves focus off whichever box had it, and that fires the LostFocus that
+    /// persists it - so <see cref="LoadSecrets"/> puts it straight back.
+    /// </summary>
+    private void RevealAnotherKeySlot(ProviderConfig provider)
+    {
+        _keySlotsShown[provider.Name] = SlotsShownFor(provider) + 1;
+
+        Build(_tabs?.SelectedIndex ?? 0);
+        LoadSecrets();
+        UpdateLaneSummary();
+    }
+
+    private Control KeyRow(ProviderConfig provider, int slot)
+    {
+        var secretName = provider.SecretSlot(slot);
         var box = KeyBox(_text.PasteKeyHere);
-        _keyBoxes[provider.Secret!] = box;
+        _keyBoxes[secretName] = box;
 
         // Persist as soon as the user leaves the box. The explicit Save button remains, but it can
         // no longer be the ONLY way a key reaches the store: it sits at the bottom of this tab
@@ -400,7 +456,7 @@ public sealed class SettingsWindow : Window
         // A user who pastes a key, tests it, sees «يعمل» and starts a game has done everything the
         // interface asked of them - and got "no API key for gemini, groq" in the router log,
         // because a positive verdict from an adjacent button reads as "you are set up".
-        box.LostFocus += (_, _) => PersistKey(provider.Secret!, box.Text);
+        box.LostFocus += (_, _) => PersistKey(secretName, box.Text);
 
         // The verdict goes beside the box it is about, not on the shared status line. A user
         // testing four keys in a row needs to see which one answered what, and a single status line
@@ -412,7 +468,7 @@ public sealed class SettingsWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
         };
 
-        var test = Button(_text.TestKey, () => _ = TestKeyAsync(provider, verdict));
+        var test = Button(_text.TestKey, () => _ = TestKeyAsync(provider, slot, verdict));
 
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
         row.Children.Add(box);
@@ -421,13 +477,23 @@ public sealed class SettingsWindow : Window
         row.Children.Add(verdict);
 
         var stack = new StackPanel { Spacing = 4 };
+
+        // Numbered only from the second one. A single key does not need to be told it is the first.
+        if (slot > 1) stack.Children.Add(Note(string.Format(_text.KeySlot, slot)));
+
         stack.Children.Add(row);
 
-        if (!string.IsNullOrWhiteSpace(provider.KeyUrl))
-            stack.Children.Add(Note($"{_text.KeyFrom} {provider.KeyUrl}", machine: true));
+        // Said once per provider rather than once per box: three copies of the same URL under
+        // three boxes is noise, and the model list is the same list for every key.
+        if (slot == 1)
+        {
+            if (!string.IsNullOrWhiteSpace(provider.KeyUrl))
+                stack.Children.Add(Note($"{_text.KeyFrom} {provider.KeyUrl}", machine: true));
 
-        stack.Children.Add(Note(
-            $"{_text.ModelsInOrder} {string.Join(" → ", provider.Models)}", machine: true));
+            stack.Children.Add(Note(
+                $"{_text.ModelsInOrder} {string.Join(" → ", provider.Models)}", machine: true));
+        }
+
         return stack;
     }
 
@@ -442,9 +508,10 @@ public sealed class SettingsWindow : Window
     /// order people actually do it in.
     /// </para>
     /// </summary>
-    private async Task TestKeyAsync(ProviderConfig provider, TextBlock verdict)
+    private async Task TestKeyAsync(ProviderConfig provider, int slot, TextBlock verdict)
     {
-        var typed = _keyBoxes.TryGetValue(provider.Secret!, out var box) ? box.Text?.Trim() : null;
+        var secretName = provider.SecretSlot(slot);
+        var typed = _keyBoxes.TryGetValue(secretName, out var box) ? box.Text?.Trim() : null;
 
         if (string.IsNullOrWhiteSpace(typed))
         {
@@ -454,8 +521,10 @@ public sealed class SettingsWindow : Window
 
         Paint(verdict, _text.TestingKey, "#9aa0a6");
 
+        // Probed as the slot it actually is, so a failure names "gemini#2" rather than blaming the
+        // key in the first box.
         var result = await Task.Run(() => KeyProbe.TestAsync(
-            ProviderFactory.Create(provider, _services.Http, new SingleKeyStore(provider.Secret!, typed)),
+            ProviderFactory.Create(provider, _services.Http, new SingleKeyStore(secretName, typed), slot),
             TimeSpan.FromSeconds(20),
             CancellationToken.None));
 
@@ -465,7 +534,7 @@ public sealed class SettingsWindow : Window
             // whole defect: the verdict said «يعمل» while the store stayed empty, so the app the
             // user then went and played with had no key at all. A key that FAILED is still not
             // persisted - there is no value in storing something known to be refused.
-            if (result.Status == KeyStatus.Working) PersistKey(provider.Secret!, typed);
+            if (result.Status == KeyStatus.Working) PersistKey(secretName, typed);
 
             var (message, colour) = result.Status switch
             {
@@ -607,6 +676,25 @@ public sealed class SettingsWindow : Window
         };
         stack.Children.Add(Row(_text.Register, _register));
         stack.Children.Add(Note(_text.RegisterNote));
+
+        var diacritics = new CheckBox
+        {
+            Content = _text.Diacritics,
+            IsChecked = _settings.Diacritics,
+        };
+        diacritics.IsCheckedChanged += (_, _) =>
+        {
+            _settings.Diacritics = diacritics.IsChecked == true;
+            _settings.Save();
+
+            // Straight into the live pipeline, not only into the file. The strip runs on the way
+            // out, so this re-presents lines already cached rather than only affecting sentences
+            // the player has not reached yet - which is what makes it worth being a switch at all.
+            _services.Pipeline.Diacritics = _settings.Diacritics;
+            _status.Text = _settings.Diacritics ? _text.DiacriticsShown : _text.DiacriticsHidden;
+        };
+        stack.Children.Add(diacritics);
+        stack.Children.Add(Note(_text.DiacriticsNote));
 
         stack.Children.Add(Section(_text.CaptureRegions));
         stack.Children.Add(Note(_text.RegionsNote));
@@ -1051,18 +1139,49 @@ public sealed class SettingsWindow : Window
     /// </summary>
     private void UpdateLaneSummary()
     {
-        var lanes = _services.Models.Enabled(includeDevOnly: !PlatformServices.IsWindows)
-            .Select(p =>
+        var lanes = ActiveLanes()
+            .Select(lane =>
             {
-                var live = p.Secret is null || _services.Secrets.Has(p.Secret);
-                var tier = p.IsPaid ? $" ({_text.TierPaid})" : "";
-                return live ? $"{p.Label}{tier}" : $"{p.Label} — {_text.NoKeySkipped}";
+                // The display name and a slot number, never the raw "gemini#2". This line is read
+                // by someone checking their own setup, and it sits in a paragraph that mirrors in
+                // Arabic - a Latin lane id would reorder inside it.
+                var name = lane.Slot > 1
+                    ? $"{lane.Provider.Label} — {string.Format(_text.KeySlot, lane.Slot)}"
+                    : lane.Provider.Label;
+
+                var tier = lane.Provider.IsPaid ? $" ({_text.TierPaid})" : "";
+                return lane.Live ? $"{name}{tier}" : $"{name} — {_text.NoKeySkipped}";
             })
             .ToList();
 
         _laneSummary.Text = lanes.Count == 0
             ? _text.NoLanes
             : string.Join("\n", lanes.Select((lane, i) => $"{i + 1}.  {lane}"));
+    }
+
+    /// <summary>
+    /// The lanes the router will actually walk, in order, as this screen understands them.
+    ///
+    /// <para>
+    /// Built the same way <c>AppServices.BuildLanes</c> builds the real thing, and that duplication
+    /// is the point of the readout existing: it is the only control here that reports what the
+    /// ROUTER sees rather than what a text box contains, and those two disagreeing silently is the
+    /// bug it was added to catch. An empty extra key slot is omitted, because the router skips it
+    /// in silence too.
+    /// </para>
+    /// </summary>
+    private IEnumerable<(ProviderConfig Provider, int Slot, bool Live)> ActiveLanes()
+    {
+        foreach (var provider in _services.Models.Enabled(includeDevOnly: !PlatformServices.IsWindows))
+        {
+            foreach (var slot in provider.KeySlots())
+            {
+                var live = provider.Secret is null || _services.Secrets.Has(provider.SecretSlot(slot));
+                if (!live && slot > 1) continue;
+
+                yield return (provider, slot, live);
+            }
+        }
     }
 
     private void LoadSecrets()
@@ -1321,8 +1440,12 @@ public sealed class SettingsWindow : Window
     {
         try
         {
-            var limits = _services.Models.Enabled(includeDevOnly: true)
-                .Select(p => (p.Name, p.Rpd)).ToList();
+            // Per LANE, not per provider. Usage is recorded under the lane that answered, so
+            // reading it back per provider would hide everything a second or third key spent -
+            // which is the one question adding a second key raises.
+            var limits = _services.Models.LimitsFor(
+                ActiveLanes().Select(lane => lane.Provider.LaneName(lane.Slot)));
+
             var quota = await _services.Quota.SnapshotAsync(limits, CancellationToken.None);
             var stats = await _services.Cache.GetStatsAsync(CancellationToken.None);
 

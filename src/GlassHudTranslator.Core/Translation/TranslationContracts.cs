@@ -21,7 +21,15 @@ public sealed record TranslationRequest(
     ArabicRegister Register = ArabicRegister.ModernStandard,
     DateTimeOffset RequestedAt = default,
     string GameName = "a video game",
-    string? StyleHint = null)
+    string? StyleHint = null,
+
+    /// <summary>
+    /// Whether the answer should carry tashkeel. False, and the prompt says so, because
+    /// unrequested short-vowel marks are a change in register rather than a nicety - and because
+    /// they are output tokens, which on Groq are the scarce resource. The overlay strips them
+    /// anyway when this is off; asking merely stops us paying for them first.
+    /// </summary>
+    bool Diacritics = false)
 {
     public IReadOnlyList<GlossaryTerm> GlossaryTerms => Glossary ?? [];
 
@@ -74,6 +82,20 @@ public interface ITranslationProvider
     /// </summary>
     bool IsConfigured => true;
 
+    /// <summary>
+    /// Whether a missing key on this lane is worth saying out loud.
+    ///
+    /// <para>
+    /// False for the second and third key slots a provider may hold. Those lanes are built whether
+    /// or not a key exists, so that pasting one into Settings takes effect without a restart -
+    /// which is the same promise <see cref="IsConfigured"/> keeps for the first slot. But the
+    /// router's "No API key for: ..." line exists to rescue a first-run user who has entered
+    /// nothing at all, and "gemini#2, gemini#3, groq#2, groq#3, openai#2..." would bury the one
+    /// name they needed to read.
+    /// </para>
+    /// </summary>
+    bool AnnouncesMissingKey => true;
+
     Task<string> TranslateAsync(TranslationRequest request, string model, CancellationToken ct);
 }
 
@@ -125,4 +147,13 @@ public sealed class ProviderException(
     public string Provider { get; } = provider;
     public string Model { get; } = model;
     public ProviderFailure Failure { get; } = failure;
+
+    /// <summary>
+    /// How long the provider itself asked us to wait, when it said. Groq answers a
+    /// tokens-per-minute refusal with a <c>retry-after</c> of about four seconds, and the router
+    /// used to sideline the whole lane for sixty regardless - so a burst that briefly outran one
+    /// minute's token allowance cost a minute of the lane being skipped entirely. Null when the
+    /// provider gave no hint, which is when the fixed cooldown is all there is to go on.
+    /// </summary>
+    public TimeSpan? RetryAfter { get; init; }
 }

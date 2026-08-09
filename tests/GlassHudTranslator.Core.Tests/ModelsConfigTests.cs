@@ -139,21 +139,70 @@ public class ShippedModelsFileTests
     }
 
     [Fact]
-    public void EveryShippedLaneBudgetsForReasoningModels()
+    public void EveryShippedModelBudgetsForReasoningOrTurnsItDown()
     {
         // The config default of 300 tokens was sized for models that answer immediately. The free
         // catalogues are reasoning models now, and their thinking spends max_tokens before one
         // word of output exists - at 300 every completion came back empty, on every model of both
-        // free lanes at once, while the key test passed because "Hello." needs no thought. A lane
-        // relying on the default is one catalogue churn away from the same silent death, so every
-        // shipped lane must state a budget with room to think.
+        // free lanes at once, while the key test passed because "Hello." needs no thought.
+        //
+        // Read per MODEL, not per lane, and that distinction is the whole point of this test after
+        // v0.5.2: the groq lane still declares 4096 while its three models override it with 700,
+        // 700 and 1024, so a lane-level check would pass while guarding nothing on the only lane
+        // that changed. There are exactly two safe shapes, and a model must be one of them.
         foreach (var lane in Shipped().Providers)
         {
-            Assert.True(lane.MaxOutputTokens >= 1024,
-                $"Lane '{lane.Name}' has maxOutputTokens {lane.MaxOutputTokens}. A reasoning "
-                + "model burns that on thinking and returns an empty completion - set it to 1024 "
-                + "or more in data/models.json.");
+            foreach (var entry in lane.ModelEntries)
+            {
+                var budget = entry.MaxOutputTokens ?? lane.MaxOutputTokens;
+                var thinksLess = string.Equals(entry.ReasoningEffort, "low", StringComparison.OrdinalIgnoreCase);
+                var floor = thinksLess ? 512 : 1024;
+
+                Assert.True(budget >= floor,
+                    $"'{lane.Name}/{entry.Id}' allows {budget} output tokens" +
+                    (thinksLess ? " at low reasoning effort" : " with reasoning left at its default") +
+                    $", under the {floor} floor. A reasoning model spends that budget thinking and " +
+                    "returns an empty completion on every line. Raise maxOutputTokens, or add " +
+                    "\"reasoningEffort\": \"low\" and keep it above 512.");
+            }
         }
+    }
+
+    [Fact]
+    public void TheGroqLaneKeepsItsPerMinuteTokenBudgetSmall()
+    {
+        // Groq admits a request against prompt_tokens + max_tokens - what is RESERVED, not what the
+        // answer costs - against a ceiling of 8,000 tokens a minute on the gpt-oss models. At the
+        // lane's own 4096 that was one request a minute; the second was refused, all three models
+        // refused in turn, and the router put the whole lane in a sixty-second cooldown while
+        // reporting Groq as exhausted. It never was: measured 9 August 2026 it answers in under a
+        // second and had 1,000 requests a day untouched.
+        //
+        // 2000 leaves room for four lines inside any one minute, which is faster than anyone reads.
+        var groq = Shipped().Providers.Single(p => p.Name == "groq");
+
+        foreach (var entry in groq.ModelEntries)
+        {
+            var budget = entry.MaxOutputTokens ?? groq.MaxOutputTokens;
+            Assert.True(budget <= 2000,
+                $"'groq/{entry.Id}' reserves {budget} output tokens. Groq withholds that from an " +
+                "8,000-a-minute allowance whether the answer uses it or not, so this is a cap on " +
+                "how many lines a minute can be translated, not on how long an answer may be.");
+        }
+    }
+
+    [Fact]
+    public void OnlyModelsThatAcceptReasoningEffortAreSentIt()
+    {
+        // llama-3.3-70b-versatile answers 400 "`reasoning_effort` is not supported with this model"
+        // - verified against a live key on 9 August 2026 - while the two gpt-oss models beside it
+        // in the same lane need it. One lane, three models, two request shapes: that is why the
+        // parameter is per model, and this is the assertion that keeps it that way.
+        var groq = Shipped().Providers.Single(p => p.Name == "groq");
+        var llama = groq.ModelFor("llama-3.3-70b-versatile");
+
+        Assert.NotNull(llama);
+        Assert.Null(llama.ReasoningEffort);
     }
 
     [Fact]
@@ -198,7 +247,7 @@ public class ProviderFactoryTests
         KindName = kind,
         BaseUrl = "https://example.test/v1",
         Secret = "SomeKey",
-        Models = ["m1"],
+        ModelEntries = [ModelEntry.Named("m1")],
     };
 
     [Fact]

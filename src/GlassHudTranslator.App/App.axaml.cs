@@ -87,6 +87,14 @@ public partial class App : Application
             return overlay;
         }
 
+        // Applied once here as well as per frame, because the pipeline is reachable without going
+        // through a frame at all: Settings' "Test translation" button calls ProcessAsync directly.
+        // Without this it ran on defaults until the first real capture, so someone who had chosen
+        // Egyptian, restarted, and pressed Test got Modern Standard back and no reason for it.
+        _services.Pipeline.Register = settings.Register;
+        _services.Pipeline.Diacritics = settings.Diacritics;
+        _services.Pipeline.MinimumBodyCharacters = settings.MinimumCharactersToTranslate;
+
         _session = new TranslationSession(_services, overlay, settings, RepoPaths.TestFrames)
         {
             SaveFramesDirectory = Program.Option("--save-frames"),

@@ -27,10 +27,13 @@ internal sealed class FakeProvider(string name, params string[] models) : ITrans
         return this;
     }
 
-    public FakeProvider Fails(ProviderFailure failure, int times = 1)
+    public FakeProvider Fails(ProviderFailure failure, int times = 1, TimeSpan? retryAfter = null)
     {
         for (var i = 0; i < times; i++)
-            _script.Enqueue(model => throw new ProviderException(Name, model, failure, failure.ToString()));
+            _script.Enqueue(model => throw new ProviderException(Name, model, failure, failure.ToString())
+            {
+                RetryAfter = retryAfter,
+            });
         return this;
     }
 
@@ -829,5 +832,317 @@ public class StubProviderTests
 
         Assert.Contains("Y'shtola", text);
         Assert.Contains("تجريبي", text);
+    }
+}
+
+/// <summary>
+/// How long a rate-limited lane sits out.
+///
+/// <para>
+/// The fixed minute was wrong in both directions, and Groq is where it showed. Its per-minute token
+/// allowance refuses a request and asks for about four seconds back; its daily one asks for over an
+/// hour. Sidelining the lane for sixty seconds either way meant a burst that briefly outran one
+/// minute's tokens took the whole provider off the board while the router reported it exhausted.
+/// </para>
+/// </summary>
+public class RateLimitCooldownTests
+{
+    private static readonly RouterOptions Options = new()
+    {
+        RetryBaseDelay = TimeSpan.FromMilliseconds(1),
+        RateLimitCooldown = TimeSpan.FromSeconds(60),
+        MinimumCooldown = TimeSpan.FromSeconds(5),
+    };
+
+    private static TranslationRequest Line(FakeTimeProvider clock) =>
+        new("Come, the aether stirs.", RequestedAt: clock.GetUtcNow());
+
+    [Fact]
+    public async Task AProviderThatAsksForFourSecondsGetsFourSecondsNotSixty()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var groq = new FakeProvider("groq", "a", "b");
+        groq.Fails(ProviderFailure.RateLimited, times: 2, retryAfter: TimeSpan.FromSeconds(4));
+        groq.Returns("عاد للعمل");
+
+        var router = new ProviderRouter([(groq, 600)], Options, clock);
+
+        Assert.True((await router.TranslateAsync(Line(clock), CancellationToken.None)).IsFallbackEnglish);
+
+        // Still cooling at three seconds...
+        clock.Advance(TimeSpan.FromSeconds(3));
+        Assert.True((await router.TranslateAsync(Line(clock), CancellationToken.None)).IsFallbackEnglish);
+        Assert.Equal(2, groq.Calls.Count);
+
+        // ...and back on its feet at six, where the old fixed minute would have had another 54
+        // seconds to run.
+        clock.Advance(TimeSpan.FromSeconds(3));
+        var recovered = await router.TranslateAsync(Line(clock), CancellationToken.None);
+
+        Assert.Equal("عاد للعمل", recovered.Text);
+    }
+
+    [Fact]
+    public async Task TheSoonestModelToRecoverDecidesWhenTheLaneComesBack()
+    {
+        // The normal Groq mixture: one model out of tokens for the day, another for four seconds.
+        // The lane is usable again as soon as the first of them is.
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var groq = new FakeProvider("groq", "daily", "minute");
+        groq.Fails(ProviderFailure.RateLimited, retryAfter: TimeSpan.FromHours(2));
+        groq.Fails(ProviderFailure.RateLimited, retryAfter: TimeSpan.FromSeconds(6));
+        groq.Returns("من النموذج السريع");
+
+        var router = new ProviderRouter([(groq, 600)], Options, clock);
+        await router.TranslateAsync(Line(clock), CancellationToken.None);
+
+        clock.Advance(TimeSpan.FromSeconds(7));
+
+        Assert.Equal("من النموذج السريع",
+            (await router.TranslateAsync(Line(clock), CancellationToken.None)).Text);
+    }
+
+    [Fact]
+    public async Task AProviderAskingForNothingStillWaitsTheFloor()
+    {
+        // Otherwise "retry-after: 0" turns the fallback walk into a spin, re-asking a refusing lane
+        // on every line for as long as it keeps saying zero.
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var groq = new FakeProvider("groq");
+        groq.Fails(ProviderFailure.RateLimited, retryAfter: TimeSpan.Zero);
+        groq.Returns("لاحقا");
+
+        var router = new ProviderRouter([(groq, 600)], Options, clock);
+        await router.TranslateAsync(Line(clock), CancellationToken.None);
+
+        clock.Advance(TimeSpan.FromSeconds(2));
+        Assert.True((await router.TranslateAsync(Line(clock), CancellationToken.None)).IsFallbackEnglish);
+        Assert.Equal(1, groq.Calls.Count);
+    }
+
+    [Fact]
+    public async Task AProviderAskingForAnHourIsStillBackAfterTheCeiling()
+    {
+        // A daily limit resets at a fixed hour, not an hour from now, and the app may well be
+        // restarted before then. Honouring the full request would take the lane out of the session
+        // on the strength of a header we did not verify.
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var groq = new FakeProvider("groq");
+        groq.Fails(ProviderFailure.RateLimited, retryAfter: TimeSpan.FromHours(2));
+        groq.Returns("عاد");
+
+        var router = new ProviderRouter([(groq, 600)], Options, clock);
+        await router.TranslateAsync(Line(clock), CancellationToken.None);
+
+        clock.Advance(TimeSpan.FromSeconds(61));
+
+        Assert.Equal("عاد", (await router.TranslateAsync(Line(clock), CancellationToken.None)).Text);
+    }
+
+    [Fact]
+    public async Task WithNoRetryAfterTheFixedCooldownStillApplies()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var gemini = new FakeProvider("gemini");
+        gemini.Fails(ProviderFailure.RateLimited);
+        gemini.Returns("عاد");
+
+        var router = new ProviderRouter([(gemini, 600)], Options, clock);
+        await router.TranslateAsync(Line(clock), CancellationToken.None);
+
+        clock.Advance(TimeSpan.FromSeconds(30));
+        Assert.True((await router.TranslateAsync(Line(clock), CancellationToken.None)).IsFallbackEnglish);
+
+        clock.Advance(TimeSpan.FromSeconds(31));
+        Assert.Equal("عاد", (await router.TranslateAsync(Line(clock), CancellationToken.None)).Text);
+    }
+
+    [Fact]
+    public async Task AnEmptyExtraKeySlotIsSkippedWithoutBeingNamedAsMissing()
+    {
+        // The extra key slots exist unconditionally so a pasted key works without a restart. Their
+        // emptiness is the normal state, not news - and "No API key for: gemini#2, gemini#3,
+        // groq#2, groq#3" would bury the one name a first-run user needs to read.
+        var log = new List<string>();
+        var slot1 = new FakeProvider("gemini") { IsConfigured = false };
+        var slot2 = new OptionalLane("gemini#2");
+        var groq = new FakeProvider("groq").Returns("من groq");
+
+        var router = new ProviderRouter([(slot1, 600), (slot2, 600), (groq, 600)],
+            Options, log: log.Add);
+
+        await router.TranslateAsync(Line(new FakeTimeProvider(DateTimeOffset.UtcNow)),
+            CancellationToken.None);
+
+        Assert.Empty(slot2.Calls);
+        Assert.DoesNotContain(log, line => line.Contains("gemini#2"));
+    }
+
+    private sealed class OptionalLane(string name) : ITranslationProvider
+    {
+        public string Name { get; } = name;
+
+        public IReadOnlyList<string> Models => ["m"];
+
+        public bool IsConfigured => false;
+
+        public bool AnnouncesMissingKey => false;
+
+        public List<string> Calls { get; } = [];
+
+        public Task<string> TranslateAsync(TranslationRequest request, string model, CancellationToken ct)
+        {
+            Calls.Add(model);
+            return Task.FromResult("should never be called");
+        }
+    }
+}
+
+/// <summary>
+/// A lane whose walk was cut short must not be sidelined on what the models it never reached might
+/// have said. Its own class because the interaction is between two features that were built apart:
+/// the total-time budget, and the "cool down only when everything refused" rule.
+/// </summary>
+public class InterruptedWalkTests
+{
+    /// <summary>
+    /// A budget of zero, against a clock that does not tick on its own. Every lane still gets its
+    /// one guaranteed attempt — that guarantee is deliberate — and the walk stops there, which is
+    /// precisely the "cut short" state without needing a real slow provider to produce it.
+    /// </summary>
+    private static readonly RouterOptions Tight = new()
+    {
+        RetryBaseDelay = TimeSpan.FromMilliseconds(1),
+        TotalBudget = TimeSpan.Zero,
+        MinimumAttempt = TimeSpan.FromMilliseconds(1),
+        RateLimitCooldown = TimeSpan.FromSeconds(60),
+    };
+
+    [Fact]
+    public async Task OneRefusalIsNotAVerdictOnTheModelsNobodyAsked()
+    {
+        // The budget guarantees every lane ONE attempt and then stops. So a lane can be left having
+        // tried exactly one of its three models — and if that one happened to answer 429, the old
+        // condition (every model tried said no) was satisfied by a sample of one. The lane was then
+        // skipped entirely on the next line, with two models that had never been called.
+        //
+        // This is the v0.5.1 defect in a new place: writing off a provider that still has most of
+        // its allowance. Multi-key makes it worse rather than better, because one slow lane at the
+        // front spends the budget for every lane behind it.
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var gemini = new FakeProvider("gemini", "flash-lite", "flash", "pro");
+        gemini.Fails(ProviderFailure.RateLimited);   // the one model the budget allowed
+        gemini.Returns("من النموذج الثاني");          // what the second model would have said
+
+        var log = new List<string>();
+        var router = new ProviderRouter([(gemini, 600)], Tight, clock, log.Add);
+
+        // First line: out of budget after one model, which refused.
+        await router.TranslateAsync(new TranslationRequest("A.", RequestedAt: clock.GetUtcNow()),
+            CancellationToken.None);
+
+        Assert.Single(gemini.Calls);
+        Assert.DoesNotContain(log, l => l.Contains("cooling down"));
+
+        // Second line, one second later. The lane must still be reachable.
+        clock.Advance(TimeSpan.FromSeconds(1));
+        var second = await router.TranslateAsync(
+            new TranslationRequest("B.", RequestedAt: clock.GetUtcNow()), CancellationToken.None);
+
+        Assert.DoesNotContain(log, l => l.Contains("in cooldown"));
+        Assert.Equal("من النموذج الثاني", second.Text);
+    }
+
+    [Fact]
+    public async Task ALaneThatGotThroughAllOfThemAndWasRefusedEveryTimeStillCoolsDown()
+    {
+        // The other half: the rule this is guarding must not be weakened into never firing.
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var gemini = new FakeProvider("gemini", "a", "b");
+        gemini.Fails(ProviderFailure.RateLimited, times: 2);
+        gemini.Returns("recovered");
+
+        var log = new List<string>();
+        var router = new ProviderRouter([(gemini, 600)],
+            new RouterOptions { RetryBaseDelay = TimeSpan.FromMilliseconds(1) }, clock, log.Add);
+
+        await router.TranslateAsync(new TranslationRequest("A.", RequestedAt: clock.GetUtcNow()),
+            CancellationToken.None);
+
+        Assert.Contains(log, l => l.Contains("cooling down"));
+        Assert.Equal(2, gemini.Calls.Count);
+
+        clock.Advance(TimeSpan.FromSeconds(1));
+        await router.TranslateAsync(new TranslationRequest("B.", RequestedAt: clock.GetUtcNow()),
+            CancellationToken.None);
+
+        Assert.Equal(2, gemini.Calls.Count);   // skipped, not re-asked
+    }
+}
+
+/// <summary>
+/// What the total-time ceiling means once one provider can be several lanes.
+///
+/// <para>
+/// The guarantee that every lane gets one attempt even out of budget was added in v0.5.1 for a
+/// specific reason: a slow Gemini must not starve Groq, because Groq is a DIFFERENT ENDPOINT that
+/// might well answer. A second Gemini KEY is not a different endpoint — if the first spent ten
+/// seconds not answering, the second will spend ten more — so once the budget is gone the
+/// guarantee is granted per provider, not per lane. Measured before that distinction: six
+/// configured lanes against a stalled provider took thirty-five seconds for one line, against a
+/// ceiling documented as twenty.
+/// </para>
+/// </summary>
+public class LaneExpansionBudgetTests
+{
+    private static readonly RouterOptions Spent = new()
+    {
+        RetryBaseDelay = TimeSpan.FromMilliseconds(1),
+        TotalBudget = TimeSpan.Zero,
+        MinimumAttempt = TimeSpan.FromMilliseconds(1),
+    };
+
+    [Fact]
+    public async Task ExtraKeysOfAProviderAlreadyTriedAreSkippedOnceTheBudgetIsGone()
+    {
+        var gemini1 = new FakeProvider("gemini").Fails(ProviderFailure.Timeout);
+        var gemini2 = new FakeProvider("gemini#2").Returns("never reached");
+        var gemini3 = new FakeProvider("gemini#3").Returns("never reached");
+        var groq = new FakeProvider("groq").Returns("من groq");
+
+        var log = new List<string>();
+        var router = new ProviderRouter(
+            [(gemini1, 600), (gemini2, 600), (gemini3, 600), (groq, 600)], Spent, log: log.Add);
+
+        var result = await router.TranslateAsync(
+            new TranslationRequest("Come."), CancellationToken.None);
+
+        // Groq still answers - that is the whole point of the guarantee, and it survives.
+        Assert.Equal("من groq", result.Text);
+
+        // The two extra Gemini keys do not each buy another timeout.
+        Assert.Empty(gemini2.Calls);
+        Assert.Empty(gemini3.Calls);
+        Assert.Contains(log, l => l.Contains("gemini#2") && l.Contains("already had its attempt"));
+    }
+
+    [Fact]
+    public async Task ASecondKeyIsStillTriedWhileThereIsTimeForIt()
+    {
+        // The skip is a consequence of running out of budget, not a rule about extra keys. With
+        // time on the clock, key 2 is exactly what the feature is for: key 1 is out of quota.
+        var gemini1 = new FakeProvider("gemini").Fails(ProviderFailure.RateLimited);
+        var gemini2 = new FakeProvider("gemini#2").Returns("من المفتاح الثاني");
+        var groq = new FakeProvider("groq").Returns("NOT THIS");
+
+        var router = new ProviderRouter([(gemini1, 600), (gemini2, 600), (groq, 600)],
+            new RouterOptions { RetryBaseDelay = TimeSpan.FromMilliseconds(1) });
+
+        var result = await router.TranslateAsync(
+            new TranslationRequest("Come."), CancellationToken.None);
+
+        Assert.Equal("من المفتاح الثاني", result.Text);
+        Assert.Equal("gemini#2", result.Provider);
+        Assert.Empty(groq.Calls);
     }
 }

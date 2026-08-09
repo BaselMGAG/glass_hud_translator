@@ -165,8 +165,12 @@ public sealed class AppServices : IAsyncDisposable
         // devOnly lanes (Ollama) are excluded on Windows: the target PC cannot run a local model
         // alongside the game, and the shipped app must not wait on a localhost port that is not
         // there (brief 2.7).
+        //
+        // SelectMany, not Select: one provider now contributes one lane per key slot, so three
+        // Gemini keys are three lanes ahead of Groq. Free-before-paid survives because the
+        // expansion happens WITHIN a provider - the file's order still decides the rest.
         return models.Enabled(includeDevOnly: !PlatformServices.IsWindows)
-            .Select(config => (ProviderFactory.Create(config, http, secrets), config.Rpm))
+            .SelectMany(config => ProviderFactory.CreateLanes(config, http, secrets))
             .ToList();
     }
 

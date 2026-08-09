@@ -115,9 +115,10 @@ Console.WriteLine("------------------------------------------------------------"
 Console.WriteLine($"processed {processed}   skipped {skipped}   wall {totalWatch.Elapsed.TotalSeconds:F1}s");
 Console.WriteLine($"cache     {stats.Entries} entries, {stats.Hits}/{stats.Lookups} hits ({stats.HitRate:P0})");
 
+// Keyed by LANE, not by provider: usage is recorded under the lane that answered, so reading it
+// back per provider would hide everything the second and third keys spent.
 foreach (var snapshot in await ledger.SnapshotAsync(
-             models.Enabled(includeDevOnly: true).Select(p => (p.Name, p.Rpd)).ToList(),
-             CancellationToken.None))
+             models.LimitsFor(lanes.Select(l => l.Provider.Name)), CancellationToken.None))
 {
     if (snapshot.Used > 0) Console.WriteLine($"quota     {snapshot}");
 }
@@ -154,12 +155,16 @@ static List<(ITranslationProvider Provider, int Rpm)> BuildLanes(
     if (options.Provider == "stub")
         return [(new StubProvider(TimeSpan.FromMilliseconds(120)), 600)];
 
-    var lanes = new List<(ITranslationProvider, int)>();
+    var lanes = new List<(ITranslationProvider Provider, int Rpm)>();
     foreach (var config in models.Enabled(includeDevOnly: true))
     {
         if (options.Provider != "all" && config.Name != options.Provider) continue;
 
-        lanes.Add((ProviderFactory.Create(config, http, secrets), config.Rpm));
+        // Every key slot, exactly as the app builds them - the whole point of this harness is that
+        // what is debugged on the Mac is what runs on Windows, and that stops being true the
+        // moment the two assemble their lanes differently. --provider still names the PROVIDER,
+        // so "--provider gemini" replays gemini, gemini#2 and gemini#3 together.
+        lanes.AddRange(ProviderFactory.CreateLanes(config, http, secrets));
     }
 
     if (lanes.Count == 0)

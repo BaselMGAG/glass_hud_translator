@@ -25,7 +25,8 @@ namespace GlassHudTranslator.Core.Translation;
 public sealed class AnthropicProvider(
     ProviderConfig config,
     Func<string?> apiKey,
-    TimeSpan? timeout = null) : ITranslationProvider
+    TimeSpan? timeout = null,
+    int keySlot = 1) : ITranslationProvider
 {
     private readonly Lock _gate = new();
     private readonly TimeSpan _timeout = timeout ?? TimeSpan.FromSeconds(30);
@@ -33,11 +34,15 @@ public sealed class AnthropicProvider(
     private AnthropicClient? _client;
     private string? _clientKey;
 
-    public string Name => config.Name;
+    /// <summary>Per key slot, so a second key is a distinct lane in the log and the ledger.</summary>
+    public string Name => config.LaneName(keySlot);
 
     public IReadOnlyList<string> Models => config.Models;
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(apiKey());
+
+    /// <summary>The extra key slots are opt-in, so their absence is not news.</summary>
+    public bool AnnouncesMissingKey => keySlot <= 1;
 
     public async Task<string> TranslateAsync(TranslationRequest request, string model, CancellationToken ct)
     {
@@ -53,7 +58,7 @@ public sealed class AnthropicProvider(
         var parameters = new MessageCreateParams
         {
             Model = model,
-            MaxTokens = config.MaxOutputTokens,
+            MaxTokens = config.ModelFor(model)?.MaxOutputTokens ?? config.MaxOutputTokens,
             System = system,
 
             // Thinking is on by default on current Claude models, and deliberately left on. The

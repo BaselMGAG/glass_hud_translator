@@ -27,6 +27,19 @@ public sealed record AppSettings
 
     [JsonPropertyName("register")] public ArabicRegister Register { get; set; } = ArabicRegister.ModernStandard;
 
+    /// <summary>
+    /// Whether the overlay shows tashkeel. Off, and false is also default(bool), so a settings file
+    /// written before this existed lands on the right answer without a migration.
+    ///
+    /// <para>
+    /// Off because unrequested short-vowel marks are a change of register rather than a nicety -
+    /// fully vowelled text is how scripture, poetry and school primers are set - and because the
+    /// models add them unevenly, so the same conversation came back half vowelled and half not
+    /// depending on which model in the fallback chain answered which line.
+    /// </para>
+    /// </summary>
+    [JsonPropertyName("diacritics")] public bool Diacritics { get; set; }
+
     [JsonPropertyName("overlayFontSize")] public double OverlayFontSize { get; set; } = 26;
 
     [JsonPropertyName("overlayOpacity")] public double OverlayOpacity { get; set; } = 0.82;

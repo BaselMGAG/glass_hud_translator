@@ -73,6 +73,18 @@ public sealed class UiText
     public required string ModelsInOrder { get; init; }
     public required string KeyFrom { get; init; }
 
+    /// <summary>Heading above the second and third key box. Formatted with the slot number.</summary>
+    public required string KeySlot { get; init; }
+
+    public required string AddAnotherKey { get; init; }
+
+    /// <summary>
+    /// Says the one thing that decides whether a second key is worth adding at all: a free tier is
+    /// metered per ACCOUNT, so two keys from the same Google project share one allowance and buy
+    /// nothing. Without this the feature quietly does nothing for most people who use it.
+    /// </summary>
+    public required string ExtraKeysNote { get; init; }
+
     // ── translating ────────────────────────────────────────────────────────────────────────
     public required string WhatAreYouTranslating { get; init; }
     public required string Profile { get; init; }
@@ -88,6 +100,13 @@ public sealed class UiText
     public required string RegisterNote { get; init; }
     public required string RegisterMsa { get; init; }
     public required string RegisterEgyptian { get; init; }
+
+    /// <summary>The tashkeel switch. Off by default; see <c>AppSettings.Diacritics</c> for why.</summary>
+    public required string Diacritics { get; init; }
+    public required string DiacriticsNote { get; init; }
+    public required string DiacriticsShown { get; init; }
+    public required string DiacriticsHidden { get; init; }
+
     public required string CaptureRegions { get; init; }
     public required string RegionsNote { get; init; }
     public required string PickRegion { get; init; }
@@ -311,7 +330,7 @@ public sealed class UiText
             + "could not. A lane with no key is switched off and costs nothing.",
         FreeProvidersNote =
             "Gemini and Groq both issue a key without a credit card, and between them cover "
-            + "roughly 15,000 lines a day - more than a full day of play.",
+            + "roughly 3,500 lines a day - more than a long evening of play.",
         SaveKeys = "Save keys",
         ActiveLanes = "Active lanes",
         TierFree = "FREE TIER",
@@ -332,6 +351,14 @@ public sealed class UiText
         KeysCleared = "All keys cleared. Nothing will be translated until one is entered.",
         ModelsInOrder = "Models tried in order:",
         KeyFrom = "Key from",
+        KeySlot = "Key {0}",
+        AddAnotherKey = "+ Add another key",
+        ExtraKeysNote =
+            "You can add up to three keys per provider. They are tried in order before moving on "
+            + "to the next provider, so more keys means more lines a day. But a free allowance "
+            + "belongs to the ACCOUNT, not the key - two keys from the same Google or Groq account "
+            + "share one allowance and buy you nothing. A second key is only worth adding if it "
+            + "comes from a second account.",
 
         WhatAreYouTranslating = "What are you translating?",
         Profile = "Profile",
@@ -342,6 +369,15 @@ public sealed class UiText
             + "merchants and comic relief, and reads as comedy for Elezen nobility.",
         RegisterMsa = "Modern Standard Arabic",
         RegisterEgyptian = "Egyptian Arabic",
+        Diacritics = "Show diacritics (tashkeel)",
+        DiacriticsNote =
+            "Off by default. The models add the short-vowel marks unevenly - the same conversation "
+            + "comes back half vowelled and half not, depending on which model answered which line "
+            + "- and fully vowelled text reads as scripture or a school book rather than a "
+            + "subtitle. This changes what is displayed straight away, including lines already "
+            + "translated.",
+        DiacriticsShown = "Diacritics will be shown.",
+        DiacriticsHidden = "Diacritics will not be shown.",
         CaptureRegions = "Capture regions",
         RegionsNote =
             "Games often draw narrative text in more than one place — a dialogue box, a subtitle bar, "
@@ -579,8 +615,8 @@ public sealed class UiText
             + "فيجيب المجاني أولاً، ولا يرى المدفوع إلا السطور التي عجز عنها. وأي مسار بلا مفتاح "
             + "يبقى مُعطَّلاً ولا يكلّف شيئاً.",
         FreeProvidersNote =
-            "يمنحك Gemini و Groq مفتاحاً دون بطاقة ائتمان، ويغطّيان معاً نحو ١٥٬٠٠٠ سطر يومياً — "
-            + "أكثر من يوم كامل من اللعب.",
+            "يمنحك Gemini و Groq مفتاحاً دون بطاقة ائتمان، ويغطّيان معاً نحو ٣٬٥٠٠ سطر يومياً — "
+            + "أكثر من سهرة لعب طويلة.",
         SaveKeys = "احفظ المفاتيح",
         ActiveLanes = "المسارات الفعّالة",
         TierFree = "مستوى مجاني",
@@ -603,6 +639,13 @@ public sealed class UiText
         KeysCleared = "مُسحت كل المفاتيح. لن تتم أي ترجمة حتى تُدخل مفتاحاً.",
         ModelsInOrder = "النماذج بالترتيب:",
         KeyFrom = "المفتاح من",
+        KeySlot = "المفتاح {0}",
+        AddAnotherKey = "+ أضف مفتاحاً آخر",
+        ExtraKeysNote =
+            "يمكنك إضافة ثلاثة مفاتيح لكل مزوّد. تُجرَّب بالترتيب قبل الانتقال إلى المزوّد التالي، "
+            + "فكل مفتاح إضافي يعني سطوراً أكثر في اليوم. لكن الحصة المجانية تخصّ الحساب لا "
+            + "المفتاح: مفتاحان من حساب Google أو Groq واحد يتقاسمان حصة واحدة ولا يزيدانك شيئاً. "
+            + "فلا فائدة من مفتاح ثانٍ إلا إذا كان من حساب ثانٍ.",
 
         WhatAreYouTranslating = "ما الذي تترجمه؟",
         Profile = "الملف",
@@ -613,6 +656,14 @@ public sealed class UiText
             + "لكنها تبدو هزلية على لسان نبلاء الإلزِن.",
         RegisterMsa = "العربية الفصحى",
         RegisterEgyptian = "العامية المصرية",
+        Diacritics = "إظهار التشكيل",
+        DiacriticsNote =
+            "مطفأ افتراضياً. النماذج تضيف التشكيل أحياناً وتتركه أحياناً، فيخرج الحوار الواحد نصفه "
+            + "مشكولاً ونصفه لا، بحسب النموذج الذي أجاب. والنص المشكول بالكامل يُقرأ كنصّ ديني أو "
+            + "كتاب مدرسي لا كترجمة على الشاشة. وتغيير هذا الخيار يظهر أثره فوراً، حتى على السطور "
+            + "المترجَمة من قبل.",
+        DiacriticsShown = "سيظهر التشكيل.",
+        DiacriticsHidden = "لن يظهر التشكيل.",
         CaptureRegions = "مناطق الالتقاط",
         RegionsNote =
             "كثيراً ما ترسم الألعاب نصّها السردي في أكثر من موضع — صندوق حوار، وشريط ترجمة، ونافذة "

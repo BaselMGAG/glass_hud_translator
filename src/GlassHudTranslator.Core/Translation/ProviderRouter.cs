@@ -24,10 +24,19 @@ public sealed record RouterOptions
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
-    /// How long a provider is sidelined once EVERY model it offers has been rate limited. Not one
-    /// model — every one, because the limits are per model and a lane holds several.
+    /// The LONGEST a provider is sidelined once EVERY model it offers has been rate limited. Not
+    /// one model — every one, because the limits are per model and a lane holds several. When the
+    /// provider says how long to wait, that answer is used instead, clamped into
+    /// [<see cref="MinimumCooldown"/>, this].
     /// </summary>
     public TimeSpan RateLimitCooldown { get; init; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// The shortest a rate-limit cooldown may be, whatever the provider asks for. A lane that
+    /// answers "retry after 0" would otherwise be re-tried on every line, which is a spin rather
+    /// than a fallback.
+    /// </summary>
+    public TimeSpan MinimumCooldown { get; init; } = TimeSpan.FromSeconds(5);
 
     /// <summary>
     /// Ceiling on one whole call, across every lane and model. Needed precisely because a failure
@@ -97,13 +106,28 @@ public sealed class ProviderRouter(
         // "all providers exhausted" and no hint that the cause was simply a missing key.
         List<string>? unconfigured = null;
 
+        // Which PROVIDERS have been asked, as opposed to which lanes. Once the budget is spent,
+        // the guaranteed attempt is granted per provider rather than per lane, and that
+        // distinction is what keeps the ceiling a ceiling now that one provider can be three
+        // lanes. The guarantee exists so a slow Gemini cannot starve Groq — a different endpoint
+        // that might well answer. A second Gemini KEY is not a different endpoint: if the first
+        // one has just spent ten seconds not answering, the second will spend ten more.
+        //
+        // Measured before this: six configured lanes against a stalled provider took 35 seconds
+        // for one line, against a documented ceiling of twenty, with the overlay saying
+        // "translating" throughout and every hotkey press in that window silently dropped.
+        var askedProviders = new HashSet<string>(StringComparer.Ordinal);
+
         foreach (var lane in _lanes)
         {
             if (ct.IsCancellationRequested) break;
 
             if (!lane.Provider.IsConfigured)
             {
-                (unconfigured ??= []).Add(lane.Provider.Name);
+                // The optional extra key slots are not reported. They exist unconditionally so a
+                // key pasted into Settings works without a restart, and naming every empty one
+                // would turn the one line a first-run user needs into a list of six.
+                if (lane.Provider.AnnouncesMissingKey) (unconfigured ??= []).Add(lane.Provider.Name);
                 continue;
             }
 
@@ -120,6 +144,16 @@ public sealed class ProviderRouter(
                 _log($"router: {lane.Provider.Name} rate bucket empty, next lane");
                 continue;
             }
+
+            var provider = Config.ProviderConfig.ProviderNameOf(lane.Provider.Name);
+            if (_clock.GetUtcNow() >= deadline && !askedProviders.Add(provider))
+            {
+                _log($"router: out of time, skipping {lane.Provider.Name} - {provider} has already " +
+                     "had its attempt");
+                continue;
+            }
+
+            askedProviders.Add(provider);
 
             var text = await TryLaneAsync(lane, request, deadline, ct).ConfigureAwait(false);
             if (text is null) continue;
@@ -156,6 +190,9 @@ public sealed class ProviderRouter(
     {
         var rateLimited = 0;
         var tried = 0;
+
+        // The soonest any refused model said it would take us back. Null until one of them says.
+        TimeSpan? retryAfter = null;
 
         foreach (var model in lane.Provider.Models)
         {
@@ -232,7 +269,15 @@ public sealed class ProviderRouter(
                             // Next model, and the lane is only sidelined if every one of them
                             // says this. The daily allowances are per model and wildly uneven.
                             rateLimited++;
-                            _log($"router: {lane.Provider.Name}/{model} rate limited, next model");
+
+                            // Keep the SOONEST of them. One model out of tokens for the day and
+                            // another out for the next four seconds is the normal mixture, and the
+                            // lane is usable again as soon as the first one is.
+                            if (e?.RetryAfter is { } wait && (retryAfter is null || wait < retryAfter))
+                                retryAfter = wait;
+
+                            _log($"router: {lane.Provider.Name}/{model} rate limited, next model" +
+                                 $" — {detail}");
                             goto nextModel;
 
                         case ProviderFailure.ModelRejected:
@@ -279,18 +324,45 @@ public sealed class ProviderRouter(
             nextModel: ;
         }
 
-        // Sidelined only when rate limiting is the whole story. If even one model failed for some
-        // other reason the provider may still be healthy, and a 60-second blackout would keep us
-        // from the models that were never the problem.
-        if (tried > 0 && rateLimited == tried)
+        // Sidelined only when rate limiting is the whole story, and only when the whole story was
+        // actually heard. Two conditions, and the second one is easy to lose:
+        //
+        //   * every model that WAS tried said "too many requests" - if even one failed for another
+        //     reason the provider may be healthy, and a blackout would cost us the models that
+        //     were never the problem;
+        //   * and every model was tried at all. A walk cut short by the budget leaves the rest
+        //     UNKNOWN, not refused, and treating one 429 as a verdict on two models nobody asked
+        //     is the v0.5.1 defect exactly - abandoning a lane with most of its allowance intact.
+        //     It bites hardest with several keys: one slow lane eats the budget, and every lane
+        //     behind it gets written off on the first model's answer.
+        if (tried > 0 && rateLimited == tried && tried == lane.Provider.Models.Count)
         {
-            lane.CooldownUntil = _clock.GetUtcNow() + _options.RateLimitCooldown;
+            var cooldown = CooldownFor(retryAfter);
+            lane.CooldownUntil = _clock.GetUtcNow() + cooldown;
             _log($"router: {lane.Provider.Name} rate limited on all {tried} models, cooling down " +
-                 $"{_options.RateLimitCooldown.TotalSeconds:F0}s");
+                 $"{cooldown.TotalSeconds:F0}s");
         }
 
         return null;
     }
+
+    /// <summary>
+    /// How long to sideline a lane every one of whose models refused.
+    ///
+    /// <para>
+    /// The provider's own <c>retry-after</c> wins when there is one, because the fixed minute was
+    /// wrong in both directions. Groq refuses on tokens PER MINUTE and asks for about four seconds
+    /// back: a burst that briefly outran one minute's allowance was costing the whole lane a full
+    /// sixty, during which the router reported it as unavailable and fell through to nothing. The
+    /// floor stops a provider that answers "0" from turning the walk into a spin.
+    /// </para>
+    /// </summary>
+    private TimeSpan CooldownFor(TimeSpan? retryAfter) =>
+        retryAfter is not { } wait
+            ? _options.RateLimitCooldown
+            : wait < _options.MinimumCooldown ? _options.MinimumCooldown
+            : wait > _options.RateLimitCooldown ? _options.RateLimitCooldown
+            : wait;
 
     /// <summary>
     /// How long this attempt may run: the per-attempt cap, or whatever is left of the whole

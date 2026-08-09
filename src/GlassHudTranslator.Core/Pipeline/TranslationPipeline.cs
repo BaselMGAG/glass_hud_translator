@@ -95,6 +95,21 @@ public sealed class TranslationPipeline(
     public int MinimumBodyCharacters { get; set; }
 
     /// <summary>
+    /// Whether the overlay shows tashkeel. Off by default.
+    ///
+    /// <para>
+    /// Applied on the way OUT, and the cache deliberately keeps whatever the provider actually
+    /// said. That is what makes this switch instant and free in both directions: flipping it
+    /// re-presents every line already cached, rather than being a setting that only affects
+    /// sentences you have not read yet. Turning it ON cannot invent marks a cached answer never
+    /// had - the prompt asked for none - but the next uncached line will carry them, and that
+    /// asymmetry is worth far less than not re-translating the whole session to change a display
+    /// preference.
+    /// </para>
+    /// </summary>
+    public bool Diacritics { get; set; }
+
+    /// <summary>
     /// Swaps everything a game profile owns, without rebuilding the pipeline. Switching between a
     /// game and the desktop is a thing people do several times an hour, and making that a restart
     /// would be enough friction that they simply would not bother.
@@ -157,7 +172,7 @@ public sealed class TranslationPipeline(
             PushContext(body);
             await LogAsync(recognised, normalized, speaker, hit, game, regionKey, ct).ConfigureAwait(false);
 
-            return new PipelineOutcome(recognised.RawText, normalized, speaker, body, [], hit,
+            return new PipelineOutcome(recognised.RawText, normalized, speaker, body, [], Present(hit),
                 recognised.Confidence, Stopwatch.GetElapsedTime(started),
                 regionKey, source, recognised.RejectedWordCount);
         }
@@ -165,7 +180,7 @@ public sealed class TranslationPipeline(
         var hits = _glossary.Match(body);
         var result = await router.TranslateAsync(
             new TranslationRequest(body, speaker, hits, SnapshotContext(), Register, requestedAt,
-                game, styleHint), ct)
+                game, styleHint, Diacritics), ct)
             .ConfigureAwait(false);
 
         // Only cache a genuine translation. Caching the English fallback would poison the entry
@@ -179,10 +194,18 @@ public sealed class TranslationPipeline(
 
         await LogAsync(recognised, normalized, speaker, result, game, regionKey, ct).ConfigureAwait(false);
 
-        return new PipelineOutcome(recognised.RawText, normalized, speaker, body, hits, result,
+        return new PipelineOutcome(recognised.RawText, normalized, speaker, body, hits, Present(result),
             recognised.Confidence, Stopwatch.GetElapsedTime(started),
             regionKey, source, recognised.RejectedWordCount);
     }
+
+    /// <summary>
+    /// The last thing that happens to a translation before anyone sees it. Deliberately after the
+    /// cache write and after the log, so both hold what the provider actually said - a display
+    /// preference must not be baked into a row that outlives it.
+    /// </summary>
+    private TranslationResult Present(TranslationResult result) =>
+        Diacritics ? result : result with { Text = ArabicText.WithoutDiacritics(result.Text) };
 
     /// <summary>
     /// The English source enters context, never the Arabic: the next request's "previous lines"

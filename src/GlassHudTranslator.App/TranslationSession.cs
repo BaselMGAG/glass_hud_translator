@@ -35,7 +35,14 @@ public sealed class TranslationSession : IDisposable
     /// </summary>
     private UiText Text => UiText.For(_settings.Language);
     private CancellationTokenSource? _autoWatch;
-    private FrameSignature? _lastSignature;
+
+    /// <summary>
+    /// Decides which polled frames are worth translating. Owns the "has this changed" question that
+    /// used to be a bare signature comparison here - which answered yes on every frame of a
+    /// typewriter reveal and so translated one sentence four times over.
+    /// </summary>
+    private readonly FrameSettleGate _settle = new();
+
     private string? _lastSourceText;
     private string? _lastArabic;
     private bool _busy;
@@ -113,6 +120,10 @@ public sealed class TranslationSession : IDisposable
         _autoWatch = new CancellationTokenSource();
         var token = _autoWatch.Token;
 
+        // Otherwise switching auto-watch off and straight back on sits on Unchanged until the
+        // player advances the dialogue, which reads as the toggle having done nothing.
+        _settle.Reset();
+
         var worker = new Thread(() => AutoWatchLoop(token))
         {
             IsBackground = true,
@@ -154,15 +165,38 @@ public sealed class TranslationSession : IDisposable
                 var frame = _frames.GetFrameAsync(region.Value, ct).GetAwaiter().GetResult();
                 if (frame is null) continue;
 
-                // The cheap gate: most frames during dialogue are identical to the previous one and
-                // must never reach OCR.
+                // BEFORE the gate is offered anything, not after. Deciding a frame is Ready is not
+                // a question - it commits that frame as the one now on the overlay - so offering a
+                // frame we are in no position to translate loses the line outright: the gate would
+                // answer Unchanged for every poll afterwards, and the player would sit looking at
+                // the previous line's Arabic until they advanced the dialogue again.
+                //
+                // The old code could afford the wrong order because a typewriter reveal produced
+                // four or five candidate frames and losing one cost nothing. The gate exists to
+                // make that exactly one, which is precisely what makes dropping it unrecoverable.
+                //
+                // _busy is also held by the manual hotkey and by Settings' own buttons, none of
+                // which are disabled while auto-watch runs - so this is an ordinary collision, not
+                // a rare one. It counts as activity either way: something is being translated.
+                if (_busy)
+                {
+                    lastChange = Stopwatch.GetTimestamp();
+                    continue;
+                }
+
+                // The cheap gate. Most frames during dialogue are identical to the one already
+                // translated and must never reach OCR - and a frame that HAS changed is not
+                // translated until it stops changing, so a line that types itself out on screen
+                // costs one request rather than one per revealed chunk.
                 var signature = FrameSignature.Compute(frame);
-                if (signature.LooksIdenticalTo(_lastSignature)) continue;
+                var verdict = _settle.Offer(signature);
+                if (verdict == FrameVerdict.Unchanged) continue;
 
-                _lastSignature = signature;
+                // Anything moving counts as activity, including a reveal still in progress -
+                // otherwise the AFK expiry could fire in the middle of a sentence appearing.
                 lastChange = Stopwatch.GetTimestamp();
+                if (verdict == FrameVerdict.Settling) continue;
 
-                if (_busy) continue;
                 _busy = true;
                 try
                 {
@@ -196,6 +230,7 @@ public sealed class TranslationSession : IDisposable
     {
         SaveFrameIfRequested(frame);
         _services.Pipeline.Register = _settings.Register;
+        _services.Pipeline.Diacritics = _settings.Diacritics;
 
         // In the pipeline rather than checked here afterwards: it used to be an after-the-fact
         // guard, which meant the "too short to translate" line had already been translated, paid
