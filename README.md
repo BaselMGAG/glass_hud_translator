@@ -36,17 +36,15 @@ maybe half the story in a game that is almost entirely story.
 
 <div align="center">
 
-https://github.com/BaselMGAG/glass_hud_translator/raw/main/docs/videos/in_game_manual_and_auto.mp4
+<img src="docs/images/in-game-manual.gif" alt="Glass HUD Translator running over Final Fantasy XIV: the hotkey is pressed line by line, then auto-watch takes over and follows the conversation on its own" width="820">
 
-<sub>Fifty seconds in Final Fantasy XIV: pressing the hotkey line by line, then switching to auto-watch and letting it follow the conversation on its own.
-(<a href="docs/videos/in_game_manual_and_auto.mp4">download</a> if the player does not load)</sub>
+<sub>Fifty seconds in Final Fantasy XIV: pressing the hotkey line by line, then switching to auto-watch and letting it follow the conversation on its own.</sub>
 
 <br>
 
-https://github.com/BaselMGAG/glass_hud_translator/raw/main/docs/videos/In_Game_Auto.mp4
+<img src="docs/images/in-game-auto.gif" alt="Auto-watch following a Final Fantasy XIV cutscene by itself, with no key presses" width="700">
 
-<sub>Auto-watch alone, during a cutscene — nothing to press.
-(<a href="docs/videos/In_Game_Auto.mp4">download</a>)</sub>
+<sub>Auto-watch alone, during a cutscene — nothing to press.</sub>
 
 </div>
 

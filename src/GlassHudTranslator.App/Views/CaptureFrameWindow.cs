@@ -244,7 +244,7 @@ public sealed class CaptureFrameWindow : FloatingWindow
 
         _region = _moving
             ? _regionWas.Translate(dx, dy)
-            : Resized(_regionWas, _dragging, dx, dy);
+            : ResizedFrom(_regionWas, _dragging, dx, dy);
 
         Apply();
     }
@@ -288,7 +288,7 @@ public sealed class CaptureFrameWindow : FloatingWindow
     /// negative width, which is not a small rectangle - it is a rectangle every geometric test
     /// quietly declines to match.
     /// </summary>
-    private static CaptureRegion Resized(CaptureRegion from, Corner corner, int dx, int dy)
+    private static CaptureRegion ResizedFrom(CaptureRegion from, Corner corner, int dx, int dy)
     {
         var left = from.X;
         var top = from.Y;

@@ -50,17 +50,15 @@
 
 <div align="center">
 
-https://github.com/BaselMGAG/glass_hud_translator/raw/main/docs/videos/in_game_manual_and_auto.mp4
+<img src="docs/images/in-game-manual.gif" alt="البرنامج شغال فوق Final Fantasy XIV: الترجمة بالاختصار سطر سطر الأول، وبعدين الترجمة التلقائية بتمشي لوحدها" width="820">
 
-<sub>٥٠ ثانية جوّه Final Fantasy XIV. الأول بيترجم بالاختصار سطر ورا سطر، وبعدين بيشغّل الترجمة التلقائية وتمشي لوحدها مع الكلام.
-(<a href="docs/videos/in_game_manual_and_auto.mp4">نزّله من هنا</a> لو الفيديو مش راضي يفتح)</sub>
+<sub>خمسين ثانية جوه Final Fantasy XIV: بيترجم بالاختصار سطر سطر الأول، وبعدين بيحوّل على الترجمة التلقائية وتمشي لوحدها.</sub>
 
 <br>
 
-https://github.com/BaselMGAG/glass_hud_translator/raw/main/docs/videos/In_Game_Auto.mp4
+<img src="docs/images/in-game-auto.gif" alt="الترجمة التلقائية وهي بتمشي لوحدها في مشهد سينمائي من غير ما حد يدوس حاجة" width="700">
 
-<sub>الترجمة التلقائية لوحدها في مشهد cutscene — مش بتدوس على حاجة خالص.
-(<a href="docs/videos/In_Game_Auto.mp4">نزّله من هنا</a>)</sub>
+<sub>الترجمة التلقائية لوحدها في cutscene — من غير ما تدوس أي حاجة.</sub>
 
 </div>
 

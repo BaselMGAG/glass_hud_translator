@@ -44,17 +44,15 @@
 
 <div align="center">
 
-https://github.com/BaselMGAG/glass_hud_translator/raw/main/docs/videos/in_game_manual_and_auto.mp4
+<img src="docs/images/in-game-manual.gif" alt="البرنامج يعمل فوق Final Fantasy XIV: الترجمة بالاختصار سطراً بسطر أولاً، ثم تتولّى المتابعة التلقائية وتتبع الحوار وحدها" width="820">
 
-<sub>خمسون ثانية داخل Final Fantasy XIV: الترجمة بالاختصار سطراً بسطر أولاً، ثم التحويل إلى المتابعة التلقائية لتتبع الحوار وحدها.
-(<a href="docs/videos/in_game_manual_and_auto.mp4">للتنزيل</a> إن لم يعمل المشغّل)</sub>
+<sub>خمسون ثانية داخل Final Fantasy XIV: الترجمة بالاختصار سطراً بسطر أولاً، ثم التحويل إلى المتابعة التلقائية لتتبع الحوار وحدها.</sub>
 
 <br>
 
-https://github.com/BaselMGAG/glass_hud_translator/raw/main/docs/videos/In_Game_Auto.mp4
+<img src="docs/images/in-game-auto.gif" alt="المتابعة التلقائية وهي تتبع مشهداً سينمائياً في Final Fantasy XIV وحدها دون ضغط أي مفتاح" width="700">
 
-<sub>المتابعة التلقائية وحدها أثناء مشهد سينمائي — بلا ضغط أي مفتاح.
-(<a href="docs/videos/In_Game_Auto.mp4">للتنزيل</a>)</sub>
+<sub>المتابعة التلقائية وحدها أثناء مشهد سينمائي — بلا ضغط أي مفتاح.</sub>
 
 </div>
 

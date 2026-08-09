@@ -38,17 +38,15 @@ Spiel, das fast nur aus Geschichte besteht, vielleicht die Hälfte davon mitbeka
 
 <div align="center">
 
-https://github.com/BaselMGAG/glass_hud_translator/raw/main/docs/videos/in_game_manual_and_auto.mp4
+<img src="docs/images/in-game-manual.gif" alt="Glass HUD Translator über Final Fantasy XIV: erst Zeile für Zeile per Tastenkürzel, dann übernimmt der Automatikmodus und folgt dem Gespräch von allein" width="820">
 
-<sub>Fünfzig Sekunden in Final Fantasy XIV: erst Zeile für Zeile per Tastenkürzel, dann umgeschaltet auf Auto-Watch, das dem Gespräch von allein folgt.
-(<a href="docs/videos/in_game_manual_and_auto.mp4">herunterladen</a>, falls der Player nicht lädt)</sub>
+<sub>Fünfzig Sekunden in Final Fantasy XIV: erst Zeile für Zeile per Tastenkürzel, dann Umschalten auf den Automatikmodus, der dem Gespräch von allein folgt.</sub>
 
 <br>
 
-https://github.com/BaselMGAG/glass_hud_translator/raw/main/docs/videos/In_Game_Auto.mp4
+<img src="docs/images/in-game-auto.gif" alt="Der Automatikmodus folgt einer Zwischensequenz in Final Fantasy XIV ganz allein, ohne Tastendruck" width="700">
 
-<sub>Nur Auto-Watch, während einer Zwischensequenz — nichts zu drücken.
-(<a href="docs/videos/In_Game_Auto.mp4">herunterladen</a>)</sub>
+<sub>Der Automatikmodus allein, während einer Zwischensequenz — nichts zu drücken.</sub>
 
 </div>
 
