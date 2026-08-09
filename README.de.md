@@ -150,10 +150,30 @@ Zieh sie an den Punkten am linken Rand irgendwohin; sie merkt sich, wo. Mit dem 
 Rand schrumpft sie auf einen einzigen Griff. Wer lieber mit Tastenkürzeln arbeitet, schaltet sie
 unter Einstellungen → **Overlay** ganz ab.
 
+<div align="center">
+<img src="docs/images/toolbar-simple.png" alt="Die schwebende Werkzeugleiste in ihrer einfachen Form: acht kleine Knöpfe in einer dunklen, abgerundeten Leiste — Ziehgriff, jetzt übersetzen, Automatikmodus, Einmalübersetzung, Bereich wählen, Overlay ausblenden, Einstellungen, Aufklappen und Einklappen" width="300">
+<br>
+<sub>Einfach: sechs Aktionen, ein Knopf zum Aufklappen und einer, der auf einen Griff schrumpft.</sub>
+<br><br>
+<img src="docs/images/toolbar-advanced.png" alt="Dieselbe Leiste aufgeklappt, mit fünf weiteren Knöpfen hinter einem Trenner: Aufnahmerahmen, Umschaltung Dialog/Video, arabische Vokalzeichen, Korrektur festhalten und Beenden" width="470">
+<br>
+<sub>Aufgeklappt, mit eingeschaltetem Automatikmodus und Aufnahmerahmen — aktive Knöpfe leuchten auf.</sub>
+</div>
+
+<br>
+
 **Fährst du über einen Knopf, sagt er dir auf Arabisch und Englisch zugleich, was er tut** — egal,
 welche Sprache die Oberfläche gerade hat. Auf einer Werkzeugleiste steht kein Wort, nur Formen. Eine
 Beschriftung in nur einer Sprache lässt also jemanden raten, und es ist Zufall, wen: den Freund, der
 beim Einrichten hilft, oder die Person, für die das hier gebaut wurde.
+
+<div align="center">
+<img src="docs/images/toolbar-tooltip.png" alt="Derselbe Hinweis in beiden Oberflächensprachen nebeneinander: bei englischer Oberfläche steht die englische Zeile oben und die arabische darunter, bei arabischer Oberfläche umgekehrt. Die Tastenkombination steht in beiden Fällen in einer eigenen Zeile von links nach rechts." width="480">
+<br>
+<sub>Derselbe Knopf, links mit englischer und rechts mit arabischer Oberfläche. Beide Sprachen sind
+immer da; die gewählte steht oben. Die Tastenkombination bleibt von links nach rechts, denn sie ist
+kein Satz.</sub>
+</div>
 
 ### Sehen, was aufgenommen wird
 

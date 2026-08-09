@@ -54,7 +54,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cat > notes.md <<'EOF'
+          # A per-release summary, when one has been written. Anything in docs/release-notes/<tag>.md
+          # goes at the top, above the standing install instructions - a release with three new
+          # features in it deserves more than an auto-generated list of commit subjects, and the
+          # audience for this project mostly cannot read commit subjects anyway. Bilingual, because
+          # the release page is the one page every user lands on.
+          : > notes.md
+          if [ -f "docs/release-notes/$TAG.md" ]; then
+            cat "docs/release-notes/$TAG.md" >> notes.md
+            printf '\n' >> notes.md
+          fi
+
+          cat >> notes.md <<'EOF'
           Windows 10/11, 64-bit. No installer and no admin rights: unzip it anywhere and run
           `GlassHudTranslator.exe`.
 

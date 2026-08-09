@@ -141,10 +141,30 @@ Drag it by the dots on its left edge, anywhere you like; it remembers where. Shr
 handle with the button on its right. Switch it off entirely in Settings → **Overlay** if you'd
 rather work from the hotkeys.
 
+<div align="center">
+<img src="docs/images/toolbar-simple.png" alt="The floating toolbar in its simple form: eight small buttons in a dark rounded strip — a drag grip, translate now, auto-watch, snip, choose region, hide overlay, settings, an expander, and a collapse button" width="300">
+<br>
+<sub>Simple: six actions, an expander, and a button that shrinks it to a handle.</sub>
+<br><br>
+<img src="docs/images/toolbar-advanced.png" alt="The same toolbar expanded, with five more buttons after a divider: the capture outline, the dialogue-versus-video switch, the Arabic vowel marks, pin a correction, and quit" width="470">
+<br>
+<sub>Expanded, with auto-watch and the capture outline switched on — the active buttons light up.</sub>
+</div>
+
+<br>
+
 **Hover any button and it tells you what it does in Arabic and English at once**, whichever language
 the interface is set to. A toolbar has no words on it, only shapes — so a label in one language
 leaves someone guessing, and it's a coin flip which someone: the friend helping with the setup, or
 the person this was built for.
+
+<div align="center">
+<img src="docs/images/toolbar-tooltip.png" alt="The same tooltip in both interface languages side by side. With the interface in English the English line is on top and the Arabic below it; with the interface in Arabic the Arabic is on top and the English below. The key combination is on its own line, left to right, in both." width="480">
+<br>
+<sub>The same button, left with the interface in English and right with it in Arabic. Both languages
+are always there; the one you chose leads. The key combination stays left-to-right, because it is
+not a sentence.</sub>
+</div>
 
 ### Seeing what's being captured
 

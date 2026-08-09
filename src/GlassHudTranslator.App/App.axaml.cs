@@ -539,10 +539,64 @@ public partial class App : Application
                 });
             }
 
+            SaveTooltipSample(Path.Combine(directory, "toolbar-tooltip.png"));
             desktop.Shutdown();
         };
 
         return toolbar;
+    }
+
+    /// <summary>
+    /// Draws the hover label as both interface languages produce it, side by side.
+    ///
+    /// <para>
+    /// The bilingual tooltip is the toolbar's whole argument and it is the one part a screenshot of
+    /// the strip cannot show, because a tooltip is a popup. So it is rendered here from the real
+    /// <see cref="BilingualTip"/> control rather than mocked up: what the documentation shows is
+    /// what the code produces, which is the same rule the settings screenshots follow.
+    /// </para>
+    /// </summary>
+    private static void SaveTooltipSample(string path)
+    {
+        var row = new Avalonia.Controls.StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            Spacing = 18,
+            Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#0d0f13")),
+        };
+
+        foreach (var language in new[] { UiLanguage.English, UiLanguage.Arabic })
+        {
+            var text = UiText.For(language);
+            row.Children.Add(new Avalonia.Controls.Border
+            {
+                Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#1c1f26")),
+                BorderBrush = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#343943")),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new Avalonia.CornerRadius(6),
+                Padding = new Thickness(12, 9),
+                Margin = new Thickness(12),
+                Child = BilingualTip.For(text, UiText.En.ToolbarSnip, UiText.Ar.ToolbarSnip, "Ctrl+Shift+X"),
+            });
+        }
+
+        try
+        {
+            row.Measure(Avalonia.Size.Infinity);
+            row.Arrange(new Rect(row.DesiredSize));
+
+            using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(
+                new PixelSize((int)Math.Ceiling(row.Bounds.Width), (int)Math.Ceiling(row.Bounds.Height)),
+                new Vector(96, 96));
+
+            bitmap.Render(row);
+            bitmap.Save(path);
+            Console.WriteLine($"toolbar-test: wrote {path}");
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"toolbar-test: FAILED tooltip - {e.Message}");
+        }
     }
 
     /// <summary>
