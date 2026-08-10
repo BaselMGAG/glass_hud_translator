@@ -36,6 +36,31 @@ public enum WatchMode
 }
 
 /// <summary>
+/// The order the modes are offered in, and the single place that order is written down.
+///
+/// <para>
+/// It exists because there are two surfaces — the Settings dropdown and the toolbar button — and
+/// they disagreed. The toolbar flipped between Dialogue and Video, so <see cref="WatchMode.Auto"/>
+/// could not be reached from it at all, while the same toolbar drew an Auto icon for a state it had
+/// no way of producing. A button that shows a mode it cannot select is worse than one that does not
+/// offer it. Anything cycling modes goes through <see cref="After"/>.
+/// </para>
+/// </summary>
+public static class WatchModes
+{
+    /// <summary>Dialogue, Video, Auto — least clever first, so the cycle reads as an escalation.</summary>
+    public static readonly IReadOnlyList<WatchMode> InOrder =
+        [WatchMode.Dialogue, WatchMode.Video, WatchMode.Auto];
+
+    /// <summary>The next mode round the cycle, wrapping. Unknown values restart at the beginning.</summary>
+    public static WatchMode After(WatchMode current)
+    {
+        var at = InOrder.ToList().IndexOf(current);
+        return at < 0 ? InOrder[0] : InOrder[(at + 1) % InOrder.Count];
+    }
+}
+
+/// <summary>
 /// The numbers one <see cref="WatchMode"/> runs at.
 ///
 /// <para>
@@ -96,12 +121,25 @@ public sealed record WatchPacing
             PollsPerSecond = 4,
             RequiredStillTicks = 2,
 
-            // The number that fixes the reported delay. Over moving picture the stillness test can
-            // never pass - the whole region is video, and Otsu re-thresholds per frame - so EVERY
-            // release comes from this cap. At 3 seconds the Arabic arrived after the caption it
-            // translated had already gone.
-            SettleCap = TimeSpan.FromMilliseconds(800),
-            MinimumInterval = TimeSpan.FromMilliseconds(1500),
+            // The number that decides the delay, and it is the ONLY one worth touching. Over moving
+            // picture the stillness test can never pass - the whole region is video, and Otsu
+            // re-thresholds per frame - so EVERY release comes from this cap, which makes it a
+            // straight wait rather than a deadline. At 3 seconds the Arabic arrived after the
+            // caption had gone; at 800 ms it was still the largest item in the budget, bigger than
+            // the OCR and comparable to the whole network round trip.
+            //
+            // 400 ms is the floor rather than a guess: it is MinimumSettleCap, already documented
+            // as the point below which the cap "stops being a deadline and starts being a guarantee
+            // of translating mid-change". The only thing the wait buys over video is not catching a
+            // caption mid fade-in, and a subtitle fade is one to three frames - well under this.
+            SettleCap = TimeSpan.FromMilliseconds(400),
+
+            // Was 1500, which is longer than a subtitle is allowed to be short: Netflix's floor is
+            // 20 frames, five sixths of a second, so a conformant track can legally change faster
+            // than we were willing to look. Every caption arriving inside the floor was not delayed,
+            // it was DROPPED - the poll is skipped and the line is gone before the next one asks.
+            // A second still reads as a floor and no longer refuses to keep up with the source.
+            MinimumInterval = TimeSpan.FromMilliseconds(1000),
 
             // Measured in the length of the thing being watched. Ten minutes in is a fair moment to
             // mention what it is costing; forty-five is an episode, and 1,200 requests is about a

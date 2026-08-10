@@ -284,7 +284,12 @@ public static class PlatformServices
 
     private static CaptureRegion? MonitorUnderForegroundWindow()
     {
-        var window = Interop.NativeMethods.GetForegroundWindow();
+        // Not GetForegroundWindow: our own Settings, wizard, picker and toolbar are foreground
+        // windows too, and on a two-screen setup one of them being in front moved the whole capture
+        // region to the monitor OUR window was on. The general profile - the one you would use to
+        // watch a video - stores its region against the whole screen, so that is the entire frame
+        // landing on the wrong display.
+        var window = Windows.GameWindowLocator.ForegroundNotOurs();
         if (window == IntPtr.Zero) return null;
 
         var handle = Interop.NativeMethods.MonitorFromWindow(

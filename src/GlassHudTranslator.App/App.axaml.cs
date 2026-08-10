@@ -327,9 +327,12 @@ public partial class App : Application
                 },
                 ToggleWatchMode: () =>
                 {
-                    settings.WatchMode = settings.WatchMode == WatchMode.Video
-                        ? WatchMode.Dialogue
-                        : WatchMode.Video;
+                    // All THREE, in the same order Settings lists them. It used to flip between two,
+                    // so Auto was reachable only from Settings - and the toolbar drew an Auto icon
+                    // it could never actually show, which is worse than not offering it: the button
+                    // advertised a mode and then refused to reach it. The list lives in Core so the
+                    // two surfaces cannot drift apart again.
+                    settings.WatchMode = WatchModes.After(settings.WatchMode);
                     settings.Save();
                     settingsWindow.ReportStatus(string.Format(UiText.For(settings.Language).WatchModeSetTo,
                         UiText.For(settings.Language).WatchModeName(settings.WatchMode)));
@@ -833,7 +836,20 @@ public partial class App : Application
 
         toolbar.Opened += async (_, _) =>
         {
-            foreach (var (file, expanded) in new[] { ("toolbar-simple.png", false), ("toolbar-advanced.png", true) })
+            // One snapshot per watch mode as well as per width, because the mode button is the only
+            // control whose ICON changes rather than just lighting up - three geometries on one
+            // button. Rendering only the default meant Icons.WatchAuto had never once been drawn by
+            // the rehearsal whose entire job is proving a path string parses, and it is reached by
+            // the least-used branch of the least-visited control.
+            var shots = new[]
+            {
+                ("toolbar-simple.png", false, WatchMode.Dialogue),
+                ("toolbar-advanced.png", true, WatchMode.Dialogue),
+                ("toolbar-mode-video.png", true, WatchMode.Video),
+                ("toolbar-mode-auto.png", true, WatchMode.Auto),
+            };
+
+            foreach (var (file, expanded, mode) in shots)
             {
                 // Set through the window rather than through the expander button, because that
                 // writes to the settings file and this run must not touch it. Then a delay, so the
@@ -843,7 +859,7 @@ public partial class App : Application
                 {
                     toolbar.ShowAdvanced(expanded);
                     toolbar.ShowState(autoWatch: expanded, overlayHidden: false,
-                        captureFrame: expanded, diacritics: false, mode: WatchMode.Dialogue);
+                        captureFrame: expanded, diacritics: false, mode: mode);
                 });
 
                 await Task.Delay(250);

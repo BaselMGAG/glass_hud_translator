@@ -122,10 +122,71 @@ public static class GameWindowLocator
             ? processName[..^4]
             : processName;
 
+    /// <summary>
+    /// The window in front that is <b>not one of ours</b>, which is the whole point of this method
+    /// existing rather than a bare <c>GetForegroundWindow</c>.
+    ///
+    /// <para>
+    /// Every fallback path for "which window is the user looking at" ran through the foreground
+    /// window, and this app has windows of its own — Settings, the wizard, the picker, the toolbar
+    /// the user clicks to change modes. Bring any of them forward and the capture region was
+    /// resolved against IT: a few hundred pixels of our own interface instead of the film, on
+    /// whichever monitor that window happened to be. The region jumped, the frame gate compared
+    /// pictures of two different things, and the layout warning fired again on every new size.
+    /// So the symptom was three symptoms — a region that reads nothing, a detector fed noise, and
+    /// an error that will not stop — with one cause, and the cause was that the app could not tell
+    /// itself apart from the thing it was watching.
+    /// </para>
+    ///
+    /// <para>
+    /// Falling back to the topmost window that is not ours, rather than to null: null means "no
+    /// game window", which reports "is the game running?" to somebody whose game is plainly
+    /// running and merely behind our Settings window.
+    /// </para>
+    /// </summary>
     public static GameWindow? Foreground()
     {
-        var handle = NativeMethods.GetForegroundWindow();
+        var handle = ForegroundNotOurs();
         return handle == IntPtr.Zero ? null : Describe(handle, TitleOf(handle));
+    }
+
+    /// <summary>
+    /// The handle behind <see cref="Foreground"/>, exposed because "which monitor is the user
+    /// looking at" needs the same answer and must not re-derive it from the raw foreground window.
+    /// </summary>
+    public static IntPtr ForegroundNotOurs()
+    {
+        var front = NativeMethods.GetForegroundWindow();
+        if (front != IntPtr.Zero && !IsOurs(front)) return front;
+
+        // One of ours is in front. EnumWindows walks front to back, so the first candidate that
+        // is not ours is what the user would have called "the window in front" a moment ago.
+        var found = IntPtr.Zero;
+
+        NativeMethods.EnumWindows((handle, _) =>
+        {
+            if (!NativeMethods.IsWindowVisible(handle) || NativeMethods.IsIconic(handle)) return true;
+            if (IsOurs(handle)) return true;
+            if (TitleOf(handle).Length == 0) return true;
+
+            // Same floor as the profile editor's list: anything smaller is a tooltip or a shell
+            // window, and adopting one would put the region somewhere even stranger than our own
+            // toolbar did.
+            if (!NativeMethods.GetClientRect(handle, out var client)) return true;
+            if (client.Width < 200 || client.Height < 200) return true;
+
+            found = handle;
+            return false;
+        }, IntPtr.Zero);
+
+        return found;
+    }
+
+    /// <summary>True when the window belongs to this process — any of our windows, present or future.</summary>
+    private static bool IsOurs(IntPtr handle)
+    {
+        NativeMethods.GetWindowThreadProcessId(handle, out var pid);
+        return pid != 0 && pid == (uint)Environment.ProcessId;
     }
 
     private static GameWindow? Describe(IntPtr handle, string title)

@@ -334,6 +334,30 @@ asks "is this inside a pixel buffer" (origin must be ≥ 0, there is no pixel at
 region the layout has moved under, because capturing the overhang BitBlts undefined pixels into OCR
 and that reads as the model getting worse.
 
+**The app must never mistake its own windows for the thing it is watching.** Every fallback for
+"which window is the user looking at" went through `GetForegroundWindow`, and this app has windows
+of its own — Settings, the wizard, the picker, and the toolbar the user *clicks to change modes*.
+Bring any of them forward and the capture region was resolved against it: a few hundred pixels of
+our own interface, on whichever monitor that window happened to be. For the `general` profile, whose
+region is stored against the whole screen, that is the entire frame landing on the wrong display.
+One cause, three symptoms that look unrelated — a region that reads nothing, a detector fed two
+different pictures alternately, and «رُسمت منطقة الالتقاط هذه على نافذة بمقاس مختلف» repeating
+forever because the client size flipped between two values. `GameWindowLocator.ForegroundNotOurs`
+filters on the process id and falls back to the topmost window that is not ours, never to null:
+null means "no game window", which asks "is the game running?" of somebody whose game is plainly
+running and merely behind our Settings window.
+
+**A "warn once per X" guard needs a set, not a slot.** `_layoutWarnedFor` held the last key only, so
+a value alternating A, B, A, B missed on every comparison and warned on every poll — "once per
+layout" that fires 120 times a minute. Anything alternating produces this, and something always
+alternates.
+
+**Every mode cycle goes through `WatchModes.After`.** The toolbar flipped between two modes while
+Settings offered three, so `Auto` was unreachable from the toolbar — which also drew an `Auto` icon
+for a state it could not produce, advertising a mode and then refusing to select it. Both surfaces
+now read one list, and a test asserts that list covers every value of the enum, because adding a
+fourth mode and forgetting the toolbar is the same defect wearing a new coat.
+
 **But the client area a region is measured against must stay one monitor wide.** Regions are stored
 as fractions of it, so widening it to the union of every display silently relocates every region
 already saved — "22% from the left, 56% wide" becomes a band straddling the seam between two
@@ -443,6 +467,19 @@ the Arabic on screen **4.6 seconds** after the line appeared. The cause was not 
 raising it from 2 fps to 6 buys 334 ms of that 4,625 and triples the CPU. It is that
 `MaxDifferingCells = 2` out of 1536 can never be satisfied by full-motion video, so the gate never
 settles and every release comes from the cap. **Tune the cap, not the poll rate.**
+
+**That cap is now at its floor, so the advice above has expired — read the arithmetic before tuning
+again.** Over video the cap is not a deadline, it is a pure wait: the stillness test cannot pass, so
+nothing is bought by it except not catching a caption mid fade-in, and a subtitle fade is one to
+three frames. It is `MinimumSettleCap` (400 ms) — the value this file already calls the point below
+which a cap "stops being a deadline and starts being a guarantee of translating mid-change".
+`MinimumInterval` came down with it, 1500 ms to 1000 ms, because 1500 was longer than a subtitle is
+allowed to be *short*: Netflix's floor is 20 frames, five sixths of a second, so a conformant track
+could legally change faster than we were willing to look — and a caption arriving inside the floor
+was not delayed, it was **dropped**, because the poll is skipped and the line is gone before the
+next one asks. What remains in the budget is about 125 ms of average detection lag, the OCR, and the
+provider round trip, which is the largest item by far. The next honest latency win is the poll rate
+after all, or a faster lane. It is no longer the cap.
 
 **A session cap must be measured from switch-on.** The 90-second idle expiry cannot do this job and
 never could: `lastChange` resets on any movement, so on a video — or in a game with animation
@@ -944,6 +981,29 @@ of arithmetic exposes. **A test whose input is more generous than production is 
 is a test of a different program** — and the fix that generalises is the one now in
 `TheReadBudgetAtDialoguePacingIsEnoughToDecideWith`: assert the relationship between the constants,
 not just the behaviour they produce.
+
+**Found by one evening of real use of v0.7.0, and the first one is the most embarrassing kind:**
+
+- **The app could not tell itself apart from the thing it was watching.** Auto mode "does not work
+  at all and keeps giving error that frame moved" turned out to be one bug with three faces. Every
+  fallback for "which window is in front" used `GetForegroundWindow` with nothing excluding our own
+  process — and the toolbar is *how you change modes*, so testing the feature was itself the thing
+  that broke it. The region resolved against our own window: wrong pixels (the detector saw two
+  alternating pictures and could conclude nothing), wrong size (the layout warning fired again on
+  every new size), and on two monitors, the wrong screen entirely. Every individual piece was
+  written correctly; nothing had ever asked whether the window in front might be ours.
+- **The mode button offered a mode it could not select.** Three modes in Settings, a two-way flip on
+  the toolbar, and an `Auto` icon in `ToolbarWindow` that no state could reach — the icon mapping had
+  been written for three from the start. Worse, `--toolbar-test` only ever rendered the default
+  mode, so the one icon reachable solely through the least-used branch was also the one the
+  rehearsal never drew. It renders all three now.
+- **`_layoutWarnedFor` was a single slot, so "once per layout" fired forever.** A value alternating
+  A, B, A, B misses on every comparison. A set costs nothing and means what the comment said.
+- **The video settle cap was the biggest item in the latency budget and bought nothing.** Over
+  moving picture the stillness test cannot pass, so the cap is a pure wait — and at 800 ms it was
+  larger than the OCR and comparable to the whole network round trip. It is 400 ms now, the
+  documented floor. `MinimumInterval` was worse than slow: at 1500 ms it silently **dropped** any
+  caption arriving sooner, and the published minimum subtitle duration is 833 ms.
 
 **Latent, found by inspection and not yet hit in the wild:** the bundled `NotoSansArabic-Regular.ttf`
 contains **no Latin at all** — not `A`, not `%`, and none of `✓ ✗ ⚠ → · ⏎`. Every Latin word in the

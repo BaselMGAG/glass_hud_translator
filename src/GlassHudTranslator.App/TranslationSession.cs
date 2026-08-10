@@ -689,10 +689,14 @@ public sealed class TranslationSession : IDisposable
 
         // Said once per (profile, region, layout) rather than every frame - auto-watch runs at 2 fps
         // and a warning repeated 120 times a minute is noise the user learns to ignore.
+        //
+        // A SET rather than one slot, because one slot only suppresses an immediate repeat: a size
+        // alternating A, B, A, B misses every time and warns on every poll, which is precisely what
+        // a window switching between two states produces. Remembering every layout already
+        // mentioned makes "once per layout" mean what it says.
         if (!profile.MatchesLayout(client.Width, client.Height, window.Scaling)
-            && _layoutWarnedFor != LayoutKey(profile, client))
+            && _layoutWarnedFor.Add(LayoutKey(profile, client)))
         {
-            _layoutWarnedFor = LayoutKey(profile, client);
             Report(Text.RegionLayoutChanged);
         }
 
@@ -712,9 +716,8 @@ public sealed class TranslationSession : IDisposable
             return null;
         }
 
-        if (_trimmedWarnedFor != LayoutKey(profile, client))
+        if (_trimmedWarnedFor.Add(LayoutKey(profile, client)))
         {
-            _trimmedWarnedFor = LayoutKey(profile, client);
             Report(Text.RegionOffScreenTrimmed);
         }
 
@@ -756,8 +759,8 @@ public sealed class TranslationSession : IDisposable
     private string LayoutKey(RegionProfile profile, CaptureRegion client) =>
         $"{_services.Profile.Id}/{profile.Name}/{client.Width}x{client.Height}";
 
-    private string? _layoutWarnedFor;
-    private string? _trimmedWarnedFor;
+    private readonly HashSet<string> _layoutWarnedFor = [];
+    private readonly HashSet<string> _trimmedWarnedFor = [];
 
     /// <summary>
     /// Raised when the game's window is located and has moved or resized since last time, so the

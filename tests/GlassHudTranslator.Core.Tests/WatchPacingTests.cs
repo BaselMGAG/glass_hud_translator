@@ -47,6 +47,70 @@ public class WatchPacingTests
         Assert.True(video.StopAfter >= TimeSpan.FromMinutes(40));
         Assert.True(video.StopAfterRequests >= 1000);
     }
+
+    // ── the cycle the toolbar button walks ────────────────────────────────────────────────────
+
+    [Fact]
+    public void EveryModeIsReachableByCyclingFromAnyOther()
+    {
+        // The defect this pins was found in real use: the toolbar flipped between Dialogue and
+        // Video, so Auto could only be chosen from Settings - while the same button drew an Auto
+        // icon it had no way of ever showing. Cycling from anywhere must reach everything.
+        foreach (var start in Enum.GetValues<WatchMode>())
+        {
+            var seen = new HashSet<WatchMode>();
+            var at = start;
+
+            for (var i = 0; i < Enum.GetValues<WatchMode>().Length; i++)
+            {
+                at = WatchModes.After(at);
+                seen.Add(at);
+            }
+
+            Assert.Equal(Enum.GetValues<WatchMode>().ToHashSet(), seen);
+        }
+    }
+
+    [Fact]
+    public void TheCycleOffersEveryModeTheEnumHas()
+    {
+        // Adding a fourth mode and forgetting the toolbar is the same mistake in a new coat, and
+        // it would be invisible: the dropdown would grow and the button would silently skip it.
+        Assert.Equal(Enum.GetValues<WatchMode>().ToHashSet(), WatchModes.InOrder.ToHashSet());
+    }
+
+    [Fact]
+    public void CyclingWrapsRatherThanRunningOffTheEnd()
+    {
+        Assert.Equal(WatchModes.InOrder[0], WatchModes.After(WatchModes.InOrder[^1]));
+    }
+
+    // ── keeping up with a real subtitle track ─────────────────────────────────────────────────
+
+    [Fact]
+    public void VideoCanKeepUpWithTheShortestSubtitleTheStandardsAllow()
+    {
+        // Netflix's floor is 20 frames - five sixths of a second - and the ESIST Code's is one
+        // second, so a conformant track can put a new caption up that fast. A floor above that is
+        // not pacing, it is dropping every other line: the poll is skipped and the caption is gone
+        // before the next one asks.
+        var shortestLegalCaption = TimeSpan.FromSeconds(1);
+
+        Assert.True(WatchPacing.For(WatchMode.Video).MinimumInterval <= shortestLegalCaption,
+            "the floor refuses to look as often as a subtitle track is allowed to change");
+    }
+
+    [Fact]
+    public void TheVideoSettleCapIsNeverBelowWhatTheAdaptiveFloorAllows()
+    {
+        // Over moving picture the stillness test cannot pass, so every release comes from the cap
+        // and it is pure latency. That argues for making it small; MinimumSettleCap is how small,
+        // and it is documented as the point below which a cap guarantees translating mid-change.
+        // The two numbers are chosen in different places, so assert the relationship rather than
+        // either value.
+        Assert.True(WatchPacing.For(WatchMode.Video).SettleCap >= WatchSession.MinimumSettleCap,
+            "the video cap is below the floor the adaptive tightening refuses to cross");
+    }
 }
 
 public class WatchSessionTests
