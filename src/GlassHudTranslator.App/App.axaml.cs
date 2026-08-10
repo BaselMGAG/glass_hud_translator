@@ -34,7 +34,9 @@ public partial class App : Application
                     ? BuildOverlaySnapshot(desktop)
                     : Program.HasFlag("--toolbar-test")
                         ? BuildToolbarSnapshot(desktop)
-                        : BuildMainWindow();
+                        : Program.HasFlag("--failure-test")
+                            ? BuildFailureSnapshot(desktop)
+                            : BuildMainWindow();
 
             if (Program.HasFlag("--ui-shots") && desktop.MainWindow is SettingsWindow shotTarget)
                 CaptureSettingsShots(shotTarget, desktop);
@@ -89,11 +91,14 @@ public partial class App : Application
         }
         catch (Exception e)
         {
-            // Starting with no window at all would leave a process running with no explanation,
-            // so the failure goes on the overlay itself.
-            overlay.ShowMessage($"Startup failed: {e.Message}");
-            overlay.Show();
-            return overlay;
+            // On a NORMAL window, never the overlay. The overlay is transparent, unfocusable and
+            // has no taskbar entry - an error shown there produced the exact support report this
+            // replaces: "nothing opens after Run anyway", from a machine where the app was running
+            // with its explanation on screen the whole time. The log gets the same story, so the
+            // answer survives the window being closed.
+            Core.Diagnostics.StartupLog.Fail(e);
+            overlay.Close();
+            return new StartupFailureWindow(e);
         }
 
         // Applied once here as well as per frame, because the pipeline is reachable without going
@@ -479,6 +484,48 @@ public partial class App : Application
         };
 
         return overlay;
+    }
+
+    /// <summary>
+    /// Renders the startup-failure window with a staged exception and exits. Same rationale as the
+    /// toolbar test: this window only ever appears on a stranger's machine at the worst possible
+    /// moment, so the one place it can be rehearsed is here — if the window that reports startup
+    /// failures cannot itself be built, that is the most valuable crash this flag can produce.
+    /// </summary>
+    private static Avalonia.Controls.Window BuildFailureSnapshot(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var window = new StartupFailureWindow(new InvalidOperationException(
+            "Rehearsal: tessdata/eng.traineddata is missing. This is what a real failure looks like."));
+
+        if (Program.Option("--failure-test-out") is { } directory)
+        {
+            window.Opened += async (_, _) =>
+            {
+                await Task.Delay(300);
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    var path = Path.Combine(directory, "startup-failure.png");
+                    try
+                    {
+                        Directory.CreateDirectory(directory);
+                        using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(
+                            new PixelSize((int)window.Width, (int)Math.Ceiling(window.Bounds.Height)),
+                            new Vector(96, 96));
+                        bitmap.Render(window);
+                        bitmap.Save(path);
+                        Console.WriteLine($"failure-test: wrote {path}");
+                    }
+                    catch (Exception e)
+                    {
+                        Console.Error.WriteLine($"failure-test: FAILED - {e.Message}");
+                    }
+
+                    desktop.Shutdown();
+                });
+            };
+        }
+
+        return window;
     }
 
     /// <summary>

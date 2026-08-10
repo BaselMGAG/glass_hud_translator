@@ -1,5 +1,7 @@
 using GlassHudTranslator.Core.Capture;
 using GlassHudTranslator.Core.Config;
+using GlassHudTranslator.Core.Regions;
+using Ocr = GlassHudTranslator.Core.Ocr;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
@@ -38,8 +40,14 @@ public sealed class RegionPickerWindow : Window
     /// still spans the whole desktop while this window covers one screen, and "test what the OCR
     /// reads here" reported on entirely different pixels.
     /// </para>
+    ///
+    /// <para>
+    /// Returns the whole <see cref="Ocr.OcrResult"/> rather than the text, because the confidence
+    /// is the half of the answer the user cannot judge by eye: text that reads correctly at 45%
+    /// will misread on the next frame, and "did I pick right?" deserves the number.
+    /// </para>
     /// </summary>
-    private readonly Func<Frame, Task<string>>? _testOcr;
+    private readonly Func<Frame, Task<Ocr.OcrResult>>? _testOcr;
     private readonly Image _backdrop = new() { Stretch = Stretch.Uniform };
     private readonly Rectangle _selection;
     private readonly TextBlock _readout;
@@ -64,7 +72,7 @@ public sealed class RegionPickerWindow : Window
     private readonly bool _snip;
 
     public RegionPickerWindow(string profileName, Frame? screenshot = null,
-        Func<Frame, Task<string>>? testOcr = null, UiText? text = null, bool snip = false)
+        Func<Frame, Task<Ocr.OcrResult>>? testOcr = null, UiText? text = null, bool snip = false)
     {
         _screenshot = screenshot;
         _testOcr = testOcr;
@@ -160,6 +168,111 @@ public sealed class RegionPickerWindow : Window
     /// <summary>Null when the user cancelled. In physical screen pixels, ready for capture.</summary>
     public CaptureRegion? Result { get; private set; }
 
+    // ── proposals ─────────────────────────────────────────────────────────────────────────────
+
+    private readonly List<(RegionCandidate Candidate, Rect WindowRect)> _proposals = [];
+
+    /// <summary>
+    /// Draws rectangles the app believes contain text, each labelled with what it thinks the block
+    /// is and how confidently it read it. <paramref name="candidates"/> are in the STILL's pixel
+    /// coordinates — the same space <see cref="ToScreenPixels"/> maps into.
+    ///
+    /// <para>
+    /// This is the roadmap's "is this the dialogue?" moment: the answer to "where is the text?"
+    /// becomes a picture with a question mark instead of an instruction to drag a box over
+    /// something. Arrives late and asynchronously — a full-frame OCR takes a second or two — so
+    /// the window is fully usable before, during and without it, and a user who has already drawn
+    /// their own box loses nothing. Clicking a suggestion adopts it; the outlines never intercept
+    /// the pointer, so drawing straight through one works exactly as before.
+    /// </para>
+    /// </summary>
+    public void ShowProposals(IReadOnlyList<RegionCandidate> candidates)
+    {
+        ArgumentNullException.ThrowIfNull(candidates);
+        if (_screenshot is null) return;
+
+        // Two or three, never a list. The finder ranks; past the third the proposals stop being
+        // suggestions and start being clutter over the picture the user is trying to read.
+        foreach (var candidate in candidates.Take(3))
+        {
+            var rect = FromScreenPixels(candidate.Bounds);
+            if (rect.Width < 8 || rect.Height < 8) continue;
+
+            var outline = new Rectangle
+            {
+                Width = rect.Width,
+                Height = rect.Height,
+                Stroke = new SolidColorBrush(Color.Parse("#81c995")),
+                StrokeThickness = 2,
+                StrokeDashArray = [5, 4],
+                Fill = new SolidColorBrush(Color.Parse("#81c995"), 0.06),
+                IsHitTestVisible = false,
+            };
+            Canvas.SetLeft(outline, rect.X);
+            Canvas.SetTop(outline, rect.Y);
+
+            var label = new Border
+            {
+                Background = new SolidColorBrush(Color.Parse("#0a0a0c"), 0.85),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(8, 3),
+                IsHitTestVisible = false,
+                Child = new TextBlock
+                {
+                    Text = string.Format(_text.SuggestionLabel, KindName(candidate.Kind),
+                        candidate.WordCount, Math.Round(candidate.MeanConfidence)),
+                    FontSize = 13,
+                    Foreground = new SolidColorBrush(Color.Parse("#81c995")),
+                },
+            };
+            Canvas.SetLeft(label, rect.X);
+            Canvas.SetTop(label, Math.Max(0, rect.Y - 26));
+
+            _canvas.Children.Add(outline);
+            _canvas.Children.Add(label);
+            _proposals.Add((candidate, rect));
+        }
+
+        if (_proposals.Count > 0 && string.IsNullOrEmpty(_ocrPreview.Text))
+            _ocrPreview.Text = _text.PickerSuggestionHint;
+    }
+
+    /// <summary>
+    /// The finder's kinds, in the interface language. SidePanel borrows the quest label — a quest
+    /// log is what that shape almost always is — and Unknown is honest about knowing nothing.
+    /// </summary>
+    private string KindName(TextRegionKind kind) => kind switch
+    {
+        TextRegionKind.Dialogue => _text.RegionDialogue,
+        TextRegionKind.Subtitle => _text.RegionSubtitle,
+        TextRegionKind.SidePanel => _text.RegionQuest,
+        _ => _text.RegionTextBlock,
+    };
+
+    /// <summary>
+    /// A click that was too small to be a drag, landing inside a proposal, adopts it. Geometric
+    /// rather than control hit-testing, so the outlines can stay transparent to the pointer and a
+    /// drag that starts inside one still draws a fresh box.
+    /// </summary>
+    private bool TryAdoptProposal(Point point)
+    {
+        foreach (var (candidate, rect) in _proposals)
+        {
+            if (!rect.Contains(point)) continue;
+
+            Draw(rect);
+            _selection.IsVisible = true;
+            _ocrPreview.Text = string.Format(_text.SuggestionLabel, KindName(candidate.Kind),
+                candidate.WordCount, Math.Round(candidate.MeanConfidence))
+                + "   —   " + _text.SuggestionAdopted;
+
+            if (_snip) Commit();
+            return true;
+        }
+
+        return false;
+    }
+
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
@@ -183,9 +296,12 @@ public sealed class RegionPickerWindow : Window
         _dragging = false;
         var rect = Normalise(_origin, e.GetPosition(this));
 
-        // A stray click should not wipe a working profile with a 2x2 region.
+        // A stray click should not wipe a working profile with a 2x2 region - but a click ON a
+        // proposal is not stray, it is the answer to the question the proposal asks.
         if (rect.Width < 40 || rect.Height < 20)
         {
+            if (TryAdoptProposal(e.GetPosition(this))) return;
+
             _readout.Text = _text.PickerTooSmall;
             _selection.IsVisible = false;
             return;
@@ -246,10 +362,11 @@ public sealed class RegionPickerWindow : Window
                 {
                     // The crop comes from the still this window is already displaying, so what the
                     // OCR reads is exactly what the user can see inside the blue box.
-                    var text = await _testOcr(_screenshot.Crop(candidateRect));
-                    _ocrPreview.Text = string.IsNullOrWhiteSpace(text)
+                    var read = await _testOcr(_screenshot.Crop(candidateRect));
+                    _ocrPreview.Text = string.IsNullOrWhiteSpace(read.RawText)
                         ? _text.OcrReadNothing
-                        : $"{_text.OcrReads}   {text.Replace("\n", "   ⏎   ")}";
+                        : $"{_text.OcrReads}   {read.RawText.Replace("\n", "   ⏎   ")}   "
+                          + $"({string.Format(_text.OcrConfidence, Math.Round(read.Confidence))})";
                 }
                 catch (Exception ex)
                 {
@@ -318,6 +435,33 @@ public sealed class RegionPickerWindow : Window
             (int)Math.Round((rect.Y - offsetY) / scale),
             (int)Math.Round(rect.Width / scale),
             (int)Math.Round(rect.Height / scale));
+    }
+
+    /// <summary>
+    /// The inverse of <see cref="ToScreenPixels"/>: a rectangle in the still's pixels, mapped into
+    /// this window's coordinates for drawing. The letterbox offset and scale are the same numbers
+    /// applied the other way round, and they must be — a proposal drawn with any other arithmetic
+    /// than the save uses would highlight one rectangle and store another.
+    /// </summary>
+    private Rect FromScreenPixels(CaptureRegion region)
+    {
+        if (_screenshot is null || _backdrop.Bounds.Width <= 0)
+        {
+            var scaling = RenderScaling;
+            return scaling <= 0
+                ? default
+                : new Rect(region.X / scaling, region.Y / scaling,
+                    region.Width / scaling, region.Height / scaling);
+        }
+
+        var displayed = _backdrop.Bounds;
+        var scale = Math.Min(displayed.Width / _screenshot.Width, displayed.Height / _screenshot.Height);
+        var offsetX = displayed.X + (displayed.Width - _screenshot.Width * scale) / 2;
+        var offsetY = displayed.Y + (displayed.Height - _screenshot.Height * scale) / 2;
+
+        return new Rect(
+            region.X * scale + offsetX, region.Y * scale + offsetY,
+            region.Width * scale, region.Height * scale);
     }
 
     private static Rect Normalise(Point a, Point b) => new(

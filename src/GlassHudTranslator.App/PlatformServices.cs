@@ -49,6 +49,30 @@ public static class PlatformServices
 #endif
     }
 
+    /// <summary>
+    /// The error dialog of last resort: a native message box, shown when the UI toolkit itself is
+    /// the thing that failed to start. Plain user32, no Avalonia, no fonts of ours — if this cannot
+    /// appear, nothing can, and the startup log is the remaining evidence.
+    /// </summary>
+    public static void ShowFatalError(string title, string message)
+    {
+#if WINDOWS
+        try
+        {
+            Interop.NativeMethods.MessageBox(IntPtr.Zero, message, title,
+                Interop.NativeMethods.MbOk | Interop.NativeMethods.MbIconError
+                | Interop.NativeMethods.MbTopmost);
+        }
+        catch (Exception)
+        {
+            // Even the message box can fail if the Interop assembly is what was quarantined.
+            // The caller has already written the log; there is nothing further to do.
+        }
+#else
+        Console.Error.WriteLine($"{title}: {message}");
+#endif
+    }
+
     public static IFrameSource CreateFrameSource(string testFramesDirectory)
     {
 #if WINDOWS
@@ -110,9 +134,17 @@ public static class PlatformServices
 #endif
     }
 
-    public static IOcrEngine CreateOcrEngine(string language = "eng")
+    public static IOcrEngine CreateOcrEngine(string language = "eng") =>
+        CreateOcrEngine(new TesseractOptions { Language = language });
+
+    /// <summary>
+    /// The same engines with the caller's own options. Exists for the region-proposal pass, which
+    /// reads a whole frame once and wants very different settings from the per-line loop: no 2x
+    /// upscale (a full desktop doubled is tens of millions of pixels for a layout question), and
+    /// automatic page segmentation, because a full screen is not "a uniform block of text".
+    /// </summary>
+    public static IOcrEngine CreateOcrEngine(TesseractOptions options)
     {
-        var options = new TesseractOptions { Language = language };
 #if WINDOWS
         // Bundled natives so the user installs nothing, with an automatic fallback to a
         // tesseract.exe shipped alongside if those fail to load.

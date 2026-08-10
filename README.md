@@ -66,6 +66,13 @@ and unzip it somewhere ordinary like `C:\glasshud`. Keep the folder together —
 Windows SmartScreen will block it the first time: *More info* → *Run anyway*. That is normal for an
 unsigned app with no download history.
 
+**If nothing opens after that**, look for a file called `startup.log` next to the exe — the app
+writes it from the very first moment it runs. If the file isn't there, the process never started,
+which usually means an antivirus removed it: check the antivirus's quarantine, restore the folder,
+or unzip the download again. If the file is there, its last line says exactly what went wrong —
+send it with your report. A failed start also shows a normal window now, in Arabic and English,
+with the error ready to copy.
+
 **2. Set the game to Borderless Windowed.** Exclusive fullscreen breaks screen capture and
 always-on-top overlays both. Don't run the game as administrator either, or Windows won't let the
 overlay draw over it.
@@ -89,9 +96,11 @@ see [below](#the-interface-speaks-arabic-too).
 </div>
 
 **4. Show it where the text is.** Press `Ctrl+Shift+R`. The screen freezes on a screenshot so
-nothing moves while you aim. Drag a box over the dialogue text, press `Space` to see exactly what
-the OCR reads from it, adjust until it reads cleanly, then `Enter`. The rectangle is stored relative
-to the game window, so moving the window doesn't break it.
+nothing moves while you aim. A moment later, dashed green boxes appear around the places the app
+can see text — labelled dialogue, subtitles, quest list, with how confidently each was read.
+**Click one to use it**, or drag your own box over the dialogue text. Press `Space` to see exactly
+what the OCR reads (and how sure it is), adjust until it reads cleanly, then `Enter`. The rectangle
+is stored relative to the game window, so moving the window doesn't break it.
 
 **5. Play.** Press `Ctrl+Shift+T` for the line currently on screen. The Arabic appears in about a
 second, or instantly if that line has been seen before.
@@ -190,6 +199,11 @@ an item description shouldn't be coloured by the dialogue you were just reading,
 shouldn't steer the pronouns of the next line.
 
 ### Tips
+
+**When something seems wrong, run the health check.** Settings → **Diagnostics** → *Run health
+check*. One button checks the game window, fullscreen mode, display scaling, every key (with one
+real request each), the text recognition and the capture region — and says what it found in plain
+words, worst first. Its output is the bug report: run it before asking for help.
 
 **Check the key before you play.** Each key box has a **Test** button beside it. It sends one very
 short line through that provider, so you find out here rather than in a cutscene. It distinguishes

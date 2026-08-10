@@ -226,6 +226,21 @@ public static partial class NativeMethods
     public const uint WdaExcludeFromCapture = 0x00000011;
     public const uint WdaNone = 0x00000000;
 
+    // ── last-resort error reporting ───────────────────────────────────────────────────────────
+    // The one dialog that works when nothing else does. If Avalonia cannot initialise - graphics
+    // drivers, a quarantined dependency - there is no toolkit left to draw an error with, and the
+    // process would otherwise vanish without a word. MessageBoxW is plain user32 and needs nothing
+    // but the OS.
+
+    public const uint MbOk = 0x00000000;
+    public const uint MbIconError = 0x00000010;
+
+    /// <summary>Above everything, including whatever fullscreen thing the user was starting.</summary>
+    public const uint MbTopmost = 0x00040000;
+
+    [LibraryImport(User32, EntryPoint = "MessageBoxW", StringMarshalling = StringMarshalling.Utf16)]
+    public static partial int MessageBox(IntPtr hWnd, string text, string caption, uint type);
+
     [LibraryImport(User32, EntryPoint = "GetWindowLongPtrW")]
     public static partial IntPtr GetWindowLongPtr(IntPtr hWnd, int index);
 

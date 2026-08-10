@@ -12,7 +12,9 @@
 // Releases up to and including v0.5.3 were published under the Apache License 2.0 and remain
 // available under those terms.
 
+using System.Runtime.CompilerServices;
 using Avalonia;
+using GlassHudTranslator.Core.Diagnostics;
 using GlassHudTranslator.Core.Update;
 
 namespace GlassHudTranslator.App;
@@ -67,8 +69,58 @@ internal static class Program
             return 0;
         }
 
-        return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        // The black box. "Nothing opens" reached support twice with zero evidence either time:
+        // the app's own error reporting draws on the overlay, which is transparent, unfocusable
+        // and absent from the taskbar - so a startup failure and a successful, invisible start
+        // look identical from outside. From here on, the log answers which one happened, and the
+        // absence of the log answers the third possibility: the process never ran at all.
+        StartupLog.Begin(UpdateCheck.RunningVersion?.ToString() ?? "0.0.0-dev");
+
+        // Log-only hooks for the threads no try/catch below can see. Auto-watch has its own
+        // per-poll handling; these catch what nothing else does.
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            StartupLog.Note($"unhandled ({(e.IsTerminating ? "fatal" : "non-fatal")}): {e.ExceptionObject}");
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            StartupLog.Note($"unobserved task: {e.Exception}");
+            e.SetObserved();
+        };
+
+        try
+        {
+            var code = RunAvalonia(args);
+            StartupLog.Note($"exited normally ({code})");
+            return code;
+        }
+        catch (Exception e)
+        {
+            // Avalonia itself failed - graphics initialisation, or a dependency the antivirus
+            // quarantined. There is no toolkit left to draw an error with, so the report is a
+            // native message box and the log. Bilingual, because we cannot know which language
+            // the person reading it needs, and this is precisely the moment settings may be
+            // unreadable too.
+            StartupLog.Fail(e);
+
+            PlatformServices.ShowFatalError(
+                "Glass HUD Translator",
+                "The app could not start.\n"
+                + "تعذّر تشغيل البرنامج.\n\n"
+                + $"{e.GetType().Name}: {e.Message}\n\n"
+                + $"Details / التفاصيل:\n{StartupLog.Path ?? "(log could not be written)"}");
+
+            return 1;
+        }
     }
+
+    /// <summary>
+    /// Kept out of <see cref="Main"/> and never inlined, deliberately. Assemblies load when the
+    /// method that references them is first JIT-compiled — so if an Avalonia DLL is missing or
+    /// quarantined, the throw happens at the CALL to this method, inside Main's try, rather than
+    /// while Main itself is being compiled, outside every handler in the program.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int RunAvalonia(string[] args) =>
+        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
 
     // Referenced by name by the Avalonia designer tooling - do not rename.
     public static AppBuilder BuildAvaloniaApp() =>

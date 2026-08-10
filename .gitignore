@@ -31,3 +31,4 @@ scratch/
 # and they are synthetic - real captures from your own game belong here instead.
 test-frames/*.png
 test-frames/expected.json
+startup.log

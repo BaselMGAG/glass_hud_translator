@@ -70,6 +70,13 @@ unauffälligen Ort wie `C:\glasshud`. Lass den Ordner zusammen — die EXE brauc
 Windows SmartScreen blockiert sie beim ersten Mal: *Weitere Informationen* → *Trotzdem ausführen*.
 Das ist bei einer unsignierten Anwendung ohne Download-Historie normal.
 
+**Öffnet sich danach nichts**, such neben der Exe nach einer Datei namens `startup.log` — die App
+schreibt sie vom allerersten Moment an. Fehlt die Datei, ist der Prozess nie gestartet, was meist
+heißt: ein Virenscanner hat ihn entfernt — Quarantäne prüfen oder den Download neu entpacken. Ist
+sie da, sagt ihre letzte Zeile genau, was schiefging — schick sie mit deinem Bericht. Ein
+fehlgeschlagener Start zeigt jetzt außerdem ein normales Fenster, auf Arabisch und Englisch, mit
+kopierbarem Fehlertext.
+
 **2. Stell das Spiel auf rahmenlosen Fenstermodus.** Exklusiver Vollbildmodus zerstört sowohl die
 Bildschirmaufnahme als auch Overlays im Vordergrund. Starte das Spiel auch nicht als Administrator,
 sonst lässt Windows das Overlay nicht darüber zeichnen.
@@ -201,6 +208,12 @@ vor: eine Gegenstandsbeschreibung soll nicht vom eben gelesenen Dialog eingefär
 gar nicht die Pronomen der nächsten Zeile steuern.
 
 ### Hinweise
+
+**Wenn etwas nicht stimmt: der Gesundheitscheck.** Einstellungen → **Diagnostics** → *Run health
+check*. Ein Knopf prüft Spielfenster, Vollbildmodus, Anzeigeskalierung, jeden Schlüssel (mit je
+einer echten Anfrage), die Texterkennung und den Aufnahmebereich — und sagt in klaren Worten, was
+er gefunden hat, das Schlimmste zuerst. Seine Ausgabe ist der Fehlerbericht: erst laufen lassen,
+dann um Hilfe fragen.
 
 **Prüfe den Schlüssel, bevor du spielst.** Neben jedem Schlüsselfeld steht ein **Test**-Knopf. Er
 schickt eine sehr kurze Zeile durch diesen Anbieter, damit du es hier erfährst und nicht mitten in

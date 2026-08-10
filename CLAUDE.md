@@ -34,7 +34,7 @@ solution level it tries to force `net10.0` onto the Windows-only projects and fa
 dotnet test
 ```
 
-573 tests, all runnable on macOS and Linux.
+590 tests, all runnable on macOS and Linux.
 
 ```bash
 dotnet run --project tools/Replay -- --no-cache
@@ -59,6 +59,11 @@ Run `--toolbar-test` after touching `Icons`. The icons are SVG path strings pars
 typo is an exception thrown while the window is being built — on a user's machine, at startup, with
 no compiler and no unit test able to see it. This draws the real strip, simple and expanded, to two
 PNGs. If they render here they parse everywhere.
+
+Run `--failure-test --failure-test-out <dir>` after touching `StartupFailureWindow` or anything on
+the startup path. It renders the startup-failure window with a staged exception — the one window
+that otherwise only ever appears on a stranger's machine at the worst possible moment, and the one
+whose own failure to build is the most expensive crash the app can have.
 
 ## Layout
 
@@ -522,6 +527,42 @@ could, and it was wrong. At 100% the two units are the same number, which is the
 written on; at 125% a 900-DIP panel is 1125 pixels and "flush right" hangs a quarter of it off the
 screen. Take the scale from the monitor the window is going **to**, not from `RenderScaling`, which
 is the monitor it currently happens to be on.
+
+**A startup failure goes on a normal window, and the black box opens before anything else.**
+Startup errors used to be shown on the overlay, whose defining properties — transparent,
+click-through, no taskbar entry, no Alt-Tab — turn an error shown there into an error shown to
+nobody. "Nothing opens" from a real user was the app running with its explanation on screen.
+`StartupFailureWindow` is everything the overlay refuses to be, in both languages at once, with the
+exception selectable. Underneath it, `StartupLog` writes from the first line of `Main`: absent file
+means the process never ran, a truncated file means something killed it while loading, and the
+opening census (assembly count, OCR natives present or MISSING) turns the commonest cause — an
+antivirus quietly unpacking the folder — into a one-line diagnosis. Two details are load-bearing:
+console-only flags (`--version`, `--licence`) return **before** `Begin`, or a support run would
+overwrite the failing run's evidence with a boring success; and the Avalonia bootstrap lives in a
+separate `[MethodImpl(NoInlining)]` method, because assemblies load when the method referencing
+them is JIT-compiled — inlined, a quarantined Avalonia DLL would throw outside Main's own try.
+
+**The health check is split gather/judge, and probes prove things by doing them.** `HealthCheck.Run`
+in Core takes a record of plain facts and returns sentences — every rule testable with no Windows
+and no game. The App gathers: keys are verified with one real translation each (`KeyProbe`, same as
+the Test button), and OCR is verified by OCR'ing a rendered frame, because the only thing that
+proves the natives loaded is the natives running. Severity is a coloured **word**, never a ✓/✗
+glyph — the bundled Arabic font has no symbols, and one unresolvable codepoint has already poisoned
+fallback for a whole window. The Arabic-Windows-English-interface advice is written in Arabic
+inside an otherwise-English report, deliberately: it is addressed to someone who reads Arabic, and
+delivering it in English is the bug it reports. Findings sort worst-first, and lane lists are
+`Machine` so the mirrored layout cannot reverse the cost policy.
+
+**Region proposals are a bonus layer the picker must never depend on.** The full-frame OCR pass
+runs at 1x with PSM 3 (automatic layout) — the per-line engine's PSM 6 ("one uniform block") merges
+the hotbar into the dialogue when shown a whole screen — cropped to the game window, because the
+classifier's "bottom third" means the bottom third of the *game*, not of a two-monitor desktop.
+Candidates arrive asynchronously; the picker is complete without them. The outlines are
+`IsHitTestVisible = false` and adoption is a geometric test on a too-small release, so drawing a
+fresh box straight through a suggestion works untouched — the suggestion catches exactly the click
+that was previously an error ("too small"). `FromScreenPixels` must stay the exact inverse of
+`ToScreenPixels`: a proposal drawn with different letterbox arithmetic than the save uses would
+highlight one rectangle and store another.
 
 **The picker tests the still it is already holding, never a fresh capture.** `RegionPickerWindow` is
 full-screen, topmost and has no capture exclusion, so re-photographing the screen to answer "what

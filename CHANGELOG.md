@@ -3,6 +3,37 @@
 Notable changes. Started once the app was working end to end, so everything before the first entry
 is "the thing being described in the README".
 
+## Unreleased
+
+The release about arriving. Everything here exists because of two support messages: "nothing opens
+after Run anyway", and a player for whom every problem meant a trip into Settings.
+
+### Added
+
+- **A startup failure can no longer be invisible.** Errors during startup used to be written on the
+  overlay — which is transparent, has no taskbar button and cannot be clicked, so a failed start
+  and a successful invisible one looked identical from outside: "nothing opens." A failed start now
+  shows an ordinary window, in Arabic and English at once, with the error selectable for copying.
+  And from the very first moment, the app writes `startup.log` next to its exe (or into its data
+  folder if that is read-only): if the file is missing the process never ran, if it stops early
+  something killed it while loading, and if it holds an error, that is the answer. The log opens
+  with a payload census — how many DLLs are present, whether the OCR files survived — because the
+  most common cause of all of this is an antivirus quietly removing files after "Run anyway".
+- **A health check.** Settings → Diagnostics → *Run health check*: one button that checks the game
+  window, exclusive fullscreen, display scaling, every API key (with one real request each, the
+  same way the Test button does), the text recognition, the capture region and its reading quality
+  — and reports in plain words, worst news first, in the interface language. Its output is the bug
+  report: run it before asking for help. One detail: if Windows itself is in Arabic but the
+  interface is in English, the report says so — in Arabic, because that line is addressed to
+  someone who reads Arabic.
+- **The region picker now finds the text for you.** Open the picker and, a moment later, dashed
+  green boxes appear around the places the app can see text, each labelled with what it thinks it
+  is — dialogue, subtitles, a quest list — plus how many words and how confidently it read them.
+  Click one to use it, or ignore them and drag your own exactly as before. Nothing is proposed when
+  nothing was found: a wrong suggestion confidently drawn teaches you not to trust the right ones.
+- **The picker's OCR test now reports its confidence.** Text that reads correctly at 45% will
+  misread on the next frame; "did I pick right?" deserves the number, not just the words.
+
 ## v0.6.0 — 10 August 2026
 
 You can see what the app is looking at, reach everything it does without memorising a key

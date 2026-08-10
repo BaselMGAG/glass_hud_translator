@@ -353,6 +353,49 @@ public sealed class UiText
     public required string CaptureWindowsOnly { get; init; }
     public required string SelectionOffScreen { get; init; }
 
+    // ── health check ───────────────────────────────────────────────────────────────────────
+    // One button, twelve questions, plain language. Every string here is the app having the
+    // support conversation before it becomes one.
+    public required string HealthSection { get; init; }
+    public required string HealthNote { get; init; }
+    public required string HealthRun { get; init; }
+    public required string HealthRunning { get; init; }
+    public required string HealthOkWord { get; init; }
+    public required string HealthWarningWord { get; init; }
+    public required string HealthProblemWord { get; init; }
+    public required string HealthNoKeys { get; init; }
+    public required string HealthKeysWorking { get; init; }
+    public required string HealthKeysRejected { get; init; }
+    public required string HealthKeysUnknown { get; init; }
+    public required string HealthOcrReady { get; init; }
+    public required string HealthOcrMissing { get; init; }
+    public required string HealthWholeScreen { get; init; }
+    public required string HealthGameFound { get; init; }
+    public required string HealthGameNotFound { get; init; }
+    public required string HealthGameBlocked { get; init; }
+    public required string HealthNoRegion { get; init; }
+    public required string HealthRegionSaved { get; init; }
+    public required string HealthReadingWell { get; init; }
+    public required string HealthReadingPoorly { get; init; }
+    public required string HealthScaling { get; init; }
+    public required string HealthHardware { get; init; }
+
+    // ── region proposals ───────────────────────────────────────────────────────────────────
+    public required string PickerSuggestionHint { get; init; }
+    public required string SuggestionLabel { get; init; }
+    public required string SuggestionAdopted { get; init; }
+    public required string RegionTextBlock { get; init; }
+    public required string OcrConfidence { get; init; }
+
+    // ── startup failure ────────────────────────────────────────────────────────────────────
+    // Shown on a NORMAL window — decorations, taskbar entry, closable — never on the overlay.
+    // The overlay is transparent, has no taskbar button and cannot be focused, so an error
+    // written there is exactly what "nothing opens" looks like from the outside.
+    public required string StartupFailedTitle { get; init; }
+    public required string StartupFailedBody { get; init; }
+    public required string StartupFailedLogAt { get; init; }
+    public required string StartupFailedClose { get; init; }
+
     /// <summary>
     /// The display name for a capture region. The stored names are English identifiers - they are
     /// dictionary keys in the region store and in every saved profile - so they cannot simply be
@@ -693,6 +736,64 @@ public sealed class UiText
             + "it, study it, change it, pass it on. The one condition is that anything built on it "
             + "stays open the same way. The full text is in the LICENSE file beside the program, "
             + "and the source is here:",
+
+        HealthSection = "Health check",
+        HealthNote =
+            "Checks everything at once — the game window, the capture region, the keys, the text "
+            + "recognition — and says what it found in plain words. Run it whenever something "
+            + "seems wrong, and before reporting a problem: its output is the report.",
+        HealthRun = "Run health check",
+        HealthRunning = "Checking… the keys are tested with one real request each.",
+        HealthOkWord = "OK",
+        HealthWarningWord = "Check",
+        HealthProblemWord = "Problem",
+        HealthNoKeys =
+            "No API key is set, so nothing will be translated. Settings → Providers — a free "
+            + "Gemini or Groq key is enough.",
+        HealthKeysWorking = "Keys working: {0}",
+        HealthKeysRejected =
+            "Key refused by: {0}. That key needs to be replaced — retrying will not help.",
+        HealthKeysUnknown =
+            "Could not verify: {0}. The key may be fine — the provider was unreachable or busy. "
+            + "This is not the same as a wrong key.",
+        HealthOcrReady = "Text recognition is loaded and ready.",
+        HealthOcrMissing =
+            "Text recognition could not be loaded, so nothing on screen can be read. If an "
+            + "antivirus ran recently, it may have removed files from the app folder — restore "
+            + "them from quarantine or unzip the download again.",
+        HealthWholeScreen = "Reading the whole screen — no game window needed.",
+        HealthGameFound = "Game found: {0}",
+        HealthGameNotFound =
+            "No window found for \"{0}\". Start the game first, or switch the profile to "
+            + "\"anything on screen\".",
+        HealthGameBlocked =
+            "\"{0}\" is running in exclusive fullscreen, which blocks screen capture. Set the "
+            + "game to borderless windowed.",
+        HealthNoRegion =
+            "No capture region has been drawn for \"{0}\" yet, so the app is guessing where the "
+            + "text is. Settings → Translating → Pick dialogue — the picker now suggests "
+            + "rectangles it can see text in.",
+        HealthRegionSaved = "A capture region is saved for this game.",
+        HealthReadingWell = "The capture region reads cleanly — last confidence {0}%.",
+        HealthReadingPoorly =
+            "The capture region reads poorly — last confidence {0}%. Try drawing the box a "
+            + "little wider than the text, not tight against it.",
+        HealthScaling = "Display scaling {0}% — detected and handled.",
+        HealthHardware = "Machine: {0} cores, {1} GB memory. Translation runs in the cloud, so this is plenty.",
+
+        PickerSuggestionHint =
+            "Boxes with text were found — click one to use it, or drag your own.",
+        SuggestionLabel = "{0} · {1} words · {2}%",
+        SuggestionAdopted = "Suggestion applied — Space tests it, Enter saves it.",
+        RegionTextBlock = "Text",
+        OcrConfidence = "confidence {0}%",
+
+        StartupFailedTitle = "Glass HUD Translator — could not start",
+        StartupFailedBody =
+            "The app hit a problem while starting and cannot continue. The details below say "
+            + "what went wrong; if you report this, send the whole text and the log file.",
+        StartupFailedLogAt = "The same details were written to:",
+        StartupFailedClose = "Close",
 
         SelectRegionTitle = "Select the {0} region",
         PickerHintFrozen =
@@ -1072,6 +1173,62 @@ public sealed class UiText
             "برنامج حرّ تحت رخصة جنو AGPL الإصدار الثالث أو ما بعده — استعمله، وادرسه، وغيّره، "
             + "وانقله لغيرك. والشرط الوحيد أن يبقى كل ما يُبنى عليه مفتوحاً بالطريقة نفسها. ونصّ "
             + "الرخصة كاملاً في ملف LICENSE بجوار البرنامج، والشيفرة هنا:",
+
+        HealthSection = "الفحص الشامل",
+        HealthNote =
+            "يفحص كل شيء دفعة واحدة — نافذة اللعبة، ومنطقة الالتقاط، والمفاتيح، وقراءة النص — "
+            + "ويقول ما وجده بكلمات واضحة. شغّله كلما بدا شيء غير طبيعي، وقبل الإبلاغ عن أي "
+            + "مشكلة: ما يطبعه هو التقرير نفسه.",
+        HealthRun = "افحص الآن",
+        HealthRunning = "جارٍ الفحص… تُجرَّب المفاتيح بطلب حقيقي واحد لكل مفتاح.",
+        HealthOkWord = "سليم",
+        HealthWarningWord = "انتبه",
+        HealthProblemWord = "مشكلة",
+        HealthNoKeys =
+            "لا يوجد أي مفتاح API، فلن يُترجَم شيء. الإعدادات ← المزوّدون — يكفي مفتاح مجاني من "
+            + "Gemini أو Groq.",
+        HealthKeysWorking = "مفاتيح تعمل: {0}",
+        HealthKeysRejected =
+            "مفتاح مرفوض عند: {0}. هذا المفتاح يحتاج إلى استبدال — إعادة المحاولة لن تنفع.",
+        HealthKeysUnknown =
+            "تعذّر التحقّق من: {0}. قد يكون المفتاح سليماً — المزوّد كان بعيد المنال أو مشغولاً. "
+            + "هذا ليس كمفتاح خاطئ.",
+        HealthOcrReady = "قراءة النص محمّلة وجاهزة.",
+        HealthOcrMissing =
+            "تعذّر تحميل قراءة النص، فلا يمكن قراءة أي شيء على الشاشة. إن عمل مضادّ فيروسات "
+            + "مؤخراً فربما حذف ملفات من مجلد البرنامج — أعدها من الحجر الصحي أو فكّ ضغط "
+            + "التنزيل من جديد.",
+        HealthWholeScreen = "يقرأ الشاشة كاملة — لا حاجة إلى نافذة لعبة.",
+        HealthGameFound = "وُجدت اللعبة: {0}",
+        HealthGameNotFound =
+            "لا توجد نافذة لـ«{0}». شغّل اللعبة أولاً، أو حوّل الملف إلى «أي شيء على الشاشة».",
+        HealthGameBlocked =
+            "«{0}» تعمل بملء الشاشة الحصري وهو يمنع التقاط الشاشة. اضبط اللعبة على النافذة "
+            + "بلا إطار.",
+        HealthNoRegion =
+            "لم تُرسم منطقة التقاط لـ«{0}» بعد، فالبرنامج يخمّن مكان النص. الإعدادات ← الترجمة "
+            + "← حدد الحوار — صار المحدِّد يقترح مستطيلات يرى فيها نصاً.",
+        HealthRegionSaved = "توجد منطقة التقاط محفوظة لهذه اللعبة.",
+        HealthReadingWell = "منطقة الالتقاط تُقرأ بوضوح — آخر ثقة {0}٪.",
+        HealthReadingPoorly =
+            "منطقة الالتقاط تُقرأ بصعوبة — آخر ثقة {0}٪. جرّب رسم الصندوق أوسع قليلاً من النص، "
+            + "لا ملاصقاً له.",
+        HealthScaling = "تحجيم العرض {0}٪ — مكتشَف ومُعالَج.",
+        HealthHardware = "الجهاز: {0} أنوية و {1} غيغابايت ذاكرة. الترجمة تجري سحابياً، فهذا أكثر من كافٍ.",
+
+        PickerSuggestionHint =
+            "وُجدت صناديق فيها نص — انقر أحدها لاستخدامه، أو ارسم صندوقك بنفسك.",
+        SuggestionLabel = "{0} · {1} كلمة · {2}٪",
+        SuggestionAdopted = "طُبّق الاقتراح — Space يجرّبه و Enter يحفظه.",
+        RegionTextBlock = "نص",
+        OcrConfidence = "الثقة {0}٪",
+
+        StartupFailedTitle = "Glass HUD Translator — تعذّر التشغيل",
+        StartupFailedBody =
+            "واجه البرنامج مشكلة أثناء التشغيل ولا يستطيع الاستمرار. التفاصيل أدناه تقول ما الذي "
+            + "حدث؛ وإن أبلغت عن هذا فأرسل النص كاملاً مع ملف السجل.",
+        StartupFailedLogAt = "كُتبت التفاصيل نفسها في:",
+        StartupFailedClose = "إغلاق",
 
         SelectRegionTitle = "حدّد منطقة {0}",
         PickerHintFrozen =

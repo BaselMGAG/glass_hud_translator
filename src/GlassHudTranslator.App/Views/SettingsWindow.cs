@@ -1001,6 +1001,18 @@ public sealed class SettingsWindow : Window
         stack.Children.Add(_cache);
         stack.Children.Add(_pace);
 
+        // One button, all twelve questions, plain words, worst news first. Every failure that has
+        // reached a real user so far was something the app could have known and said; this is
+        // where it says it, and its output IS the bug report - which is why it sits above the
+        // router log rather than below it.
+        stack.Children.Add(Section(_text.HealthSection));
+        stack.Children.Add(Note(_text.HealthNote));
+
+        var healthResults = new StackPanel { Spacing = 6 };
+        var runHealth = Button(_text.HealthRun, () => _ = RunHealthCheckAsync(healthResults));
+        stack.Children.Add(runHealth);
+        stack.Children.Add(healthResults);
+
         // Where the source is. Under the AGPL that is not a courtesy - the whole point of the
         // licence is that whoever ends up with a copy can get the code it was built from - and a
         // link in a readme does not travel with a zip somebody was handed. The URL is machine text,
@@ -1401,6 +1413,21 @@ public sealed class SettingsWindow : Window
         var screenshot = PlatformServices.CaptureFullScreen();
 
         var picker = new RegionPickerWindow(profileName, screenshot, TestRegionAsync, _text);
+
+        // Proposals are computed while the user is already aiming, and drawn whenever they arrive.
+        // The picker owes them nothing: if the OCR pass is slow, or finds nothing, or the user has
+        // finished before it returns, the flow is exactly what it was before proposals existed.
+        if (screenshot is not null)
+        {
+            _ = Task.Run(async () =>
+            {
+                var candidates = await ProposeRegionsAsync(screenshot);
+                if (candidates.Count > 0)
+                    await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+                        () => picker.ShowProposals(candidates));
+            });
+        }
+
         await picker.ShowDialog(this);
 
         if (picker.Result is not { } picked)
@@ -1529,19 +1556,213 @@ public sealed class SettingsWindow : Window
     public event Action? FloatingWindowsChanged;
 
     /// <summary>
+    /// Gathers the facts, hands them to <see cref="Core.Diagnostics.HealthCheck"/> for judgement,
+    /// and renders the sentences. The split matters: everything in here is Win32 calls, live key
+    /// probes and file checks that need a running install, and everything in there is the logic —
+    /// which is why the logic has tests and this has none.
+    /// </summary>
+    private async Task RunHealthCheckAsync(StackPanel results)
+    {
+        results.Children.Clear();
+        results.Children.Add(Note(_text.HealthRunning));
+
+        try
+        {
+            var inputs = await Task.Run(GatherHealthInputsAsync);
+            var findings = Core.Diagnostics.HealthCheck.Run(inputs, _text);
+
+            results.Children.Clear();
+            foreach (var finding in findings) results.Children.Add(HealthRow(finding));
+        }
+        catch (Exception e)
+        {
+            results.Children.Clear();
+            results.Children.Add(Warning($"{_text.DiagnosticsFailed} {e.Message}"));
+        }
+    }
+
+    private async Task<Core.Diagnostics.HealthInputs> GatherHealthInputsAsync()
+    {
+        var game = PlatformServices.FindGameWindow(
+            _services.Profile.WindowTitles, _services.Profile.ProcessNames);
+
+        var wholeScreen = !_services.Profile.IsWindowBound;
+
+        // Every key that exists gets one real request, exactly as the Test button sends one.
+        // Empty slots are skipped rather than reported - their emptiness is the normal state -
+        // so "no keys at all" falls out as an empty list, which the judge reads correctly.
+        var lanes = new List<Core.Diagnostics.LaneHealth>();
+        foreach (var provider in _services.Models.Providers)
+        {
+            if (provider.Secret is null) continue;
+
+            foreach (var slot in provider.KeySlots())
+            {
+                if (string.IsNullOrWhiteSpace(_services.Secrets.Get(provider.SecretSlot(slot))))
+                    continue;
+
+                var lane = ProviderFactory.Create(provider, _services.Http, _services.Secrets, slot);
+                var probe = await KeyProbe.TestAsync(lane, TimeSpan.FromSeconds(20), CancellationToken.None);
+                lanes.Add(new Core.Diagnostics.LaneHealth(provider.LaneName(slot), probe.Status, probe.Detail));
+            }
+        }
+
+        // OCR is probed by doing OCR, for the reason the key probe translates: the only thing that
+        // proves the natives loaded is the natives running. A tiny rendered frame keeps it cheap,
+        // and a throw here is precisely the antivirus-quarantine case worth catching.
+        bool ocrWorks;
+        string? ocrDetail = null;
+        try
+        {
+            var probeFrame = Core.Diagnostics.SyntheticFrames.Render(
+                new Core.Diagnostics.SyntheticLine(null, "health check"));
+            _ = await _services.Ocr.RecognizeAsync(probeFrame, CancellationToken.None);
+            ocrWorks = true;
+        }
+        catch (Exception e)
+        {
+            ocrWorks = false;
+            ocrDetail = e.Message;
+        }
+
+        var scaling = game?.Scaling
+                      ?? await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+                          () => Screens.ScreenFromWindow(this)?.Scaling ?? RenderScaling);
+
+        return new Core.Diagnostics.HealthInputs
+        {
+            SystemLanguage = System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName,
+            InterfaceLanguage = _settings.Language,
+            GameWindowTitle = game?.Title,
+            CanCapture = game?.CanCapture ?? true,
+            CaptureBlocker = game is { CanCapture: false } ? game.Message : null,
+            ProfileTargetsWholeScreen = wholeScreen,
+            ProfileName = _services.Profile.DisplayName,
+            DisplayScaling = scaling,
+            Lanes = lanes,
+            ProcessorCount = Environment.ProcessorCount,
+            MemoryGb = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / 1073741824.0,
+            OcrAvailable = ocrWorks,
+            OcrDetail = ocrDetail,
+            RegionSaved = await _services.Regions.HasAsync(
+                _services.Profile.Id, _settings.LastRegionProfile, CancellationToken.None),
+            LastOcrConfidence = _session.LastOcrConfidence,
+        };
+    }
+
+    /// <summary>
+    /// One finding as one row: a coloured severity word, then the sentence. A word rather than a
+    /// tick glyph, deliberately — the bundled Arabic font has no symbols, and one unresolvable
+    /// codepoint has already poisoned glyph fallback for a whole window once.
+    /// </summary>
+    private Control HealthRow(Core.Diagnostics.HealthFinding finding)
+    {
+        var (colour, word) = finding.Severity switch
+        {
+            Core.Diagnostics.HealthSeverity.Problem => ("#f28b82", _text.HealthProblemWord),
+            Core.Diagnostics.HealthSeverity.Warning => ("#fdd663", _text.HealthWarningWord),
+            _ => ("#81c995", _text.HealthOkWord),
+        };
+
+        var chip = new Border
+        {
+            BorderBrush = new SolidColorBrush(Color.Parse(colour)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(8, 2),
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 1, 10, 0),
+            Child = new TextBlock
+            {
+                Text = word,
+                FontSize = 12,
+                Foreground = new SolidColorBrush(Color.Parse(colour)),
+            },
+        };
+
+        var body = new TextBlock
+        {
+            Text = finding.Text,
+            FontSize = 13,
+            LineSpacing = 3,
+            Foreground = new SolidColorBrush(Color.Parse("#e8eaed")),
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        var row = new DockPanel { Margin = new Thickness(0, 2) };
+        DockPanel.SetDock(chip, Dock.Left);
+        row.Children.Add(chip);
+        row.Children.Add(body);
+
+        // Machine findings are lane lists and window titles; mirrored, the lane order - which is
+        // the cost policy - reads backwards.
+        if (finding.Machine) row.FlowDirection = FlowDirection.LeftToRight;
+
+        return row;
+    }
+
+    /// <summary>
     /// Reads a crop the picker hands over, so it can show the user exactly what the OCR sees before
     /// they commit to it. Costs no API quota - OCR only, no translation.
     ///
     /// <para>
     /// Takes the pixels rather than a rectangle, and that is the fix rather than a tidy-up: this
     /// used to re-capture the screen while the picker was on top of it, so the "preview" was the
-    /// picker's own rendering with the selection box drawn across the text being tested.
+    /// picker's own rendering with the selection box drawn across the text being tested. Returns
+    /// the whole result now, so the picker can report the confidence beside the text.
     /// </para>
     /// </summary>
-    private async Task<string> TestRegionAsync(Frame crop)
+    private Task<Core.Ocr.OcrResult> TestRegionAsync(Frame crop) =>
+        _services.Ocr.RecognizeAsync(crop, CancellationToken.None);
+
+    /// <summary>
+    /// Finds where the text is, so the picker can ask "is this the dialogue?" instead of relying
+    /// on the user to know. One full-frame OCR at native resolution with automatic page
+    /// segmentation, fed through <see cref="RegionFinder"/>; candidates come back in the still's
+    /// own coordinates, which is the space the picker draws in.
+    ///
+    /// <para>
+    /// Cropped to the game window when there is one, both for speed and because the classifier's
+    /// geometry — "dialogue sits in the bottom third" — means the bottom third of the GAME, not of
+    /// a two-monitor desktop with the game on the left. Never throws: a proposal is a bonus, and a
+    /// picker that fails to open because a suggestion engine crashed has inverted its own value.
+    /// </para>
+    /// </summary>
+    private async Task<IReadOnlyList<RegionCandidate>> ProposeRegionsAsync(Frame still)
     {
-        var result = await _services.Ocr.RecognizeAsync(crop, CancellationToken.None);
-        return result.RawText;
+        try
+        {
+            var desktop = PlatformServices.VirtualDesktop();
+            var game = PlatformServices.FindGameWindow(
+                _services.Profile.WindowTitles, _services.Profile.ProcessNames);
+
+            // The game's client area, translated into the still's pixel space (the still's origin
+            // is the virtual desktop's origin, which is negative on some layouts).
+            var crop = game?.ClientArea is { Width: > 0, Height: > 0 } client && !desktop.IsEmpty
+                ? client.Translate(-desktop.X, -desktop.Y).ClampTo(
+                    new CaptureRegion(0, 0, still.Width, still.Height))
+                : new CaptureRegion(0, 0, still.Width, still.Height);
+
+            if (crop.Width < 100 || crop.Height < 100) return [];
+
+            using var engine = PlatformServices.CreateOcrEngine(new Core.Ocr.TesseractOptions
+            {
+                // PSM 3: fully automatic layout analysis. The per-line engine uses 6 ("one uniform
+                // block"), which on a full screen merges the hotbar into the dialogue.
+                PageSegmentationMode = 3,
+                Preprocess = new Core.Ocr.OcrPreprocessOptions { UpscaleFactor = 1 },
+            });
+
+            var read = await engine.RecognizeAsync(still.Crop(crop), CancellationToken.None);
+            var found = RegionFinder.Propose(read.Words, crop.Width, crop.Height);
+
+            // Back into still coordinates, so the picker's letterbox mapping applies unchanged.
+            return [.. found.Select(c => c with { Bounds = c.Bounds.Translate(crop.X, crop.Y) })];
+        }
+        catch (Exception)
+        {
+            return [];
+        }
     }
 
     /// <summary>

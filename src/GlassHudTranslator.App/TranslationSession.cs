@@ -76,6 +76,13 @@ public sealed class TranslationSession : IDisposable
     private string? _lastArabic;
     private bool _busy;
 
+    /// <summary>
+    /// Mean OCR confidence of the last frame that actually contained text. Fed to the health
+    /// check, where "the region reads poorly" is a diagnosis the user can act on and a raw number
+    /// in a status line was not.
+    /// </summary>
+    public float? LastOcrConfidence { get; private set; }
+
     public TranslationSession(AppServices services, OverlayWindow overlay, AppSettings settings, string framesDirectory)
     {
         _services = services;
@@ -416,6 +423,12 @@ public sealed class TranslationSession : IDisposable
         var outcome = await _services.Pipeline
             .ProcessAsync(frame, regionKey, SourceKind.Screen, options, ct)
             .ConfigureAwait(false);
+
+        // Only frames that held text: the confidence of an empty read is 0 by construction and
+        // says nothing about the region, and a snip is a different rectangle - folding either in
+        // would have the health check diagnosing the wrong thing.
+        if (trigger != Trigger.Snip && outcome.Body.Trim().Length > 0)
+            LastOcrConfidence = outcome.OcrConfidence;
 
         // The line already on the overlay, read again with a comma turned into a full stop. Leave
         // everything exactly as it is: no clear, no error, no empty-read count. Reported to the
