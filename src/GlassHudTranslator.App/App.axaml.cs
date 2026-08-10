@@ -4,6 +4,7 @@ using GlassHudTranslator.Core.Config;
 using GlassHudTranslator.Core.Platform;
 using GlassHudTranslator.Core.Storage;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
@@ -36,7 +37,9 @@ public partial class App : Application
                         ? BuildToolbarSnapshot(desktop)
                         : Program.HasFlag("--failure-test")
                             ? BuildFailureSnapshot(desktop)
-                            : BuildMainWindow();
+                            : Program.HasFlag("--wizard-test")
+                                ? BuildWizardSnapshot(desktop)
+                                : BuildMainWindow();
 
             if (Program.HasFlag("--ui-shots") && desktop.MainWindow is SettingsWindow shotTarget)
                 CaptureSettingsShots(shotTarget, desktop);
@@ -81,6 +84,21 @@ public partial class App : Application
 
         try
         {
+            // The double-clicked-inside-the-zip case, named before it becomes a mystery. Explorer
+            // opens a zip like a folder and runs the exe by extracting IT ALONE to a temp
+            // directory - no tessdata, no profiles, no data - which then fails as a cascade of
+            // missing-file errors that all describe symptoms. The base directory sitting under the
+            // OS temp path is the one signal that is never true of a real install or a dev run,
+            // and the fix is one sentence.
+            if (AppContext.BaseDirectory.StartsWith(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "The app is running from inside the zip. Extract the WHOLE zip to a normal "
+                    + "folder first (right-click the zip, Extract All), then run it from there.\n"
+                    + "البرنامج يعمل من داخل الملف المضغوط. فكّ ضغط الملف كاملاً إلى مجلد عادي "
+                    + "أولاً (كليك يمين ← Extract All)، ثم شغّله من هناك.");
+            }
+
             AppPaths.Ensure();
             _services = AppServices.CreateAsync(
                     Program.Option("--data") ?? RepoPaths.Data,
@@ -121,8 +139,30 @@ public partial class App : Application
 
         BindHotkeys(settings, settingsWindow);
         BuildFloatingWindows(settings, settingsWindow);
+        BuildTray(settings, settingsWindow);
 
         settingsWindow.Opened += (_, _) => PositionOverlay(overlay, _session, settings);
+
+        // The wizard, exactly once ever. Not in safe mode (settings are not being saved, so
+        // HasCompletedFirstRun could not stick and the wizard would greet every safe start), and
+        // not during the screenshot passes, whose machine has long since completed its first run.
+        if (!settings.HasCompletedFirstRun && !AppSettings.SafeMode && !Program.HasFlag("--ui-shots"))
+        {
+            settingsWindow.Opened += (_, _) => Dispatcher.UIThread.Post(async () =>
+            {
+                var wizard = new FirstRunWizard(_services!, settings);
+                await wizard.ShowDialog(settingsWindow);
+
+                // The wizard may have changed the interface language and the active profile;
+                // the window underneath was built before either choice existed.
+                settingsWindow.ReloadLanguage();
+                RefreshToolbar(settings);
+
+                // Straight into the picker - with its proposals - while the decision is warm.
+                if (wizard.DrawRegionRequested)
+                    await settingsWindow.PickRegionAsync(settings.LastRegionProfile);
+            });
+        }
 
         // The overlay follows the game window wherever it is, including onto a second monitor.
         _session.GameWindowLocated += game => Dispatcher.UIThread.Post(() =>
@@ -144,6 +184,95 @@ public partial class App : Application
 
     private ToolbarWindow? _toolbar;
     private CaptureFrameWindow? _frame;
+
+    /// <summary>
+    /// The exit of last resort, and the reason <c>0-force-stop.bat</c> could be retired.
+    ///
+    /// <para>
+    /// Every window this app floats is deliberately hard to reach — the overlay is click-through
+    /// with no taskbar entry, the toolbar can be switched off, Settings can sit behind a
+    /// fullscreen game. When all of them are out of reach at once, the old answer was a batch
+    /// file that ran <c>taskkill</c>: a script beside an unsigned exe, which is exactly the shape
+    /// antivirus heuristics dislike, doing violently what the app can do cleanly. The tray is the
+    /// one control surface the OS itself keeps reachable, so it carries the way back in and the
+    /// way out.
+    /// </para>
+    ///
+    /// <para>
+    /// The icon is rendered at runtime from <see cref="Icons"/> geometry rather than shipped as an
+    /// asset — the same reasoning as the toolbar, one layer further: no file to quarantine, no
+    /// font to substitute, nothing on the machine that can change what it looks like.
+    /// </para>
+    /// </summary>
+    private void BuildTray(AppSettings settings, SettingsWindow settingsWindow)
+    {
+        if (_session is null || _overlay is null) return;
+
+        var overlay = _overlay;
+        var text = UiText.For(settings.Language);
+
+        var open = new NativeMenuItem(text.TrayOpenSettings);
+        open.Click += (_, _) =>
+        {
+            settingsWindow.Show();
+            settingsWindow.Activate();
+        };
+
+        var toggle = new NativeMenuItem(text.TrayToggleOverlay);
+        toggle.Click += (_, _) => settingsWindow.ReportStatus(
+            overlay.ToggleHidden() ? text.OverlayShown : text.OverlayHidden);
+
+        var exit = new NativeMenuItem(text.TrayExit);
+        exit.Click += (_, _) =>
+        {
+            // The clean path, not taskkill: closes every floating window and disposes the
+            // services, exactly as closing Settings does.
+            if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+                desktop.Shutdown();
+        };
+
+        var tray = new TrayIcon
+        {
+            ToolTipText = "Glass HUD Translator",
+            Icon = RenderTrayIcon(),
+            Menu = [open, toggle, new NativeMenuItemSeparator(), exit],
+        };
+
+        tray.Clicked += (_, _) =>
+        {
+            settingsWindow.Show();
+            settingsWindow.Activate();
+        };
+
+        TrayIcon.SetIcons(this, [tray]);
+    }
+
+    /// <summary>The speech-bubble mark on a dark rounded tile, drawn from path geometry.</summary>
+    private static WindowIcon RenderTrayIcon()
+    {
+        var tile = new Avalonia.Controls.Border
+        {
+            Width = 32,
+            Height = 32,
+            Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#12141a")),
+            CornerRadius = new Avalonia.CornerRadius(7),
+            Child = Icons.Draw(Icons.TranslateNow, 24,
+                new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#e8eaed"))),
+        };
+
+        tile.Measure(new Avalonia.Size(32, 32));
+        tile.Arrange(new Rect(0, 0, 32, 32));
+
+        using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(
+            new PixelSize(32, 32), new Vector(96, 96));
+        bitmap.Render(tile);
+
+        using var stream = new MemoryStream();
+        bitmap.Save(stream);
+        stream.Position = 0;
+
+        return new WindowIcon(stream);
+    }
 
     /// <summary>
     /// Creates the toolbar and the capture frame and connects them to everything they drive.
@@ -484,6 +613,60 @@ public partial class App : Application
         };
 
         return overlay;
+    }
+
+    /// <summary>
+    /// Walks all four wizard steps for the camera and exits. The wizard is the first thing every
+    /// new user ever sees and the last thing anyone here sees naturally — a dev machine completed
+    /// its first run long ago — so without this flag the most important screen in the app would
+    /// only ever render on a stranger's machine. Runs with the stub services: no key, no network.
+    /// </summary>
+    private Avalonia.Controls.Window BuildWizardSnapshot(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var directory = Program.Option("--wizard-test-out") ?? Path.GetTempPath();
+        Directory.CreateDirectory(directory);
+
+        var settings = new AppSettings();
+        if (Program.Option("--wizard-test-lang") is { } lang &&
+            lang.Equals("ar", StringComparison.OrdinalIgnoreCase))
+            settings.Language = UiLanguage.Arabic;
+
+        _services = AppServices.CreateAsync(
+                Program.Option("--data") ?? RepoPaths.Data,
+                Program.Option("--profiles") ?? RepoPaths.Profiles,
+                preferredProfileId: null, useStubProvider: true)
+            .GetAwaiter().GetResult();
+
+        var wizard = new FirstRunWizard(_services, settings);
+
+        wizard.Opened += async (_, _) =>
+        {
+            var suffix = settings.Language == UiLanguage.Arabic ? "-ar" : "";
+
+            for (var step = 0; step <= 3; step++)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() => wizard.ShowStep(step));
+                await Task.Delay(300);
+
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    var path = Path.Combine(directory, $"wizard-step{step}{suffix}.png");
+                    try
+                    {
+                        wizard.SaveSnapshot(path);
+                        Console.WriteLine($"wizard-test: wrote {path}");
+                    }
+                    catch (Exception e)
+                    {
+                        Console.Error.WriteLine($"wizard-test: FAILED step {step} - {e.Message}");
+                    }
+                });
+            }
+
+            desktop.Shutdown();
+        };
+
+        return wizard;
     }
 
     /// <summary>

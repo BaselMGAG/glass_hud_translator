@@ -215,8 +215,26 @@ public sealed record AppSettings
             .ToList();
     }
 
+    /// <summary>
+    /// Started with <c>--safe-mode</c>: saved settings are neither read nor written for the whole
+    /// session.
+    ///
+    /// <para>
+    /// Both halves matter and the second is the one that would be forgotten. Not reading gives a
+    /// session that runs on known-good defaults whatever the config file says — the escape hatch
+    /// when a setting itself is what broke the app, an overlay parked off-screen being the
+    /// canonical case. Not WRITING is what makes trying it free: two dozen call sites save on
+    /// every checkbox click, and any one of them would otherwise overwrite the user's real
+    /// configuration with the defaults they are only borrowing. API keys are unaffected — they
+    /// live in the secret store, not in this file, so safe mode still translates.
+    /// </para>
+    /// </summary>
+    public static bool SafeMode { get; set; }
+
     public static AppSettings Load(string? path = null)
     {
+        if (SafeMode) return new AppSettings();
+
         path ??= AppPaths.Settings;
         if (!File.Exists(path)) return new AppSettings();
 
@@ -233,6 +251,8 @@ public sealed record AppSettings
 
     public void Save(string? path = null)
     {
+        if (SafeMode) return;
+
         path ??= AppPaths.Settings;
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, JsonSerializer.Serialize(this, Options));

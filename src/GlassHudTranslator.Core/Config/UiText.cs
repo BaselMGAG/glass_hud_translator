@@ -57,6 +57,7 @@ public sealed class UiText
     public required string TestKey { get; init; }
     public required string TestingKey { get; init; }
     public required string KeyWorks { get; init; }
+    public required string KeyMissing { get; init; }
 
     /// <summary>
     /// The verdict after a successful test, which now also stores the key. It says both because
@@ -395,6 +396,45 @@ public sealed class UiText
     public required string StartupFailedBody { get; init; }
     public required string StartupFailedLogAt { get; init; }
     public required string StartupFailedClose { get; init; }
+    public required string StartupFailedSafeMode { get; init; }
+
+    // ── safe mode ──────────────────────────────────────────────────────────────────────────
+    public required string SafeModeBanner { get; init; }
+
+    // ── diagnostic report ──────────────────────────────────────────────────────────────────
+    public required string ReportButton { get; init; }
+    public required string ReportBuilding { get; init; }
+    public required string ReportCopied { get; init; }
+    public required string ReportCopiedNoFile { get; init; }
+
+    // ── tray ───────────────────────────────────────────────────────────────────────────────
+    // The exit of last resort. The overlay cannot be clicked, the toolbar can be switched off,
+    // and Settings can be behind a fullscreen game — the tray is the one control surface Windows
+    // itself guarantees stays reachable.
+    public required string TrayOpenSettings { get; init; }
+    public required string TrayToggleOverlay { get; init; }
+    public required string TrayExit { get; init; }
+
+    // ── advanced sections ──────────────────────────────────────────────────────────────────
+    // The toolbar's expander owns the concept — simple by default, one control reveals the rest —
+    // and Settings consumes the same idea rather than inventing a second one.
+    public required string AdvancedSection { get; init; }
+
+    // ── first-run wizard ───────────────────────────────────────────────────────────────────
+    public required string WizardWelcome { get; init; }
+    public required string WizardWelcomeBody { get; init; }
+    public required string WizardStepKey { get; init; }
+    public required string WizardKeyWhy { get; init; }
+    public required string WizardStepGame { get; init; }
+    public required string WizardGameWhy { get; init; }
+    public required string WizardGameFound { get; init; }
+    public required string WizardStepDone { get; init; }
+    public required string WizardDoneWhy { get; init; }
+    public required string WizardDrawNow { get; init; }
+    public required string WizardLater { get; init; }
+    public required string WizardNext { get; init; }
+    public required string WizardBack { get; init; }
+    public required string WizardSkip { get; init; }
 
     /// <summary>
     /// The display name for a capture region. The stored names are English identifiers - they are
@@ -481,6 +521,7 @@ public sealed class UiText
         TestKey = "Test",
         TestingKey = "Testing...",
         KeyWorks = "Works",
+        KeyMissing = "Paste a key first.",
         KeyWorksSaved = "Works — key saved",
         KeyRejected = "This key was refused",
         KeyUnknown = "Could not check right now",
@@ -794,6 +835,51 @@ public sealed class UiText
             + "what went wrong; if you report this, send the whole text and the log file.",
         StartupFailedLogAt = "The same details were written to:",
         StartupFailedClose = "Close",
+        StartupFailedSafeMode = "Try safe mode",
+
+        SafeModeBanner =
+            "Safe mode: your saved settings were not loaded and nothing you change here will be "
+            + "kept. If the app works now, one of the saved settings is the problem — the usual "
+            + "one is an overlay positioned onto a screen that is no longer there. Restart "
+            + "normally when you are done.",
+
+        ReportButton = "Copy diagnostic report",
+        ReportBuilding = "Building the report… the keys are tested with one real request each.",
+        ReportCopied =
+            "Report copied — paste it into your message. A copy was also saved to {0}.",
+        ReportCopiedNoFile = "Report copied — paste it into your message.",
+
+        TrayOpenSettings = "Open Settings",
+        TrayToggleOverlay = "Show / hide the translation",
+        TrayExit = "Exit Glass HUD Translator",
+
+        AdvancedSection = "Advanced",
+
+        WizardWelcome = "Welcome",
+        WizardWelcomeBody =
+            "Three quick steps and the first translation is on screen. Everything here can be "
+            + "changed later in Settings.",
+        WizardStepKey = "The key",
+        WizardKeyWhy =
+            "Translation runs through a provider, and the key is yours so the free allowance is "
+            + "yours. Gemini and Groq are free and need no credit card — the button opens the "
+            + "page, copy the key and paste it here. The Test button checks it with one real "
+            + "request and saves it when it works.",
+        WizardStepGame = "The game",
+        WizardGameWhy =
+            "A profile carries the game's glossary and where its text sits. Pick yours, or "
+            + "\"anything on screen\" for a browser, a video or a game not in the list.",
+        WizardGameFound = "Running now: {0}",
+        WizardStepDone = "Where the text is",
+        WizardDoneWhy =
+            "Last step: draw a box around the dialogue once. The screen freezes so nothing "
+            + "moves, and the app suggests boxes around text it can already see — click one and "
+            + "you are done. After that, one key translates: ",
+        WizardDrawNow = "Draw the box now",
+        WizardLater = "I will do it later",
+        WizardNext = "Next",
+        WizardBack = "Back",
+        WizardSkip = "Skip setup",
 
         SelectRegionTitle = "Select the {0} region",
         PickerHintFrozen =
@@ -925,6 +1011,7 @@ public sealed class UiText
         TestKey = "جرّبه",
         TestingKey = "جارٍ التجربة...",
         KeyWorks = "يعمل",
+        KeyMissing = "الصق مفتاحاً أولاً.",
         // No em dash: it is not in the bundled font (checked against the cmap), and this is the
         // one line that has to be legible - it is the confirmation that setup actually took.
         KeyWorksSaved = "يعمل، وحُفِظ المفتاح",
@@ -1229,6 +1316,48 @@ public sealed class UiText
             + "حدث؛ وإن أبلغت عن هذا فأرسل النص كاملاً مع ملف السجل.",
         StartupFailedLogAt = "كُتبت التفاصيل نفسها في:",
         StartupFailedClose = "إغلاق",
+        StartupFailedSafeMode = "جرّب الوضع الآمن",
+
+        SafeModeBanner =
+            "الوضع الآمن: لم تُحمَّل إعداداتك المحفوظة، ولن يُحفظ أي شيء تغيّره هنا. إن عمل "
+            + "البرنامج الآن فأحد الإعدادات المحفوظة هو المشكلة — وأشهرها طبقة ترجمة موضوعة على "
+            + "شاشة لم تعد موجودة. أعد التشغيل عادياً حين تنتهي.",
+
+        ReportButton = "انسخ تقرير التشخيص",
+        ReportBuilding = "جارٍ إعداد التقرير… تُجرَّب المفاتيح بطلب حقيقي واحد لكل مفتاح.",
+        ReportCopied = "نُسخ التقرير — ألصقه في رسالتك. وحُفظت نسخة أيضاً في {0}.",
+        ReportCopiedNoFile = "نُسخ التقرير — ألصقه في رسالتك.",
+
+        TrayOpenSettings = "افتح الإعدادات",
+        TrayToggleOverlay = "أظهر / أخفِ الترجمة",
+        TrayExit = "أغلق Glass HUD Translator",
+
+        AdvancedSection = "متقدّم",
+
+        WizardWelcome = "أهلاً بك",
+        WizardWelcomeBody =
+            "ثلاث خطوات سريعة وتظهر أول ترجمة على الشاشة. وكل ما هنا يمكن تغييره لاحقاً من "
+            + "الإعدادات.",
+        WizardStepKey = "المفتاح",
+        WizardKeyWhy =
+            "الترجمة تمرّ عبر مزوّد، والمفتاح مفتاحك أنت فتكون الحصة المجانية لك. Gemini و Groq "
+            + "مجانيان ولا يطلبان بطاقة ائتمان — الزرّ يفتح الصفحة، انسخ المفتاح والصقه هنا. وزرّ "
+            + "«جرّبه» يتحقّق منه بطلب حقيقي واحد ويحفظه حين يعمل.",
+        WizardStepGame = "اللعبة",
+        WizardGameWhy =
+            "الملف يحمل مسرد اللعبة وموضع نصّها. اختر لعبتك، أو «أي شيء على الشاشة» لمتصفّح أو "
+            + "فيديو أو لعبة ليست في القائمة.",
+        WizardGameFound = "يعمل الآن: {0}",
+        WizardStepDone = "موضع النص",
+        WizardDoneWhy =
+            "الخطوة الأخيرة: ارسم صندوقاً حول الحوار مرة واحدة. تتجمّد الشاشة فلا يتحرّك شيء، "
+            + "ويقترح البرنامج صناديق حول النص الذي يراه بالفعل — انقر أحدها وتنتهي. وبعدها، "
+            + "مفتاح واحد يترجم: ",
+        WizardDrawNow = "ارسم الصندوق الآن",
+        WizardLater = "سأفعلها لاحقاً",
+        WizardNext = "التالي",
+        WizardBack = "السابق",
+        WizardSkip = "تخطَّ الإعداد",
 
         SelectRegionTitle = "حدّد منطقة {0}",
         PickerHintFrozen =

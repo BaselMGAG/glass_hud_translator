@@ -115,14 +115,49 @@ public sealed class StartupFailureWindow : Window
             });
         }
 
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 10,
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
+
+        // The one action this window can offer beyond "read and close": relaunch with the saved
+        // settings ignored. When a setting is what broke startup - and a panel parked on a
+        // monitor that no longer exists is exactly that - this is the difference between a fix
+        // and a support thread. Absent when the process path is unknowable, rather than present
+        // and broken.
+        if (Environment.ProcessPath is { } exe)
+        {
+            var safeMode = new Button
+            {
+                Content = $"{UiText.En.StartupFailedSafeMode} · {UiText.Ar.StartupFailedSafeMode}",
+                Padding = new Thickness(18, 6),
+            };
+            safeMode.Click += (_, _) =>
+            {
+                try
+                {
+                    System.Diagnostics.Process.Start(exe, "--safe-mode");
+                    Close();
+                }
+                catch (Exception relaunch)
+                {
+                    Core.Diagnostics.StartupLog.Note($"safe-mode relaunch failed: {relaunch.Message}");
+                }
+            };
+            buttons.Children.Add(safeMode);
+        }
+
         var close = new Button
         {
             Content = $"{UiText.En.StartupFailedClose} · {UiText.Ar.StartupFailedClose}",
-            HorizontalAlignment = HorizontalAlignment.Right,
             Padding = new Thickness(18, 6),
         };
         close.Click += (_, _) => Close();
-        stack.Children.Add(close);
+        buttons.Children.Add(close);
+
+        stack.Children.Add(buttons);
 
         Content = stack;
     }

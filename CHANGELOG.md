@@ -33,6 +33,30 @@ after Run anyway", and a player for whom every problem meant a trip into Setting
   nothing was found: a wrong suggestion confidently drawn teaches you not to trust the right ones.
 - **The picker's OCR test now reports its confidence.** Text that reads correctly at 45% will
   misread on the next frame; "did I pick right?" deserves the number, not just the words.
+- **A first-run wizard.** Four steps — language, key, game, region — every one skippable, never
+  seen again once answered. It uses the detections rather than asking you to know things: the
+  language step leads with what Windows itself is set to, the game step names the window it can
+  already see, an exclusive-fullscreen game is flagged before the first translation instead of
+  diagnosed after it, and the key step tests with one real request and **saves on success** — a
+  Test button that validates without saving is the exact lie that cost this project its first
+  release day. The last step drops you straight into the region picker, suggestions and all.
+- **One-click diagnostic report.** Settings → Diagnostics → *Copy diagnostic report*: the health
+  check's findings plus the version, machine, counters and both logs, copied to the clipboard and
+  saved to the Desktop. "What should I send you?" stops being a question.
+- **A tray icon, with the exit of last resort.** Every window this app floats is deliberately hard
+  to reach — that is what floating over a game means — so the tray now carries the way back in
+  (open Settings, show/hide the translation) and the way out. This retires `0-force-stop.bat`: a
+  batch file running `taskkill` beside an unsigned exe was exactly the shape antivirus heuristics
+  dislike, doing violently what the app can do cleanly.
+- **Safe mode.** Start with `--safe-mode` — or from the *Try safe mode* button on the startup
+  failure window — and the app runs on known-good defaults: saved settings are neither read nor
+  written for the whole session, so trying it costs nothing. For the day a saved setting is
+  itself what broke the app, an overlay parked on a monitor that no longer exists being the
+  classic. Keys are unaffected; translation still works.
+- **Settings grew an Advanced split** — the same simple-by-default idea as the toolbar's expander,
+  and deliberately the same concept rather than a second one. The "run without a limit" switch and
+  the toolbar focus escape hatch now sit behind it: things that exist for one rare situation
+  should take one extra click.
 
 ## v0.6.0 — 10 August 2026
 

@@ -34,7 +34,7 @@ solution level it tries to force `net10.0` onto the Windows-only projects and fa
 dotnet test
 ```
 
-590 tests, all runnable on macOS and Linux.
+591 tests, all runnable on macOS and Linux.
 
 ```bash
 dotnet run --project tools/Replay -- --no-cache
@@ -61,9 +61,11 @@ no compiler and no unit test able to see it. This draws the real strip, simple a
 PNGs. If they render here they parse everywhere.
 
 Run `--failure-test --failure-test-out <dir>` after touching `StartupFailureWindow` or anything on
-the startup path. It renders the startup-failure window with a staged exception — the one window
-that otherwise only ever appears on a stranger's machine at the worst possible moment, and the one
-whose own failure to build is the most expensive crash the app can have.
+the startup path — it renders the startup-failure window with a staged exception. Run
+`--wizard-test --wizard-test-out <dir>` (optionally `--wizard-test-lang ar`) after touching
+`FirstRunWizard` — it walks all four steps for the camera. Both flags exist for the same reason:
+these are the windows that only ever appear on a stranger's machine at the worst possible moment,
+and whose own failure to build is the most expensive crash the app can have.
 
 ## Layout
 
@@ -563,6 +565,39 @@ fresh box straight through a suggestion works untouched — the suggestion catch
 that was previously an error ("too small"). `FromScreenPixels` must stay the exact inverse of
 `ToScreenPixels`: a proposal drawn with different letterbox arithmetic than the save uses would
 highlight one rectangle and store another.
+
+**Safe mode neither reads nor writes, and the second half is the one that would be forgotten.**
+`AppSettings.SafeMode` short-circuits `Load` to defaults and `Save` to a no-op. Two dozen call
+sites save on every checkbox click; any one of them would otherwise overwrite the user's real
+configuration with the defaults they were only borrowing. Keys are unaffected — they live in the
+secret store, so safe mode still translates. The flag is set in `Program.Main` before ANY settings
+read, and the wizard is suppressed in safe mode because `HasCompletedFirstRun` could not stick.
+
+**The tray is the exit of last resort, and its icon is rendered, not shipped.** Every window this
+app floats is deliberately hard to reach, so the tray carries the way back in and the way out —
+which is what retired `0-force-stop.bat`, a `taskkill` script beside an unsigned exe. The icon is
+drawn at runtime from `Icons` geometry into a `WindowIcon`: no asset to quarantine, no font to
+substitute, nothing on the machine that can change what it looks like.
+
+**The wizard consumes detections; it never asks what the app can find out.** Language preselected
+from the Windows locale, the running game named from the open-window list, exclusive fullscreen
+flagged at the moment of choosing rather than diagnosed after the first black frame — and the key
+step tests with one real request and **saves on success**, because a Test button that validates
+without persisting is the exact lie behind the v0.5.0 first-day failure. Everything is skippable,
+`HasCompletedFirstRun` is written once, and nothing ever nags. `--wizard-test` renders all four
+steps in both languages; the wizard is the one screen every new user sees and no developer does.
+
+**The Advanced expander in Settings and the toolbar's expander are ONE concept.** Whichever grew
+first owns it — the toolbar did — and Settings consumes it. Behind it go controls that exist for
+exactly one rare situation (the no-limit switch, the toolbar focus escape hatch), never controls
+the readmes give paths to. Collapsed on every open: a sticky-open advanced section stops being
+advanced.
+
+**The diagnostic report goes to the clipboard first and a Desktop file second.** Support for this
+app happens in Facebook comments, not issue trackers, so paste-into-a-message is the export that
+actually gets delivered; the file is the bonus. Severity markers in the report are ASCII (`[OK]`
+`[!]` `[X]`) because the text lives on clipboards and in chat apps, outside every font decision
+this project controls.
 
 **The picker tests the still it is already holding, never a fresh capture.** `RegionPickerWindow` is
 full-screen, topmost and has no capture exclusion, so re-photographing the screen to answer "what

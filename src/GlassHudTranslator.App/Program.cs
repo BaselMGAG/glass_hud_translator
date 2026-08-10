@@ -74,7 +74,12 @@ internal static class Program
         // and absent from the taskbar - so a startup failure and a successful, invisible start
         // look identical from outside. From here on, the log answers which one happened, and the
         // absence of the log answers the third possibility: the process never ran at all.
+        // Before ANY settings read, including the ones inside window constructors: the whole point
+        // is that the saved settings are the suspect.
+        if (HasFlag("--safe-mode")) Core.Config.AppSettings.SafeMode = true;
+
         StartupLog.Begin(UpdateCheck.RunningVersion?.ToString() ?? "0.0.0-dev");
+        if (Core.Config.AppSettings.SafeMode) StartupLog.Note("safe mode: saved settings ignored, nothing will be written");
 
         // Log-only hooks for the threads no try/catch below can see. Auto-watch has its own
         // per-poll handling; these catch what nothing else does.

@@ -833,7 +833,9 @@ public sealed class SettingsWindow : Window
 
         // The escape hatch for one unverified platform behaviour, worded as a symptom rather than
         // as a mechanism: nobody reading this knows what WS_EX_NOACTIVATE is, and they should not
-        // need to. See OverlayStyleOptions.NoActivate for what is actually uncertain.
+        // need to. See OverlayStyleOptions.NoActivate for what is actually uncertain. Behind
+        // Advanced: it exists for exactly one failure mode, and someone who has not hit it should
+        // not be weighing it.
         var focusable = new CheckBox
         {
             Content = _text.ToolbarCanTakeFocus,
@@ -845,8 +847,7 @@ public sealed class SettingsWindow : Window
             _settings.Save();
             FloatingWindowsChanged?.Invoke();
         };
-        stack.Children.Add(focusable);
-        stack.Children.Add(Note(_text.ToolbarCanTakeFocusNote));
+        stack.Children.Add(Advanced(focusable, Note(_text.ToolbarCanTakeFocusNote)));
 
         var frame = new CheckBox
         {
@@ -981,8 +982,31 @@ public sealed class SettingsWindow : Window
             _settings.WatchWithoutLimit = unlimited.IsChecked == true;
             _settings.Save();
         };
-        stack.Children.Add(unlimited);
-        stack.Children.Add(Note(_text.WatchWithoutLimitNote));
+
+        // Behind Advanced, which is where this checkbox was always headed - it shipped
+        // deliberately plain in v0.5.3 so it could move behind whichever advanced concept landed
+        // first. Switching off the only session guard there is should take one extra click.
+        stack.Children.Add(Advanced(unlimited, Note(_text.WatchWithoutLimitNote)));
+    }
+
+    /// <summary>
+    /// Simple by default, one control reveals the rest — the toolbar's expander owns this concept
+    /// and Settings consumes it rather than inventing a second one, so the app has exactly one
+    /// definition of "advanced". Collapsed on every open: what is inside is what almost nobody
+    /// should touch, and a sticky-open advanced section stops being advanced.
+    /// </summary>
+    private Control Advanced(params Control[] children)
+    {
+        var panel = new StackPanel { Spacing = 12, Margin = new Thickness(0, 8, 0, 0) };
+        foreach (var child in children) panel.Children.Add(child);
+
+        return new Expander
+        {
+            Header = _text.AdvancedSection,
+            IsExpanded = false,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Content = panel,
+        };
     }
 
     /// <summary>Raised when the watch mode is changed here, so the toolbar's button can follow.</summary>
@@ -1009,8 +1033,15 @@ public sealed class SettingsWindow : Window
         stack.Children.Add(Note(_text.HealthNote));
 
         var healthResults = new StackPanel { Spacing = 6 };
-        var runHealth = Button(_text.HealthRun, () => _ = RunHealthCheckAsync(healthResults));
-        stack.Children.Add(runHealth);
+        var healthButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        healthButtons.Children.Add(Button(_text.HealthRun, () => _ = RunHealthCheckAsync(healthResults)));
+
+        // The same facts as the health check, packaged to leave the machine. Copied to the
+        // clipboard because that is the one export every user already knows how to deliver -
+        // support here happens in Facebook comments, not issue trackers - and saved to the
+        // Desktop as well so "send the file" also works.
+        healthButtons.Children.Add(Button(_text.ReportButton, () => _ = CopyReportAsync()));
+        stack.Children.Add(healthButtons);
         stack.Children.Add(healthResults);
 
         // Where the source is. Under the AGPL that is not a courtesy - the whole point of the
@@ -1543,6 +1574,22 @@ public sealed class SettingsWindow : Window
     }
 
     /// <summary>
+    /// Re-reads the language from settings and rebuilds, for a caller that changed it from
+    /// outside — the first-run wizard being the one such caller. The same sequence the language
+    /// ComboBox runs; a no-op when nothing changed.
+    /// </summary>
+    public void ReloadLanguage()
+    {
+        if (_text.Language == _settings.Language) return;
+
+        _text = UiText.For(_settings.Language);
+        Build();
+        LoadSecrets();
+        UpdateLaneSummary();
+        _ = RefreshAsync();
+    }
+
+    /// <summary>
     /// Raised when the stored capture region changes, so the visible frame can move to match it
     /// rather than outlining where the region used to be.
     /// </summary>
@@ -1578,6 +1625,111 @@ public sealed class SettingsWindow : Window
         {
             results.Children.Clear();
             results.Children.Add(Warning($"{_text.DiagnosticsFailed} {e.Message}"));
+        }
+    }
+
+    /// <summary>
+    /// Runs the full health check and packages everything a bug report needs: version, machine,
+    /// settings that matter, every finding, quota, cache, and the tails of both logs. One click,
+    /// clipboard plus a Desktop file, so "what should I send you?" stops being a question.
+    /// </summary>
+    private async Task CopyReportAsync()
+    {
+        _status.Text = _text.ReportBuilding;
+
+        try
+        {
+            var inputs = await Task.Run(GatherHealthInputsAsync);
+            var findings = Core.Diagnostics.HealthCheck.Run(inputs, _text);
+            var report = ComposeReport(inputs, findings);
+
+            var clipboard = GetTopLevel(this)?.Clipboard;
+            if (clipboard is not null) await clipboard.SetTextAsync(report);
+
+            var saved = TrySaveReport(report);
+            _status.Text = saved is null
+                ? _text.ReportCopiedNoFile
+                : string.Format(_text.ReportCopied, saved);
+        }
+        catch (Exception e)
+        {
+            _status.Text = $"{_text.DiagnosticsFailed} {e.Message}";
+        }
+    }
+
+    private string ComposeReport(
+        Core.Diagnostics.HealthInputs inputs, IReadOnlyList<Core.Diagnostics.HealthFinding> findings)
+    {
+        var report = new System.Text.StringBuilder();
+
+        report.AppendLine("=== Glass HUD Translator diagnostic report ===");
+        report.AppendLine($"version: {UpdateCheck.RunningVersion?.ToString() ?? "0.0.0-dev"}");
+        report.AppendLine($"os: {Environment.OSVersion.VersionString}");
+        report.AppendLine($"platform: {PlatformServices.Description}");
+        if (AppSettings.SafeMode) report.AppendLine("SAFE MODE (saved settings ignored)");
+        report.AppendLine($"profile: {_services.Profile.Id} / region: {_settings.LastRegionProfile} "
+                          + $"/ language: {_settings.Language} / mode: {_settings.WatchMode}");
+        report.AppendLine();
+
+        // ASCII severity markers, deliberately: this text lives on clipboards and in chat apps,
+        // outside every font decision this project controls.
+        report.AppendLine("--- health check ---");
+        foreach (var finding in findings)
+        {
+            var mark = finding.Severity switch
+            {
+                Core.Diagnostics.HealthSeverity.Problem => "[X]",
+                Core.Diagnostics.HealthSeverity.Warning => "[!]",
+                _ => "[OK]",
+            };
+            report.AppendLine($"{mark} {finding.Text}");
+        }
+
+        report.AppendLine();
+        report.AppendLine("--- counters ---");
+        report.AppendLine(_quota.Text);
+        report.AppendLine(_cache.Text);
+        if (_pace.Text is { Length: > 0 } pace) report.AppendLine(pace);
+
+        report.AppendLine();
+        report.AppendLine("--- router log (latest first) ---");
+        foreach (var line in _services.RouterLog.AsEnumerable().Reverse().Take(15))
+            report.AppendLine(line);
+
+        if (Core.Diagnostics.StartupLog.Path is { } logPath && File.Exists(logPath))
+        {
+            report.AppendLine();
+            report.AppendLine("--- startup.log ---");
+            try
+            {
+                report.AppendLine(File.ReadAllText(logPath).TrimEnd());
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                report.AppendLine($"(unreadable: {e.Message})");
+            }
+        }
+
+        return report.ToString();
+    }
+
+    /// <summary>Desktop, because that is where a non-technical user can find a file again.</summary>
+    private static string? TrySaveReport(string report)
+    {
+        try
+        {
+            var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            if (string.IsNullOrEmpty(desktop)) return null;
+
+            var path = Path.Combine(desktop, "GlassHudTranslator-report.txt");
+            File.WriteAllText(path, report);
+            return path;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException
+                                      or System.Security.SecurityException)
+        {
+            // The clipboard copy already succeeded; the file is the bonus, not the point.
+            return null;
         }
     }
 

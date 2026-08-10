@@ -56,6 +56,10 @@ Du brauchst **Windows 10 oder 11**, ein Spiel im **rahmenlosen Fenstermodus** (b
 und einen API-Schlüssel. Sonst nichts — der Download bringt alles mit, es muss keine .NET-Laufzeit
 installiert werden.
 
+**Der erste Start führt durch all das** — Sprache, Schlüssel, Spiel, Aufnahmebereich — in vier
+überspringbaren Schritten, auf Arabisch oder Englisch. Die nummerierten Schritte unten sind
+dasselbe von Hand, und die Referenz für später.
+
 Ein kostenloser Schlüssel von [Google AI Studio](https://aistudio.google.com) oder
 [Groq](https://console.groq.com) reicht, und keiner von beiden verlangt eine Kreditkarte. Wenn du
 ohnehin für [OpenAI](https://platform.openai.com/api-keys) oder
@@ -75,7 +79,9 @@ schreibt sie vom allerersten Moment an. Fehlt die Datei, ist der Prozess nie ges
 heißt: ein Virenscanner hat ihn entfernt — Quarantäne prüfen oder den Download neu entpacken. Ist
 sie da, sagt ihre letzte Zeile genau, was schiefging — schick sie mit deinem Bericht. Ein
 fehlgeschlagener Start zeigt jetzt außerdem ein normales Fenster, auf Arabisch und Englisch, mit
-kopierbarem Fehlertext.
+kopierbarem Fehlertext — und einem Knopf **Try safe mode**, der mit ignorierten gespeicherten
+Einstellungen neu startet. Läuft der abgesicherte Modus, ist eine der gespeicherten Einstellungen
+das Problem, und nichts darin überschreibt sie.
 
 **2. Stell das Spiel auf rahmenlosen Fenstermodus.** Exklusiver Vollbildmodus zerstört sowohl die
 Bildschirmaufnahme als auch Overlays im Vordergrund. Starte das Spiel auch nicht als Administrator,
@@ -258,7 +264,8 @@ Trefferquote des Caches, welche Texterkennung geladen wurde, und ein Router-Log,
 und jedes Modell benennt, das gescheitert ist. Einstellungen → **Providers** listet die Spuren in
 der Reihenfolge auf, in der sie probiert werden, und markiert jene ohne Schlüssel.
 
-**Overlay hängt?** Führ `0-force-stop.bat` aus. Das Overlay hat keinen Alt-Tab-Eintrag und Klicks
+**Overlay hängt?** Rechtsklick aufs Tray-Symbol (neben der Uhr) → *Exit Glass HUD Translator* —
+das beendet alles sauber. Das Overlay selbst hat keinen Alt-Tab-Eintrag und Klicks
 gehen hindurch, es gibt also kein Fenster zum Schließen — der Prozess muss beendet werden.
 
 ## Updates

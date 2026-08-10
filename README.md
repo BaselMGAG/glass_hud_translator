@@ -53,6 +53,10 @@ maybe half the story in a game that is almost entirely story.
 You need **Windows 10 or 11**, a game running in **borderless windowed** mode, and one API key.
 Nothing else — the download is self-contained, so there is no .NET runtime to install.
 
+**The first launch walks you through all of this** — language, key, game, capture region — in
+four skippable steps, in Arabic or English. The numbered steps below are the same thing done by
+hand, and the reference for later.
+
 A free key from [Google AI Studio](https://aistudio.google.com) or
 [Groq](https://console.groq.com) is enough, and neither asks for a credit card. If you already pay
 for [OpenAI](https://platform.openai.com/api-keys) or
@@ -71,7 +75,9 @@ writes it from the very first moment it runs. If the file isn't there, the proce
 which usually means an antivirus removed it: check the antivirus's quarantine, restore the folder,
 or unzip the download again. If the file is there, its last line says exactly what went wrong —
 send it with your report. A failed start also shows a normal window now, in Arabic and English,
-with the error ready to copy.
+with the error ready to copy — and a **Try safe mode** button, which restarts with your saved
+settings ignored. If safe mode works, one of the saved settings is the problem, and nothing you do
+in safe mode overwrites them.
 
 **2. Set the game to Borderless Windowed.** Exclusive fullscreen breaks screen capture and
 always-on-top overlays both. Don't run the game as administrator either, or Windows won't let the
@@ -203,7 +209,9 @@ shouldn't steer the pronouns of the next line.
 **When something seems wrong, run the health check.** Settings → **Diagnostics** → *Run health
 check*. One button checks the game window, fullscreen mode, display scaling, every key (with one
 real request each), the text recognition and the capture region — and says what it found in plain
-words, worst first. Its output is the bug report: run it before asking for help.
+words, worst first. Next to it, **Copy diagnostic report** packages the same findings with the
+version, the logs and the counters, puts it on the clipboard and saves a copy to the Desktop —
+paste it into your message and the report writes itself.
 
 **Check the key before you play.** Each key box has a **Test** button beside it. It sends one very
 short line through that provider, so you find out here rather than in a cutscene. It distinguishes
@@ -243,7 +251,8 @@ appears constantly, add it to your game's `glossary.json` instead.
 which OCR engine loaded, and a router log naming any provider or model that failed. Settings →
 **Providers** lists the lanes in the order they'll be tried and flags any with no key.
 
-**Stuck overlay?** Run `0-force-stop.bat`. The overlay has no Alt-Tab entry and clicks pass through
+**Stuck overlay?** Right-click the tray icon (next to the clock) → *Exit Glass HUD Translator* —
+it closes everything cleanly. The overlay itself has no Alt-Tab entry and clicks pass through
 it, so there is no window to close — the process has to be ended.
 
 ## Updates
