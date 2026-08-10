@@ -472,6 +472,41 @@ should be able to argue the app into being lazier than a number somebody reasone
 median over eight samples, kept in memory, never persisted and never sent — and it is surfaced in
 Diagnostics because an adaptation nobody can see is indistinguishable from a bug.
 
+**`ContentRhythm` measures persistence in SECONDS, against a threshold taken from what subtitles
+are allowed to do.** It was four consecutive polls, justified in a comment as "longer than any
+caption holds still" — a claim about the world that nobody had checked against the world. The
+subtitling houses publish it: the ESIST Code and Netflix both cap a caption at **seven seconds**,
+Karamitroglou at six for two lines, against a floor near one. `LongerThanAnyCaption` is eight, and
+that margin is the entire justification — a line still up after it is not a caption, because nothing
+that leaves of its own accord stays that long. The unit was the deeper error. A poll is not a fixed
+quantity of evidence: over a *static* box the gate answers `Unchanged` and a run grows once per
+poll, while over *moving picture* it answers `Settling`, which must not vote, so the run can only
+grow on a read — once per settle cap, six times slower. Two quantities that agree on the machine you
+tested and disagree on the user's, which is this project's recurring defect and always has the same
+fix: state the unit. Seconds also make the signal recency-correct for free, because an empty read
+resets the clock — "still for eight seconds" already means "has not left in eight seconds", which is
+what lets persistence answer first without a stale verdict outliving its evidence.
+
+**Any gate counting OCR reads has to fit in the read budget, and the budget is small.**
+`RhythmSample.HasText` is filled in on one verdict only — `Ready` — so a read costs a whole settle
+cap and a window holds `Window / (PollsPerSecond × SettleCap)` of them: **five** at the dialogue
+timings, nine at the video ones. `MinimumReads` was six. Since `Auto` starts on the dialogue timings
+(Unknown resolves to Dialogue), the gate gating every route out of them could never open, and over a
+film the classifier sat at `Unknown` with every signal it had screaming video — the feature
+inoperative in exactly the workload it exists for. `TheReadBudgetAtDialoguePacingIsEnoughToDecideWith`
+asserts the arithmetic directly, because no behavioural test can catch this: the tests all fed a
+read on every poll, which the poll loop does on no verdict at all. **When a test's input stream is
+richer than production's, every threshold tuned against it is tuned against fiction.**
+
+**The weakest signal needs the most evidence, or it wins by being fastest.** `MotionFraction` is the
+tie-breaker of last resort and it accumulates on *every* poll, while persistence needs seconds to
+mature — so left ungated it reaches its threshold first and decides everything. An animated
+background behind a static dialogue box hits "moving on every poll" in about two seconds, four
+seconds before the line behind it is old enough to speak for itself. It therefore waits for a full
+window, which at the dialogue rate is fifteen seconds and comfortably longer than
+`LongerThanAnyCaption`. Ordering the checks in the source is not enough when the signals mature at
+different rates; the gate has to say so.
+
 **Set the bundled font whenever Arabic is on screen.** `Fonts.Arabic` is bundled for the reason
 `NOTICE` gives: a Windows machine with no Arabic font installed renders every Arabic string as
 empty boxes. Relying on OS fallback works on macOS and hides the problem — the Arabic tab headers
@@ -875,6 +910,40 @@ had nowhere to say any of it that the person in a fullscreen game would ever loo
 - **Padding changed what Tesseract segments at 1x**, enough to produce the apostrophe in "Y'shtola"
   as two separate word tokens — which made a `ToDictionary` in an existing test throw on the
   duplicate key. The test's invariant was fine; keying by word text was the assumption.
+
+**Caught before v0.7.0 shipped, and the Auto detector did not work at all. Three defects, none
+findable by the tests that were written for it:**
+
+- **`MinimumReads = 6` was one more read than the dialogue timings can produce, so Auto could never
+  reach Video.** Pure arithmetic: `Window / (PollsPerSecond × SettleCap)` is 5 at those timings, and
+  `Auto` starts there because `Unknown` resolves to `Dialogue`. Over a film the classifier sat at
+  `Unknown` with `EmptyFraction` and `MotionFraction` both saturated, running patient timings on
+  moving picture — the precise 4.6-second lateness the feature exists to delete, in the feature
+  built to delete it. Two constants chosen independently in different files, neither wrong alone.
+- **Persistence was counted in polls, and a poll is not a fixed amount of evidence.** Over a static
+  box the gate answers `Unchanged` and the run grows per poll; over video it answers `Settling`,
+  which correctly does not vote, so the run grows only per read — six times slower. The same
+  dialogue box therefore scored differently depending on what was happening behind it. Same shape as
+  the DIP-versus-pixel bug, and the same fix: state the unit. It is seconds now.
+- **The threshold's justification was invented.** The comment said four polls was "longer than any
+  caption holds still". The subtitling houses publish the answer and it is **seven seconds** — so
+  the threshold was inside the life of an ordinary two-line caption rather than beyond it, and one
+  long subtitle was enough to call a film dialogue.
+- **And fixing the first one exposed a fourth**: with the read gate finally passable, `MotionFraction`
+  — the weakest signal, the tie-breaker of last resort — started deciding everything, because it
+  accumulates every poll while persistence needs seconds. It reached its threshold four seconds
+  before the line behind it could speak, so an animated background behind a static dialogue box got
+  called a film. Ordering checks in the source is not enough when signals mature at different rates.
+
+**What made all four invisible: the tests fed a richer stream than production ever produces.** Every
+helper handed the classifier an OCR read on *every poll*; the poll loop populates `HasText` on one
+verdict in three. So the suite was exercising a machine with six times the evidence, in which the
+read budget is ample, persistence matures instantly, and motion never gets a head start. Sixteen
+passing tests, a design pass and a competitive review all ran on top of a defect that a single line
+of arithmetic exposes. **A test whose input is more generous than production is not a weak test, it
+is a test of a different program** — and the fix that generalises is the one now in
+`TheReadBudgetAtDialoguePacingIsEnoughToDecideWith`: assert the relationship between the constants,
+not just the behaviour they produce.
 
 **Latent, found by inspection and not yet hit in the wild:** the bundled `NotoSansArabic-Regular.ttf`
 contains **no Latin at all** — not `A`, not `%`, and none of `✓ ✗ ⚠ → · ⏎`. Every Latin word in the

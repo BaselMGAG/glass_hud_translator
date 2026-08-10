@@ -52,24 +52,34 @@ public enum ContentKind
 /// </para>
 ///
 /// <para>
-/// <b>Persistence is the strong signal for dialogue.</b> How many polls a line survives unchanged
-/// is exactly the question being asked, phrased directly rather than inferred from pixels — and it
-/// is measured on the TEXT, so a moving background cannot fake it. A line that outlives several
-/// seconds of polling is being waited on.
+/// <b>Persistence is the strong signal for dialogue, and it is measured in SECONDS.</b> How long
+/// the line on screen has stood there unchanged is the question being asked, phrased directly
+/// rather than inferred from pixels — and it is measured on the TEXT, so a moving background cannot
+/// fake it. The unit is the whole of it. A caption that is still up and a box that is waiting are
+/// the same observation while both are on screen, so the threshold can only come from outside: the
+/// subtitling houses cap a caption at <b>seven seconds</b>, and a line still up after eight is
+/// therefore not a caption. Counted in polls instead, the same box scored differently depending on
+/// what was happening behind it, because a poll over a static frame and a poll over video carry
+/// wildly different amounts of evidence.
 /// </para>
 ///
 /// <para>
 /// Both strong signals are text-level, which is what makes them robust: they are already paid for
 /// by the OCR the pipeline was running anyway, and they see through exactly the animation that
-/// defeats a pixel comparison.
+/// defeats a pixel comparison. But they are <b>scarce</b>, and that has bitten once already: OCR
+/// runs on one verdict in three, so a window holds only about five reads at the dialogue timings.
+/// Any gate counting reads has to fit inside that budget or it never opens.
 /// </para>
 ///
 /// <para>
-/// <b>Switching is deliberately reluctant.</b> A verdict needs a clear majority of a rolling
-/// window, and after any switch the next one is refused for <see cref="MinimumDwell"/>. Both exist
-/// because content genuinely alternates — a cutscene inside a game, a paused video — and a
-/// classifier that follows every wobble is worse than either fixed mode: it spends its life in the
-/// wrong one, arriving there late.
+/// <b>Switching is deliberately reluctant.</b> After any switch the next one is refused for
+/// <see cref="MinimumDwell"/>, because content genuinely alternates — a cutscene inside a game, a
+/// paused video — and a classifier that follows every wobble is worse than either fixed mode: it
+/// spends its life in the wrong one, arriving there late. Note what the dwell is and is not: it
+/// limits how OFTEN the verdict may change, not how much evidence a change needs. Once it expires,
+/// one poll can flip the mode. That is tolerable only because both signals are themselves
+/// integrated over time or over a window, and it is the first thing to revisit if Auto is ever
+/// reported as flapping.
 /// </para>
 /// </summary>
 public sealed class ContentRhythm(TimeProvider? clock = null)
@@ -82,32 +92,53 @@ public sealed class ContentRhythm(TimeProvider? clock = null)
     public const int Window = 30;
 
     /// <summary>
-    /// Reads with text needed before the empty fraction means anything. Below this, "no text seen"
-    /// is far more likely to be a game that has not started talking yet than a caption gap.
-    /// </summary>
-    public const int MinimumReads = 6;
-
-    /// <summary>
-    /// A line surviving this many consecutive polls is being waited on rather than passing through.
-    /// Four polls is two seconds of dialogue-rate watching and one second of video-rate: longer
-    /// than any caption holds still, shorter than any dialogue box a reader is reading.
-    /// </summary>
-    public const int PersistentTicks = 4;
-
-    /// <summary>
-    /// Persistence is measured over the recent half of the window only, and that is what makes it
-    /// a signal about NOW rather than a claim that ages badly.
+    /// Reads needed before the empty fraction means anything. Below this, "no text seen" is far
+    /// more likely to be a game that has not started talking yet than a caption gap.
     ///
     /// <para>
-    /// Measured over the whole window it does not decay fast enough to be useful: when a game cuts
-    /// to a cutscene, the dialogue box that was on screen a moment ago leaves a long run sitting
-    /// at the head of the window, and that one stale run outvotes every caption observed since —
-    /// so the switch waits for the entire window to roll over instead of following the content.
-    /// Half the window keeps a genuine dialogue box comfortably above the threshold while letting
-    /// a finished one stop arguing.
+    /// Three, and the ceiling is arithmetic rather than taste. A read costs a whole settle cap,
+    /// because <see cref="RhythmSample.HasText"/> is filled in on one verdict only, so the reads a
+    /// window can hold is <c>Window / (PollsPerSecond * SettleCap)</c> — <b>five</b> at the dialogue
+    /// timings and nine at the video ones. It was six, which is to say one more than the dialogue
+    /// rate can ever produce, and since Auto starts on the dialogue timings the gate guarding every
+    /// route out of them could not open: over a film the classifier sat at Unknown with every signal
+    /// it had screaming video. There is a test on the arithmetic, because no behavioural test here
+    /// could catch it — they all feed a read on every poll, which the poll loop never does.
     /// </para>
     /// </summary>
-    public const int RecentWindow = Window / 2;
+    public const int MinimumReads = 3;
+
+    /// <summary>
+    /// A line still on screen, unchanged, for longer than this is being waited on rather than
+    /// passing through — <b>measured in seconds, and that is the whole correction</b>.
+    ///
+    /// <para>
+    /// It used to be four consecutive polls, justified as "longer than any caption holds still".
+    /// Both halves were wrong. The claim was invented: subtitling practice is unusually well
+    /// documented and every house agrees on the shape, a caption standing for up to <b>seven
+    /// seconds</b> (the ESIST Code and Netflix both cap it there, Karamitroglou at six for two
+    /// lines) against a floor near one. Four of anything is inside that, not beyond it.
+    /// </para>
+    ///
+    /// <para>
+    /// The unit was worse. A poll is not a fixed amount of evidence: over a <i>static</i> box the
+    /// gate answers Unchanged and the run grows once per poll, while over <i>moving picture</i> it
+    /// answers Settling — which is no evidence and must not vote — so the run can only grow on a
+    /// read, once per settle cap. That is six times slower at the dialogue timings. Counting both
+    /// in "polls" and comparing against one threshold is the same defect as mixing device-independent
+    /// pixels with physical ones: two quantities that are equal on the machine you tested and
+    /// unequal on the user's. Seconds are what the threshold was always about.
+    /// </para>
+    ///
+    /// <para>
+    /// Eight, because it has to clear the seven-second ceiling with a margin and nothing else is
+    /// competing for the space above it — a dialogue box waits as long as the player does. And the
+    /// measurement is recency-correct for free: an empty read resets the run, so "still for eight
+    /// seconds" already means "has not left in the last eight seconds", which is why persistence
+    /// can be weighed before emptiness without a stale verdict outliving its evidence.
+    /// </para>
+    /// </summary>
+    public static readonly TimeSpan LongerThanAnyCaption = TimeSpan.FromSeconds(8);
 
     /// <summary>
     /// How long a verdict must stand before another can replace it. Twelve seconds is long enough
@@ -120,7 +151,9 @@ public sealed class ContentRhythm(TimeProvider? clock = null)
     private readonly Queue<RhythmSample> _samples = new();
 
     private DateTimeOffset _decidedAt;
-    private int _longestRun;
+
+    /// <summary>When the line currently on screen went up, or null if nothing is standing.</summary>
+    private DateTimeOffset? _stillSince;
 
     /// <summary>The current verdict. <see cref="ContentKind.Unknown"/> until the evidence is in.</summary>
     public ContentKind Kind { get; private set; } = ContentKind.Unknown;
@@ -130,18 +163,34 @@ public sealed class ContentRhythm(TimeProvider? clock = null)
         ? 0
         : _samples.Count(s => s.Changed) / (double)_samples.Count;
 
-    /// <summary>Fraction of recent OCR reads that found nothing. Captions leave gaps; boxes do not.</summary>
+    /// <summary>
+    /// Fraction of OCR reads in the window that found nothing. Captions leave gaps; boxes do not.
+    ///
+    /// <para>
+    /// Over the whole window rather than a recent slice, because reads are scarce — one per settle
+    /// cap — and halving the window halves an evidence budget that is already only five at the
+    /// dialogue timings. Staleness is handled where it belongs instead: persistence answers first
+    /// and cannot be stale, since an empty read resets it.
+    /// </para>
+    /// </summary>
     public double EmptyFraction
     {
         get
         {
-            var reads = _samples.Count(s => s.HasText is not null);
+            var reads = Reads;
             return reads == 0 ? 0 : _samples.Count(s => s.HasText == false) / (double)reads;
         }
     }
 
-    /// <summary>The longest run of consecutive polls one line survived, within the window.</summary>
-    public int LongestStillRun => _longestRun;
+    /// <summary>Reads in the window — the denominator, and the thing <see cref="MinimumReads"/> gates.</summary>
+    private int Reads => _samples.Count(s => s.HasText is not null);
+
+    /// <summary>
+    /// How long the line currently on screen has been there unchanged, or zero if the region has
+    /// just changed, just emptied, or has never been read. Surfaced because an adaptation nobody
+    /// can see is indistinguishable from a bug.
+    /// </summary>
+    public TimeSpan StillFor => _stillSince is { } since ? _clock.GetUtcNow() - since : TimeSpan.Zero;
 
     /// <summary>
     /// Records one poll and re-decides. Called on every tick including the cheap ones — a poll
@@ -152,13 +201,7 @@ public sealed class ContentRhythm(TimeProvider? clock = null)
         _samples.Enqueue(sample);
         while (_samples.Count > Window) _samples.Dequeue();
 
-        // Recomputed across the window rather than carried as a high-water mark. That is not a
-        // tidiness point: a mark that only ever rises means the first dialogue box of the session
-        // argues for Dialogue an hour into a film, because nothing can ever lower it again. As a
-        // pure function of the window it decays on its own as the evidence ages out. Thirty
-        // samples per poll, against a poll that costs a screen grab.
-        _longestRun = LongestRunIn(_samples.TakeLast(RecentWindow));
-
+        Time(sample);
         Decide();
         return Kind;
     }
@@ -171,21 +214,21 @@ public sealed class ContentRhythm(TimeProvider? clock = null)
     public void Reset()
     {
         _samples.Clear();
-        _longestRun = 0;
+        _stillSince = null;
         Kind = ContentKind.Unknown;
         _decidedAt = default;
     }
 
     /// <summary>
-    /// The longest stretch of consecutive polls, inside the window, during which one line stayed
-    /// up. Three cases, and the middle one is where the hard trap lives.
+    /// Starts, extends or ends the clock on the line currently standing. Three cases, and the
+    /// middle one is where the hard trap lives.
     ///
     /// <para>
-    /// A NEW line, or an empty read, ends a run: the thing that was being waited on is gone.
+    /// A NEW line, or an empty read, ends it: the thing that was being waited on is gone.
     /// </para>
     ///
     /// <para>
-    /// A poll that found the frame unchanged extends it — and so does a read that came back with
+    /// A poll that found the frame unchanged starts it — and so does a read that came back with
     /// the SAME text as before. That second clause is what defeats the animated-background
     /// dialogue box: weather, an idling character, a scrolling sky behind a text panel. Every
     /// frame differs, so pixels say "video" on every poll; the words are identical, so the text
@@ -194,31 +237,23 @@ public sealed class ContentRhythm(TimeProvider? clock = null)
     ///
     /// <para>
     /// Anything else is a frame mid-change that was never read — genuinely no evidence either way
-    /// — and it leaves the run exactly as it is rather than voting with silence.
+    /// — and it leaves the clock running rather than voting with silence. That is the change of
+    /// unit doing real work: as a poll count, a stretch of Settling froze the run while the line
+    /// sat there, so the same dialogue box scored differently depending on what was happening
+    /// behind it. Time keeps running whether or not a poll had anything to say.
     /// </para>
     /// </summary>
-    private static int LongestRunIn(IEnumerable<RhythmSample> samples)
+    private void Time(RhythmSample sample)
     {
-        var longest = 0;
-        var run = 0;
-
-        foreach (var sample in samples)
-        {
-            if (sample.TextChanged == true || sample.HasText == false) run = 0;
-            else if (!sample.Changed || sample.TextChanged == false) run++;
-
-            longest = Math.Max(longest, run);
-        }
-
-        return longest;
+        if (sample.TextChanged == true || sample.HasText == false) _stillSince = null;
+        else if (!sample.Changed || sample.TextChanged == false) _stillSince ??= _clock.GetUtcNow();
     }
 
     private void Decide()
     {
         if (_samples.Count < MinimumReads) return;
 
-        var reads = _samples.Count(s => s.HasText is not null);
-        var candidate = Weigh(reads);
+        var candidate = Weigh(Reads);
 
         if (candidate == ContentKind.Unknown || candidate == Kind) return;
 
@@ -234,19 +269,38 @@ public sealed class ContentRhythm(TimeProvider? clock = null)
 
     private ContentKind Weigh(int reads)
     {
-        // Persistence first, and it is close to conclusive: nothing that passes through of its own
-        // accord stays put this long, so a line that did is one somebody is being waited on for.
-        if (_longestRun >= PersistentTicks) return ContentKind.Dialogue;
+        // Persistence first, and it is safe there ONLY because it is measured in seconds against a
+        // number taken from what subtitles are actually allowed to do. A caption may stand for
+        // seven; a line still up after eight is not one. Nothing that leaves of its own accord
+        // stays this long, so a line that did is one somebody is being waited on for.
+        //
+        // It is also the fresher of the two claims by construction, which is what earns it the
+        // first look: an empty read resets the clock, so "still for eight seconds" already says
+        // "has not left in eight seconds". A stale verdict cannot survive here the way a stale
+        // fraction can.
+        if (StillFor >= LongerThanAnyCaption) return ContentKind.Dialogue;
 
-        // Then the gaps. Only once enough reads have happened for "empty" to be a fact about the
-        // content rather than about a quiet moment.
+        // Then the gaps, for a region whose lines do leave. A box holds its text until the player
+        // advances it, so an empty read means the box CLOSED - rarer than a line change, which is
+        // what makes it the strong claim. Only once enough reads have happened for "empty" to be a
+        // fact about the content rather than about a quiet moment before anyone has spoken.
         if (reads >= MinimumReads && EmptyFraction >= 0.25) return ContentKind.Moving;
 
         // Nothing ever holds still and nothing is ever empty: a caption over continuous footage,
         // or a region full of animation. Both want the impatient timings, so the motion signal is
         // allowed to decide here - where it is the only thing left and where being wrong costs
         // latency rather than money.
-        if (MotionFraction >= 0.8 && reads >= MinimumReads) return ContentKind.Moving;
+        //
+        // It waits for a FULL window, and that is what keeps it last rather than merely written
+        // last. Motion accumulates on every poll while persistence needs seconds to mature, so the
+        // weakest signal is also the fastest one and it will win any race it is allowed to enter:
+        // an animated background behind a static dialogue box reaches "moving on every poll" in two
+        // seconds and gets called a film, four seconds before the line it is sitting behind is old
+        // enough to speak for itself. A full window at the dialogue rate is fifteen seconds, which
+        // is comfortably longer than LongerThanAnyCaption - so persistence always answers first
+        // when it has an answer.
+        if (_samples.Count >= Window && MotionFraction >= 0.8 && reads >= MinimumReads)
+            return ContentKind.Moving;
 
         return ContentKind.Unknown;
     }
