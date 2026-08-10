@@ -714,6 +714,15 @@ public sealed class SettingsWindow : Window
         }
         stack.Children.Add(regionButtons);
 
+        // Snip lived on the toolbar and a hotkey and nowhere else, which made it the one action a
+        // user could only find by hovering an unlabelled shape or reading the readme. Nothing is
+        // allowed to exist on one surface alone.
+        var snipRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        snipRow.Children.Add(Button(_text.ToolbarSnip, () => _ = SnipAsync()));
+        snipRow.Children.Add(Button(_text.MoveMode, () => MoveModeToggled?.Invoke()));
+        stack.Children.Add(snipRow);
+        stack.Children.Add(Note(_text.MoveModeNote));
+
         // What is on screen, and how fast it should be read. Here rather than on the Hotkeys tab,
         // where these three first landed: what is being translated is this tab's whole subject, and
         // nobody looking for it goes to a tab named after key bindings.
@@ -757,11 +766,11 @@ public sealed class SettingsWindow : Window
             _settings.Save();
         };
 
-        var vertical = new Slider
+        var vertical = _overlayVertical = new Slider
         {
             Minimum = 0, Maximum = 1, Value = _settings.OverlayVertical, Width = 240,
         };
-        var horizontal = new Slider
+        var horizontal = _overlayHorizontal = new Slider
         {
             Minimum = 0, Maximum = 1, Value = _settings.OverlayHorizontal, Width = 240,
         };
@@ -930,15 +939,21 @@ public sealed class SettingsWindow : Window
     {
         stack.Children.Add(Section(_text.WatchMode));
 
+        // Order matters: Auto last, because the two named ones say what the choice is ABOUT. A
+        // list that opens with "work it out for me" has to be read backwards to be understood.
+        var modes = new[] { WatchMode.Dialogue, WatchMode.Video, WatchMode.Auto };
+
         var mode = new ComboBox
         {
-            ItemsSource = new[] { _text.WatchModeDialogue, _text.WatchModeVideo },
-            SelectedIndex = _settings.WatchMode == WatchMode.Video ? 1 : 0,
+            ItemsSource = modes.Select(_text.WatchModeName).ToList(),
+            SelectedIndex = Array.IndexOf(modes, _settings.WatchMode),
             Width = 240,
         };
         mode.SelectionChanged += (_, _) =>
         {
-            _settings.WatchMode = mode.SelectedIndex == 1 ? WatchMode.Video : WatchMode.Dialogue;
+            if (mode.SelectedIndex < 0) return;
+
+            _settings.WatchMode = modes[mode.SelectedIndex];
             _settings.Save();
             _status.Text = string.Format(_text.WatchModeSetTo, _text.WatchModeName(_settings.WatchMode));
 
@@ -948,6 +963,7 @@ public sealed class SettingsWindow : Window
         };
         stack.Children.Add(Row(_text.WatchMode, mode, labelWidth: 190));
         stack.Children.Add(Note(_text.WatchModeNote));
+        stack.Children.Add(Note(_text.WatchModeAutoNote));
 
         // Zero is "Automatic", shown as a word rather than a 0 - a number that means "no number"
         // is a puzzle, and this control exists because someone asked to be able to set it plainly.
@@ -1011,6 +1027,27 @@ public sealed class SettingsWindow : Window
 
     /// <summary>Raised when the watch mode is changed here, so the toolbar's button can follow.</summary>
     public event Action? WatchModeChanged;
+
+    /// <summary>
+    /// Raised by the Settings copy of the move-mode button. The App owns the mode, because it is
+    /// the only thing holding both windows it unlocks — and because a mode that two surfaces can
+    /// each set independently is a mode they can disagree about.
+    /// </summary>
+    public event Action? MoveModeToggled;
+
+    /// <summary>
+    /// Re-reads the two position sliders after the panel has been dragged. Dragging and the
+    /// sliders are one setting seen twice, so leaving the sliders showing where the panel used to
+    /// be would mean the next slider nudge teleports it back.
+    /// </summary>
+    public void ReloadOverlayPlacement()
+    {
+        if (_overlayVertical is { } vertical) vertical.Value = _settings.OverlayVertical;
+        if (_overlayHorizontal is { } horizontal) horizontal.Value = _settings.OverlayHorizontal;
+    }
+
+    private Slider? _overlayVertical;
+    private Slider? _overlayHorizontal;
 
     private Control BuildDiagnosticsTab()
     {
@@ -2070,11 +2107,22 @@ public sealed class SettingsWindow : Window
     {
         if (_session.WatchStats is not { } stats) return "";
 
-        if (stats.Outrunning) return _text.OutrunningTheFloor;
+        var pace = stats.Outrunning
+            ? _text.OutrunningTheFloor
+            : stats.Cadence is { } cadence
+                ? string.Format(_text.LearnedPace, cadence.TotalSeconds.ToString("0.0"))
+                : _text.LearnedPaceUnknown;
 
-        return stats.Cadence is { } cadence
-            ? string.Format(_text.LearnedPace, cadence.TotalSeconds.ToString("0.0"))
-            : _text.LearnedPaceUnknown;
+        // In Auto, what it has decided matters more than the cadence - it is the thing the user
+        // did not choose, so it is the thing they have to be able to check.
+        if (_settings.WatchMode == WatchMode.Auto && _session.ContentVerdict is { } verdict)
+        {
+            pace += "   ·   " + (verdict.Kind == ContentKind.Unknown
+                ? _text.ContentUndecided
+                : string.Format(_text.ContentDecided, _text.WatchModeName(verdict.Running)));
+        }
+
+        return pace;
     }
 
     private async Task RefreshAsync()

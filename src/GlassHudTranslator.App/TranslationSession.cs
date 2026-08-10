@@ -50,6 +50,13 @@ public sealed class TranslationSession : IDisposable
     private WatchSession? _watch;
 
     /// <summary>
+    /// Works out what the watched region actually is, for <see cref="WatchMode.Auto"/>. Fed on
+    /// every poll including the cheap ones — a poll that changed nothing is the commonest evidence
+    /// there is, and the one that says a line is being waited on.
+    /// </summary>
+    private readonly ContentRhythm _rhythm = new();
+
+    /// <summary>
     /// Consecutive polls that threw. One bad frame used to end the whole run: the try/catch was
     /// around the entire loop, so a single OCR failure on an unfamiliar font stopped auto-watch
     /// permanently — and said so only on the Settings status line, which nobody playing a game is
@@ -109,6 +116,14 @@ public sealed class TranslationSession : IDisposable
             : null;
 
     /// <summary>
+    /// What the content detector has concluded, and what it is running as. Surfaced for the same
+    /// reason the cadence is: an automatic mode nobody can inspect is indistinguishable from a
+    /// bug, and "why is it waiting so long" has exactly one useful first answer.
+    /// </summary>
+    public (ContentKind Kind, WatchMode Running)? ContentVerdict =>
+        _watch is null ? null : (_rhythm.Kind, _settings.WatchMode == WatchMode.Auto ? _running : _settings.WatchMode);
+
+    /// <summary>
     /// When set, every captured region is written here as a PNG. This is how a real frame corpus
     /// gets collected: play normally for twenty minutes and the folder fills with exactly the
     /// frames the OCR has to cope with, rather than screenshots someone took by hand.
@@ -142,7 +157,7 @@ public sealed class TranslationSession : IDisposable
                 return;
             }
 
-            await ProcessAsync(frame, Trigger.Hotkey, ct).ConfigureAwait(false);
+            _ = await ProcessAsync(frame, Trigger.Hotkey, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -179,6 +194,7 @@ public sealed class TranslationSession : IDisposable
         // scene they are in, and throwing them away costs a worse translation for nothing.
         _settle.Reset();
         _services.Pipeline.ResetRepeatGuard();
+        _rhythm.Reset();
         _consecutiveFailures = 0;
         _consecutiveEmpty = 0;
         _overlay.Notice = null;
@@ -186,6 +202,9 @@ public sealed class TranslationSession : IDisposable
         // The mode is read here rather than per tick, so one run has one set of caps and one
         // cadence estimate. Switching mode mid-run would silently reset the clock the caps are
         // measured against, which is the one thing a cap must not allow.
+        // Auto resolves to Dialogue until the detector has seen enough, which is the cheap mistake
+        // to make while deciding: patience on a film costs a few late lines, impatience on a
+        // typewriter reveal costs a request per half-written sentence.
         var pacing = WatchPacing.For(_settings.WatchMode);
         if (_settings.SecondsBetweenTranslations > 0)
             pacing = pacing with { MinimumInterval = TimeSpan.FromSeconds(_settings.SecondsBetweenTranslations) };
@@ -208,7 +227,7 @@ public sealed class TranslationSession : IDisposable
         // On the overlay too, not only in Settings. Switching it on is the moment to say what it
         // will cost and when it will stop by itself — afterwards the player is looking at the game.
         var announcement = string.Format(Text.AutoWatchOn,
-            _settings.WatchMode == WatchMode.Video ? Text.WatchModeVideo : Text.WatchModeDialogue,
+            Text.WatchModeName(_settings.WatchMode),
             _watch.Unbounded ? Text.NoLimit : pacing.StopAfter.TotalMinutes.ToString("0"));
 
         Report(announcement);
@@ -218,14 +237,6 @@ public sealed class TranslationSession : IDisposable
     private void AutoWatchLoop(CancellationToken ct)
     {
         var watch = _watch!;
-        var pacing = watch.Pacing;
-
-        // The mode's rate unless the settings file overrides it. Read once: changing it mid-run
-        // would mean re-deriving the sleep on every tick for a number nobody adjusts mid-cutscene.
-        var interval = _settings.AutoWatchFps > 0
-            ? TimeSpan.FromSeconds(1.0 / _settings.AutoWatchFps)
-            : pacing.PollInterval;
-
         var expiry = TimeSpan.FromSeconds(_settings.AutoWatchExpirySeconds);
         var lastChange = Stopwatch.GetTimestamp();
 
@@ -233,7 +244,12 @@ public sealed class TranslationSession : IDisposable
         {
             try
             {
-                Thread.Sleep(interval);
+                // Re-read per tick rather than once, because Auto can swap the pacing underneath
+                // this loop. Two property reads and a divide; the poll it precedes costs a BitBlt.
+                Thread.Sleep(_settings.AutoWatchFps > 0
+                    ? TimeSpan.FromSeconds(1.0 / _settings.AutoWatchFps)
+                    : watch.Pacing.PollInterval);
+
                 if (ct.IsCancellationRequested) break;
 
                 // The session cap, measured from switch-on. The idle expiry below cannot do this
@@ -308,23 +324,39 @@ public sealed class TranslationSession : IDisposable
 
                 var signature = FrameSignature.Compute(frame);
                 var verdict = _settle.Offer(signature);
-                if (verdict == FrameVerdict.Unchanged) continue;
+
+                if (verdict == FrameVerdict.Unchanged)
+                {
+                    // The commonest poll there is, and the one that says most: the line on the
+                    // overlay is still the line on screen. Somebody is being waited on.
+                    Adapt(watch, new RhythmSample(Changed: false));
+                    continue;
+                }
 
                 // Anything moving counts as activity, including a reveal still in progress -
                 // otherwise the AFK expiry could fire in the middle of a sentence appearing.
                 lastChange = Stopwatch.GetTimestamp();
-                if (verdict == FrameVerdict.Settling) continue;
+
+                if (verdict == FrameVerdict.Settling)
+                {
+                    // A frame mid-change that was never read. Genuinely no evidence either way, and
+                    // recorded as exactly that rather than allowed to vote with silence.
+                    Adapt(watch, new RhythmSample(Changed: true));
+                    continue;
+                }
 
                 _busy = true;
+                Read read;
                 try
                 {
-                    ProcessAsync(frame, Trigger.Poll, ct).GetAwaiter().GetResult();
+                    read = ProcessAsync(frame, Trigger.Poll, ct).GetAwaiter().GetResult();
                 }
                 finally
                 {
                     _busy = false;
                 }
 
+                Adapt(watch, new RhythmSample(Changed: true, read.HasText, read.TextChanged));
                 _consecutiveFailures = 0;
             }
             catch (OperationCanceledException)
@@ -347,6 +379,43 @@ public sealed class TranslationSession : IDisposable
             }
         }
     }
+
+    /// <summary>What one poll learned about the content, for <see cref="ContentRhythm"/>.</summary>
+    private readonly record struct Read(bool? HasText, bool? TextChanged);
+
+    /// <summary>
+    /// Feeds the detector and, in <see cref="WatchMode.Auto"/>, swaps the pacing when it changes
+    /// its mind. A no-op in the two fixed modes — the detector still runs there, because what it
+    /// has worked out is shown in Diagnostics either way and an estimate nobody can see is
+    /// indistinguishable from a bug.
+    /// </summary>
+    private void Adapt(WatchSession watch, RhythmSample sample)
+    {
+        _rhythm.Observe(sample);
+        if (_settings.WatchMode != WatchMode.Auto) return;
+
+        var wanted = _rhythm.Resolved;
+        if (wanted == _running) return;
+
+        _running = wanted;
+
+        var pacing = WatchPacing.For(wanted);
+        if (_settings.SecondsBetweenTranslations > 0)
+            pacing = pacing with { MinimumInterval = TimeSpan.FromSeconds(_settings.SecondsBetweenTranslations) };
+
+        watch.Adapt(pacing);
+
+        // Said out loud, once per change. An automatic mode that switches silently is one nobody
+        // can trust or debug: the first question when the pacing feels wrong is which of the two
+        // it currently thinks it is in.
+        Report(string.Format(Text.WatchModeDetected, Text.WatchModeName(wanted)));
+    }
+
+    /// <summary>
+    /// Which of the two fixed modes Auto is currently running as. Meaningless outside Auto, where
+    /// the mode is whatever the user picked.
+    /// </summary>
+    private WatchMode _running = WatchMode.Dialogue;
 
     /// <summary>
     /// <paramref name="onOverlay"/> for anything the user did not ask for. Switching it off by
@@ -396,7 +465,7 @@ public sealed class TranslationSession : IDisposable
     /// reads as the feature being broken.
     /// </para>
     /// </summary>
-    private async Task ProcessAsync(Frame frame, Trigger trigger, CancellationToken ct)
+    private async Task<Read> ProcessAsync(Frame frame, Trigger trigger, CancellationToken ct)
     {
         SaveFrameIfRequested(frame);
         _services.Pipeline.Register = _settings.Register;
@@ -437,7 +506,11 @@ public sealed class TranslationSession : IDisposable
         if (outcome.Repeat)
         {
             Report(Text.SkippedRepeat);
-            return;
+
+            // The single most informative outcome the detector gets: the picture moved enough to
+            // reach OCR and the WORDS came back the same. That is a dialogue box over an animated
+            // scene - the case a pixel comparison calls video every time.
+            return new Read(HasText: true, TextChanged: false);
         }
 
         // Null result: nothing was attempted - an empty dialogue box, or a stray glyph or UI
@@ -451,7 +524,7 @@ public sealed class TranslationSession : IDisposable
                 Fail(nothingAtAll
                     ? Text.NoTextInRegion
                     : string.Format(Text.TooShortToTranslate, outcome.Body.Trim()));
-                return;
+                return new Read(!nothingAtAll, null);
             }
 
             // Clear, do not complain. Silence is the correct answer to a poll that found nothing,
@@ -461,7 +534,7 @@ public sealed class TranslationSession : IDisposable
             if (!nothingAtAll)
             {
                 _consecutiveEmpty = 0;
-                return;
+                return new Read(HasText: true, TextChanged: null);
             }
 
             // Unless it has been nothing for a long time. Then the region is the story, and this is
@@ -476,7 +549,9 @@ public sealed class TranslationSession : IDisposable
                 _overlay.ShowMessage(advice);
             }
 
-            return;
+            // Nothing in the rectangle at all. Captions live in gaps; a dialogue box holds its
+            // text until the player advances, so this is the strong signal for moving text.
+            return new Read(HasText: false, TextChanged: null);
         }
 
         // A snip found nothing about the watched region, in either direction: it must not clear the
@@ -494,6 +569,10 @@ public sealed class TranslationSession : IDisposable
             else _watch?.CountedOutsideTheRhythm();
         }
 
+        // Captured before it is overwritten: whether this line differs from the last one shown is
+        // what tells the detector a line was replaced rather than merely re-read.
+        var previous = _lastSourceText;
+
         _lastSourceText = outcome.Body;
         _lastArabic = result.Text;
 
@@ -504,6 +583,8 @@ public sealed class TranslationSession : IDisposable
 
         var source = result.FromCache ? "cache" : $"{result.Provider}/{result.Model}";
         Report($"{source} · {outcome.Total.TotalMilliseconds:F0} ms · OCR confidence {outcome.OcrConfidence:F0}");
+
+        return new Read(HasText: true, TextChanged: !string.Equals(previous, outcome.Body, StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -546,7 +627,7 @@ public sealed class TranslationSession : IDisposable
                 return;
             }
 
-            await ProcessAsync(frame, Trigger.Snip, ct).ConfigureAwait(false);
+            _ = await ProcessAsync(frame, Trigger.Snip, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {

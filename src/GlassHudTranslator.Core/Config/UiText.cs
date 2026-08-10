@@ -191,6 +191,13 @@ public sealed class UiText
     public required string WatchModeVideo { get; init; }
     public required string WatchModeNote { get; init; }
     public required string WatchModeSetTo { get; init; }
+    public required string WatchModeAuto { get; init; }
+    public required string WatchModeAutoNote { get; init; }
+
+    /// <summary>Said once per switch. An automatic mode that changes silently cannot be trusted.</summary>
+    public required string WatchModeDetected { get; init; }
+    public required string ContentDecided { get; init; }
+    public required string ContentUndecided { get; init; }
     public required string SecondsBetweenTranslations { get; init; }
     public required string SecondsBetweenAutomatic { get; init; }
     public required string SecondsBetweenNote { get; init; }
@@ -331,6 +338,17 @@ public sealed class UiText
     public required string ToolbarShow { get; init; }
     public required string ToolbarMove { get; init; }
 
+    // ── move mode ──────────────────────────────────────────────────────────────────────────
+    // On BOTH surfaces, like everything else: the toolbar for mid-game, Settings for the person
+    // who never turned the toolbar on.
+    public required string MoveMode { get; init; }
+    public required string MoveModeNote { get; init; }
+    public required string MoveModeOn { get; init; }
+    public required string MoveModeOff { get; init; }
+    public required string ToolbarMoveMode { get; init; }
+    public required string ToolbarDialect { get; init; }
+    public required string ToolbarRecording { get; init; }
+
     // ── status messages ────────────────────────────────────────────────────────────────────
     public required string ProfileNoteWindowed { get; init; }
     public required string ProfileNoteScreen { get; init; }
@@ -456,8 +474,12 @@ public sealed class UiText
     /// member is an identifier, not a word, and interpolating one into a translated sentence is
     /// what produced "حدد dialogue" on three buttons.
     /// </summary>
-    public string WatchModeName(Capture.WatchMode mode) =>
-        mode == Capture.WatchMode.Video ? WatchModeVideo : WatchModeDialogue;
+    public string WatchModeName(Capture.WatchMode mode) => mode switch
+    {
+        Capture.WatchMode.Video => WatchModeVideo,
+        Capture.WatchMode.Auto => WatchModeAuto,
+        _ => WatchModeDialogue,
+    };
 
     public string HotkeyDescription(HotkeyAction action) => action switch
     {
@@ -639,6 +661,14 @@ public sealed class UiText
         WatchMode = "What is on screen",
         WatchModeDialogue = "Game dialogue",
         WatchModeVideo = "Video subtitles",
+        WatchModeAuto = "Work it out for me",
+        WatchModeAutoNote =
+            "Watches how the text behaves — whether a line sits there waiting to be clicked, or "
+            + "appears and leaves on its own — and switches between the two timings itself. Good "
+            + "for a game with cutscenes in it, where the right answer changes mid-session.",
+        WatchModeDetected = "Looks like {0} — timings switched.",
+        ContentDecided = "running as: {0}",
+        ContentUndecided = "still working out what this is",
         WatchModeSetTo = "Auto-watch set to {0}.",
         WatchModeNote =
             "Game dialogue waits for the text to finish appearing, which is right for a line that "
@@ -940,6 +970,18 @@ public sealed class UiText
         ToolbarShow = "Open the toolbar",
         ToolbarMove = "Drag here to move the toolbar",
 
+        MoveMode = "Move things",
+        MoveModeNote =
+            "Unlocks the capture outline and the translation panel so you can drag them where you "
+            + "want, and pull a corner of the outline to resize it. While it is on, clicks land on "
+            + "them instead of the game and both are outlined so you can see what you have hold "
+            + "of. Switch it off and everything is pinned again and clicks pass straight through.",
+        MoveModeOn = "Move mode on — drag the outline or the panel. Switch it off to pin them again.",
+        MoveModeOff = "Pinned. Clicks pass through to the game again.",
+        ToolbarMoveMode = "Move the outline and the panel",
+        ToolbarDialect = "Switch between Modern Standard and Egyptian",
+        ToolbarRecording = "Let screen recorders see the translation",
+
         ProfileNoteWindowed =
             "Active: {0}. Carries its own glossary ({1} terms) and measures the capture region "
             + "against that application's window, so the region survives the window being moved.",
@@ -1128,6 +1170,14 @@ public sealed class UiText
         WatchMode = "ما الذي على الشاشة",
         WatchModeDialogue = "حوار لعبة",
         WatchModeVideo = "ترجمة فيديو",
+        WatchModeAuto = "اكتشفه بنفسك",
+        WatchModeAutoNote =
+            "يراقب سلوك النص — هل يجلس السطر منتظراً نقرة، أم يظهر ويمضي وحده — ويبدّل بين "
+            + "التوقيتَين بنفسه. مفيد للعبة فيها مشاهد سينمائية، حيث تتغيّر الإجابة الصحيحة في "
+            + "منتصف الجلسة.",
+        WatchModeDetected = "يبدو أنه {0} — بُدِّلت التوقيتات.",
+        ContentDecided = "يعمل بوصفه: {0}",
+        ContentUndecided = "ما زال يستنتج طبيعة المحتوى",
         WatchModeSetTo = "ضُبطت المتابعة التلقائية على {0}.",
         WatchModeNote =
             "حوار اللعبة ينتظر النص حتى يكتمل ظهوره، وهذا هو الصواب لسطر يُكتب حرفاً حرفاً ثم "
@@ -1414,6 +1464,17 @@ public sealed class UiText
         ToolbarCollapse = "اطوِ الشريط إلى مقبض",
         ToolbarShow = "افتح شريط الأدوات",
         ToolbarMove = "اسحب من هنا لتحريك الشريط",
+
+        MoveMode = "حرّك العناصر",
+        MoveModeNote =
+            "يفكّ قفل إطار الالتقاط ولوحة الترجمة فتسحبهما حيث تشاء، وتجرّ زاوية الإطار لتغيير "
+            + "حجمه. وما دام مشغّلاً فالنقر يقع عليهما لا على اللعبة، ويظهر حولهما إطار لترى ما "
+            + "الذي أمسكته. أطفئه فيُثبَّت كل شيء من جديد ويمرّ النقر إلى اللعبة كالمعتاد.",
+        MoveModeOn = "وضع التحريك مشغّل — اسحب الإطار أو اللوحة. أطفئه لتثبيتهما من جديد.",
+        MoveModeOff = "ثُبِّتت. عاد النقر يمرّ إلى اللعبة.",
+        ToolbarMoveMode = "حرّك الإطار واللوحة",
+        ToolbarDialect = "بدّل بين الفصحى والمصرية",
+        ToolbarRecording = "اسمح لبرامج التسجيل برؤية الترجمة",
 
         ProfileNoteWindowed =
             "المُفعَّل: {0}. له مسرده الخاص ({1} مصطلحاً)، وتُقاس منطقة الالتقاط على نافذة ذلك "

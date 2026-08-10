@@ -181,6 +181,18 @@ are always there; the one you chose leads. The key combination stays left-to-rig
 not a sentence.</sub>
 </div>
 
+### Moving things out of the way
+
+Press the **hand** on the toolbar — or *Move things* in Settings → **Translating** — and both the
+capture outline and the translation panel become things you can pick up. Drag either anywhere; pull
+a corner of the outline to resize it. Both show a border while they are loose, so you can see at a
+glance which state you are in.
+
+Press it again and they are pinned: the borders go and clicks pass straight through to the game
+again. That is the only state in which either of them takes a click, which is why it is one
+deliberate toggle rather than something the app can drift into. Dragging the panel and the two
+position sliders are the same setting — move one and the other follows.
+
 ### Seeing what's being captured
 
 Settings → **Overlay** → *Show what is being captured* draws a thin outline around the rectangle
@@ -221,6 +233,14 @@ the first means you need a new key. A key that passes is saved immediately.
 **Move the overlay if it covers something.** Settings → **Overlay** has two position sliders and
 the panel moves as you drag them. Its position is measured inside the game's window, so it stays
 put when the game moves or changes monitor.
+
+**Let it work out what it is looking at.** Settings → **Translating** → *What is on screen* has a
+third choice: **work it out for me**. Game dialogue and video subtitles want opposite timings — one
+waits for the text to finish appearing, the other cannot afford to wait at all — and this watches
+how the text actually behaves and picks. It notices whether a line sits there waiting to be
+clicked, whether the region goes empty between lines, whether anything ever holds still. A cutscene
+inside a game gets video pacing without you reaching for a menu, and the dialogue box gets its
+patience back afterwards. Diagnostics says which one it has settled on.
 
 **Auto-watch for cutscenes.** Manual triggering is the default because each line costs a request.
 During a long cutscene, `Ctrl+Shift+A` lets it follow along by itself. It waits for the text to stop

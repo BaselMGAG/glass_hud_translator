@@ -15,11 +15,14 @@ public sealed record ToolbarActions(
     Action ToggleAutoWatch,
     Action Snip,
     Action PickRegion,
+    Action ToggleMoveMode,
     Action ToggleCaptureFrame,
     Action ToggleOverlay,
     Action OpenSettings,
     Action ToggleWatchMode,
     Action ToggleDiacritics,
+    Action ToggleDialect,
+    Action ToggleRecording,
     Action PinCorrection,
     Action Quit);
 
@@ -127,6 +130,11 @@ public sealed class ToolbarWindow : FloatingWindow
                 Make("snip", Icons.Snip, t => t.ToolbarSnip, actions.Snip),
                 Make("region", Icons.PickRegion, t => t.ToolbarRegion, actions.PickRegion,
                     HotkeyAction.PickRegion),
+
+                // In the simple row, not behind the expander. Moving the two things that sit over
+                // your game is the first thing anyone wants to do about them, and asking a player
+                // to find an expander first would be asking them to accept the layout we chose.
+                Make("move", Icons.Move, t => t.ToolbarMoveMode, actions.ToggleMoveMode),
                 Make("hide", Icons.HideOverlay, t => t.ToolbarHideOverlay, actions.ToggleOverlay,
                     HotkeyAction.ToggleOverlay),
                 Make("settings", Icons.Settings, t => t.ToolbarSettings, actions.OpenSettings,
@@ -143,8 +151,14 @@ public sealed class ToolbarWindow : FloatingWindow
             {
                 Divider(),
                 Make("frame", Icons.CaptureFrame, t => t.ToolbarCaptureFrame, actions.ToggleCaptureFrame),
-                Make("mode", Icons.WatchMode, t => t.ToolbarWatchMode, actions.ToggleWatchMode),
+                Make("mode", Icons.WatchDialogue, t => t.ToolbarWatchMode, actions.ToggleWatchMode),
                 Make("tashkeel", Icons.Diacritics, t => t.ToolbarDiacritics, actions.ToggleDiacritics),
+
+                // Both of these were Settings-only. A dialect is a two-value choice and recording
+                // is a switch, and either can be wanted without leaving a game - which is the test
+                // for what belongs here.
+                Make("dialect", Icons.Dialect, t => t.ToolbarDialect, actions.ToggleDialect),
+                Make("recording", Icons.Recording, t => t.ToolbarRecording, actions.ToggleRecording),
                 Make("pin", Icons.PinCorrection, t => t.ToolbarPinCorrection, actions.PinCorrection,
                     HotkeyAction.FlagTranslation),
                 Make("quit", Icons.Quit, t => t.ToolbarQuit, actions.Quit),
@@ -243,14 +257,29 @@ public sealed class ToolbarWindow : FloatingWindow
     /// button looks the same whether auto-watch is running is a row of shapes rather than a status.
     /// </summary>
     public void ShowState(bool autoWatch, bool overlayHidden, bool captureFrame, bool diacritics,
-        WatchMode mode)
+        WatchMode mode, bool moveMode = false, bool egyptian = false, bool recordable = false)
     {
         Highlight("watch", autoWatch);
         Highlight("hide", overlayHidden);
         Highlight("frame", captureFrame);
         Highlight("tashkeel", diacritics);
-        Highlight("mode", mode == WatchMode.Video);
+        Highlight("move", moveMode);
+        Highlight("dialect", egyptian);
+        Highlight("recording", recordable);
+
+        // Three states on one button, so the ICON has to carry which one - a lit/unlit pair cannot
+        // express three. Dialogue box, film strip, gauge; lit whenever it is not the default.
+        _modeIcon = mode switch
+        {
+            WatchMode.Video => Icons.WatchMode,
+            WatchMode.Auto => Icons.WatchAuto,
+            _ => Icons.WatchDialogue,
+        };
+
+        Highlight("mode", mode != WatchMode.Dialogue);
     }
+
+    private IconGeometry _modeIcon = Icons.WatchDialogue;
 
     /// <summary>
     /// Re-renders every tooltip in the new interface language. Both languages are always present,
@@ -398,13 +427,16 @@ public sealed class ToolbarWindow : FloatingWindow
         if (button.Content is Control) button.Content = Icons.Draw(IconFor(key), IconSize, on ? ActiveInk : Ink);
     }
 
-    private static IconGeometry IconFor(string key) => key switch
+    private IconGeometry IconFor(string key) => key switch
     {
         "watch" => Icons.AutoWatch,
         "hide" => Icons.HideOverlay,
         "frame" => Icons.CaptureFrame,
         "tashkeel" => Icons.Diacritics,
-        "mode" => Icons.WatchMode,
+        "move" => Icons.Move,
+        "dialect" => Icons.Dialect,
+        "recording" => Icons.Recording,
+        "mode" => _modeIcon,
         _ => Icons.TranslateNow,
     };
 

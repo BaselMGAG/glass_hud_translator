@@ -10,6 +10,27 @@ after Run anyway", and a player for whom every problem meant a trip into Setting
 
 ### Added
 
+- **A hand button that unlocks everything floating over your game.** Press it and both the capture
+  outline and the translation panel become things you can pick up: drag either anywhere, pull a
+  corner of the outline to resize it. Both get a visible border while they are loose, so you can
+  tell at a glance which state you are in. Press it again and they are pinned, the borders go, and
+  clicks pass straight through to the game as before. It is the only state in which either of them
+  takes a click, which is why it is one deliberate toggle rather than something the app can end up
+  in by itself. Dragging the panel and the two position sliders are now the same setting seen
+  twice — move one and the other follows.
+- **"Work it out for me" — a third choice for what is on screen.** Game dialogue and video
+  subtitles want opposite timings, and until now you had to know which you were looking at. The
+  new option watches how the text behaves and decides for itself: whether a line sits there waiting
+  to be clicked, whether the region goes empty between lines, whether anything ever holds still.
+  It switches between the two timings on its own, so a cutscene inside a game gets video pacing
+  without anybody reaching for a menu mid-scene — and switches back when the dialogue box returns.
+  It says which one it has settled on, in Diagnostics and on the status line, because an automatic
+  mode you cannot inspect is indistinguishable from a broken one.
+- **Everything now exists in both places.** Translate-one-thing was on the toolbar and a hotkey but
+  not in Settings; the dialect switch and the recording toggle were in Settings but not on the
+  toolbar. All three are now on both, and that is the rule from here: any action or two-state
+  toggle belongs on both surfaces. Things with many values or a text box — the profile list, the
+  sliders, the key fields — stay in Settings, where there is room to read them.
 - **A startup failure can no longer be invisible.** Errors during startup used to be written on the
   overlay — which is transparent, has no taskbar button and cannot be clicked, so a failed start
   and a successful invisible one looked identical from outside: "nothing opens." A failed start now

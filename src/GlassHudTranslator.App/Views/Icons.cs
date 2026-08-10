@@ -77,6 +77,40 @@ public static class Icons
     public static readonly IconGeometry WatchMode = new(
         "M 3,5 L 21,5 L 21,19 L 3,19 Z M 7.5,5 L 7.5,19 M 16.5,5 L 16.5,19 M 3,12 L 21,12");
 
+    /// <summary>A dialogue box with two lines in it: text that waits to be clicked.</summary>
+    public static readonly IconGeometry WatchDialogue = new(
+        "M 3,6.5 A 2,2 0 0 1 5,4.5 L 19,4.5 A 2,2 0 0 1 21,6.5 L 21,15 A 2,2 0 0 1 19,17 "
+        + "L 9.5,17 L 5.5,20.5 L 5.5,17 A 2,2 0 0 1 3,15 Z M 7,9 L 17,9 M 7,12.5 L 13.5,12.5");
+
+    /// <summary>
+    /// A dial with the needle swinging: the app decides for itself which of the two it is looking
+    /// at. A gauge rather than a letter, because the bundled Arabic font has no Latin — an "A"
+    /// here would be one more glyph resolved by whatever the OS happens to substitute.
+    /// </summary>
+    public static readonly IconGeometry WatchAuto = new(
+        "M 3.5,17 A 8.5,8.5 0 0 1 20.5,17 M 12,17 L 16.5,10.5",
+        "M 12,15.4 A 1.6,1.6 0 1 0 12,18.6 A 1.6,1.6 0 1 0 12,15.4 Z");
+
+    /// <summary>
+    /// An open hand. Grab mode: the capture outline and the translation panel both become things
+    /// you can pick up and put somewhere else.
+    /// </summary>
+    public static readonly IconGeometry Move = new(
+        "M 6.6,14.2 L 6.6,10.8 A 1.2,1.2 0 0 1 9,10.8 L 9,12.4 "
+        + "M 9,12.4 L 9,6.4 A 1.2,1.2 0 0 1 11.4,6.4 L 11.4,12.4 "
+        + "M 11.4,12.4 L 11.4,5.8 A 1.2,1.2 0 0 1 13.8,5.8 L 13.8,12.4 "
+        + "M 13.8,12.4 L 13.8,7.4 A 1.2,1.2 0 0 1 16.2,7.4 L 16.2,14.6 "
+        + "C 16.2,18.4 14,20.8 11.4,20.8 C 8.8,20.8 6.6,18.4 6.6,15.4 Z");
+
+    /// <summary>Two arrows swapping: Modern Standard on one side, Egyptian on the other.</summary>
+    public static readonly IconGeometry Dialect = new(
+        "M 4,9 L 20,9 M 16.5,5.5 L 20,9 L 16.5,12.5 M 20,16 L 4,16 M 7.5,12.5 L 4,16 L 7.5,19.5");
+
+    /// <summary>A record dot in a ring: whether screen recorders can see the translation.</summary>
+    public static readonly IconGeometry Recording = new(
+        "M 12,4.5 A 7.5,7.5 0 1 0 12,19.5 A 7.5,7.5 0 1 0 12,4.5 Z",
+        "M 12,8.5 A 3.5,3.5 0 1 0 12,15.5 A 3.5,3.5 0 1 0 12,8.5 Z");
+
     /// <summary>Two marks above a baseline, which is what tashkeel looks like.</summary>
     public static readonly IconGeometry Diacritics = new(
         "M 4,15.5 L 20,15.5 M 7,10 L 10.5,6.5 M 13.5,10 L 17,6.5");

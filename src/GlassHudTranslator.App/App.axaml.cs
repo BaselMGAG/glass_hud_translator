@@ -312,6 +312,7 @@ public partial class App : Application
                 },
                 Snip: () => _ = settingsWindow.SnipAsync(),
                 PickRegion: () => _ = settingsWindow.PickRegionAsync(settings.LastRegionProfile),
+                ToggleMoveMode: () => _ = ToggleMoveModeAsync(settings, settingsWindow),
                 ToggleCaptureFrame: () => _ = CycleCaptureFrameAsync(settings),
                 ToggleOverlay: () =>
                 {
@@ -343,6 +344,28 @@ public partial class App : Application
                     settingsWindow.ReportStatus(settings.Diacritics ? text.DiacriticsShown : text.DiacriticsHidden);
                     RefreshToolbar(settings);
                 },
+                ToggleDialect: () =>
+                {
+                    settings.Register = settings.Register == Core.Translation.ArabicRegister.Egyptian
+                        ? Core.Translation.ArabicRegister.ModernStandard
+                        : Core.Translation.ArabicRegister.Egyptian;
+                    settings.Save();
+                    _services!.Pipeline.Register = settings.Register;
+
+                    var text = UiText.For(settings.Language);
+                    settingsWindow.ReportStatus(string.Format(text.RegisterSetTo,
+                        settings.Register == Core.Translation.ArabicRegister.Egyptian
+                            ? text.RegisterEgyptian
+                            : text.RegisterMsa));
+                    RefreshToolbar(settings);
+                },
+                ToggleRecording: () =>
+                {
+                    settings.HideOverlayFromCapture = !settings.HideOverlayFromCapture;
+                    settings.Save();
+                    overlay.HideFromCapture = settings.HideOverlayFromCapture;
+                    RefreshToolbar(settings);
+                },
                 PinCorrection: () => _ = settingsWindow.CorrectCurrentAsync(),
                 Quit: () => settingsWindow.Close()));
 
@@ -351,6 +374,28 @@ public partial class App : Application
         // The mode has two controls now - the Translating tab and the toolbar - and either has to
         // repaint the other, or the toolbar shows dialogue while the app is watching a film.
         settingsWindow.WatchModeChanged += () => RefreshToolbar(settings);
+
+        // The Settings copy of the same button. One owner, two surfaces - neither can drift.
+        settingsWindow.MoveModeToggled += () => _ = ToggleMoveModeAsync(settings, settingsWindow);
+
+        // A drag ends in physical screen pixels; the stored form is two fractions of the game's
+        // free space, so the panel keeps its place when the window is resized or moved to another
+        // monitor. Converting here means dragging and the two sliders are the same setting.
+        overlay.Moved += landed => Dispatcher.UIThread.Post(() =>
+        {
+            var area = _session?.OverlayAnchor() ?? WholeScreenFallback(overlay);
+            var (horizontal, vertical) = OverlayPlacement.FractionsWithin(
+                area, overlay.Width, overlay.PanelHeight, ScalingOf(overlay, area),
+                landed.X, landed.Y);
+
+            settings.OverlayHorizontal = horizontal;
+            settings.OverlayVertical = vertical;
+            settings.Save();
+
+            // Rebuild the sliders so they show where it actually is, rather than where it was
+            // before the drag - two controls for one setting must never disagree.
+            settingsWindow.ReloadOverlayPlacement();
+        });
 
         settingsWindow.Opened += (_, _) => _ = ApplyFloatingWindowsAsync(settings);
         _ = toolbar;
@@ -426,6 +471,52 @@ public partial class App : Application
         RefreshToolbar(settings);
     }
 
+    /// <summary>
+    /// Unlocks both floating surfaces at once, and locks them together again.
+    ///
+    /// <para>
+    /// One mode rather than two, because "let me move the thing that is in my way" is a single
+    /// intention and the user should not have to know that the outline and the panel are separate
+    /// windows. It is also the only state in which either eats a click, which is why it is a
+    /// deliberate toggle with a visible outline on both, and why turning it off restores
+    /// click-through on both — a mode you can leave the app in by accident would be a mode that
+    /// quietly steals every click aimed at the game.
+    /// </para>
+    ///
+    /// <para>
+    /// The outline is forced visible while unlocked. Being asked to drag something you cannot see
+    /// is not an interaction; if it was hidden it comes back hidden, so the mode leaves no trace.
+    /// </para>
+    /// </summary>
+    private async Task ToggleMoveModeAsync(AppSettings settings, SettingsWindow settingsWindow)
+    {
+        if (_overlay is not { } overlay) return;
+
+        _moveMode = !_moveMode;
+        overlay.Movable = _moveMode;
+
+        if (_frame is { } frame)
+        {
+            if (_moveMode)
+            {
+                await RetrackFrameAsync();
+                frame.Mode = FrameMode.Adjustable;
+            }
+            else
+            {
+                frame.Mode = settings.ShowCaptureFrame ? FrameMode.Shown : FrameMode.Hidden;
+            }
+        }
+
+        var text = UiText.For(settings.Language);
+        settingsWindow.ReportStatus(_moveMode ? text.MoveModeOn : text.MoveModeOff);
+        overlay.ShowMessage(_moveMode ? text.MoveModeOn : text.MoveModeOff);
+
+        RefreshToolbar(settings);
+    }
+
+    private bool _moveMode;
+
     private async Task RetrackFrameAsync()
     {
         if (_frame is not { } frame || _session is null) return;
@@ -440,7 +531,10 @@ public partial class App : Application
         toolbar.UseLanguage(UiText.For(settings.Language));
         toolbar.ShowState(_session.IsAutoWatching, _overlay.HiddenByUser,
             _frame?.Mode is FrameMode.Shown or FrameMode.Adjustable,
-            settings.Diacritics, settings.WatchMode);
+            settings.Diacritics, settings.WatchMode,
+            moveMode: _moveMode,
+            egyptian: settings.Register == Core.Translation.ArabicRegister.Egyptian,
+            recordable: !settings.HideOverlayFromCapture);
     }
 
     private static CaptureRegion WholeScreenFallback(Avalonia.Controls.Window window) =>
@@ -731,7 +825,7 @@ public partial class App : Application
         var settings = new AppSettings { ToolbarExpanded = false };
         var nothing = new Action(() => { });
         var actions = new ToolbarActions(nothing, nothing, nothing, nothing, nothing, nothing,
-            nothing, nothing, nothing, nothing, nothing);
+            nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing);
 
         var toolbar = new ToolbarWindow(
             UiText.For(Program.Option("--toolbar-test-lang") == "ar" ? UiLanguage.Arabic : UiLanguage.English),

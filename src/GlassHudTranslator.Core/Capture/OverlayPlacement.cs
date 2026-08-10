@@ -80,6 +80,37 @@ public static class OverlayPlacement
     }
 
     /// <summary>
+    /// The inverse of <see cref="Within(CaptureRegion, double, double, double, double, double)"/>:
+    /// a position the user dragged the panel to, turned back into the two stored fractions.
+    ///
+    /// <para>
+    /// Storing the drag as fractions rather than as pixels is what keeps a hand-placed panel
+    /// working after the game is resized, moved to a differently-shaped window, or opened on
+    /// another monitor — the same reason capture regions are stored relatively. It also means
+    /// dragging and the two sliders are the same setting seen twice, so neither can disagree
+    /// with the other.
+    /// </para>
+    ///
+    /// <para>
+    /// A panel with no free space in an axis — as wide as the game, or wider — has no meaningful
+    /// fraction there: every position maps to the same place. Returning 0.5 rather than dividing
+    /// by zero keeps it centred, which is where a panel that cannot move belongs.
+    /// </para>
+    /// </summary>
+    public static (double Horizontal, double Vertical) FractionsWithin(
+        CaptureRegion area, double panelWidthDips, double panelHeightDips, double scaling,
+        int x, int y)
+    {
+        var scale = double.IsNaN(scaling) || scaling <= 0 ? 1.0 : scaling;
+
+        var freeX = area.Width - (int)Math.Ceiling(Math.Max(0, panelWidthDips) * scale);
+        var freeY = area.Height - (int)Math.Ceiling(Math.Max(0, panelHeightDips) * scale);
+
+        return (freeX > 0 ? Clamp((x - area.X) / (double)freeX) : 0.5,
+                freeY > 0 ? Clamp((y - area.Y) / (double)freeY) : 0.5);
+    }
+
+    /// <summary>
     /// Settings files are hand-editable and a value from one is not to be trusted. A fraction
     /// outside 0-1 would put the panel off the screen entirely, which looks exactly like the app
     /// having stopped working.

@@ -130,6 +130,86 @@ public class OverlayPlacementTests
         }
     }
 
+    // ── dragging: the inverse has to land back where it started ───────────────────────────────
+
+    [Theory]
+    [InlineData(0.0, 0.0)]
+    [InlineData(0.5, 0.5)]
+    [InlineData(1.0, 1.0)]
+    [InlineData(0.22, 0.85)]
+    public void ADraggedPanelLandsWhereItWasLeftAndStaysThere(double horizontal, double vertical)
+    {
+        // The loop that matters: place from stored fractions, the user drags, the drop is read
+        // back into fractions, and the next launch places from those. A fraction cannot survive a
+        // trip through an integer pixel unchanged - freeX is about a thousand pixels, so the
+        // recovered fraction differs in the fourth decimal - and that is fine. What is NOT fine is
+        // creep: if each round trip moved the panel one pixel, a panel dragged to the corner would
+        // walk across the screen over a few dozen sessions.
+        //
+        // So the invariant is idempotence in PIXELS, which is the unit the user actually sees.
+        foreach (var scaling in new[] { 1.0, 1.25, 1.5 })
+        {
+            var first = OverlayPlacement.Within(
+                Game, PanelWidth, PanelHeight, scaling, horizontal, vertical);
+
+            var recovered = OverlayPlacement.FractionsWithin(
+                Game, PanelWidth, PanelHeight, scaling, first.X, first.Y);
+
+            var second = OverlayPlacement.Within(
+                Game, PanelWidth, PanelHeight, scaling, recovered.Horizontal, recovered.Vertical);
+
+            Assert.Equal(first, second);
+
+            // And a third trip changes nothing either - the fixed point is reached immediately
+            // rather than converged on.
+            var again = OverlayPlacement.FractionsWithin(
+                Game, PanelWidth, PanelHeight, scaling, second.X, second.Y);
+
+            Assert.Equal(first,
+                OverlayPlacement.Within(Game, PanelWidth, PanelHeight, scaling,
+                    again.Horizontal, again.Vertical));
+        }
+    }
+
+    [Fact]
+    public void ADragOutsideTheGameIsClampedRatherThanStored()
+    {
+        // Windows will happily let a panel be dragged off the edge. Storing a fraction outside
+        // 0-1 would put it off screen on the next launch, with nothing to explain why.
+        var (horizontal, vertical) = OverlayPlacement.FractionsWithin(
+            Game, PanelWidth, PanelHeight, 1.0, x: -400, y: 5000);
+
+        Assert.Equal(0, horizontal);
+        Assert.Equal(1, vertical);
+    }
+
+    [Fact]
+    public void APanelWithNoRoomToMoveReportsCentredRatherThanDividingByZero()
+    {
+        // As wide as the game, or wider: every position maps to the same place, so there is no
+        // meaningful fraction. Centred is where a panel that cannot move belongs.
+        var narrow = new CaptureRegion(0, 0, PanelWidth, 1080);
+
+        var (horizontal, _) = OverlayPlacement.FractionsWithin(
+            narrow, PanelWidth, PanelHeight, 1.0, x: 0, y: 0);
+
+        Assert.Equal(0.5, horizontal);
+    }
+
+    [Fact]
+    public void TheGamesOriginIsSubtractedSoASecondMonitorDoesNotSkewIt()
+    {
+        // A game on a monitor to the left of the primary starts at a negative X. Reading the drag
+        // without removing that origin would push every fraction to one end.
+        var secondScreen = new CaptureRegion(-1920, 0, 1920, 1080);
+
+        var (horizontal, _) = OverlayPlacement.FractionsWithin(
+            secondScreen, PanelWidth, PanelHeight, 1.0,
+            x: -1920 + (1920 - PanelWidth) / 2, y: 0);
+
+        Assert.Equal(0.5, horizontal, 3);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]

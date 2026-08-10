@@ -1,6 +1,7 @@
 using GlassHudTranslator.Core.Platform;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -164,11 +165,88 @@ public sealed class OverlayWindow : FloatingWindow
     private bool _hideFromCapture = true;
 
     /// <summary>
-    /// Click-through, always: this panel is the one surface that must never eat a click. The user
-    /// is aiming at the game behind it, and it has no controls of its own to aim at.
+    /// Click-through except while the user is deliberately moving it. The panel is normally the
+    /// one surface that must never eat a click — the user is aiming at the game behind it, and it
+    /// has no controls of its own to aim at — but a thing you are asked to drag has to be a thing
+    /// the mouse can reach.
     /// </summary>
     protected override OverlayStyleOptions StyleOptions =>
-        OverlayStyleOptions.Panel with { HideFromCapture = _hideFromCapture };
+        (Movable ? OverlayStyleOptions.Interactive : OverlayStyleOptions.Panel)
+        with { HideFromCapture = _hideFromCapture };
+
+    /// <summary>
+    /// Whether the panel can be picked up and dragged. Off is the normal state and the safe one:
+    /// every moment this is true is a moment clicks meant for the game land on us instead, which
+    /// is why nothing turns it on by itself and why it is one visible toggle rather than a mode
+    /// the app can end up in without being asked.
+    /// </summary>
+    public bool Movable
+    {
+        get => _movable;
+        set
+        {
+            if (_movable == value) return;
+
+            _movable = value;
+            ApplyPlatformStyles();
+
+            // A dashed edge while it is loose. Without it, "movable" and "pinned" look identical
+            // and the only way to find out which one you are in is to click the game and lose the
+            // click - the exact thing the mode exists to make deliberate.
+            _panel.BorderBrush = new SolidColorBrush(Color.Parse("#8ab4f8"));
+            _panel.BorderThickness = value ? new Thickness(2) : new Thickness(0);
+            Cursor = value ? new Cursor(StandardCursorType.SizeAll) : Cursor.Default;
+        }
+    }
+
+    private bool _movable;
+
+    /// <summary>
+    /// Raised when a drag finishes, with the panel's new top-left in physical screen pixels. The
+    /// window does not know how a position is stored - that is a pair of fractions of the game's
+    /// free space, which lives in Core - so it reports where it landed and lets the App convert.
+    /// </summary>
+    public event Action<PixelPoint>? Moved;
+
+    private PixelPoint _grabbedAt;
+    private PixelPoint _windowWasAt;
+    private bool _dragging;
+
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        base.OnPointerPressed(e);
+        if (!Movable || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
+
+        _dragging = true;
+        _grabbedAt = this.PointToScreen(e.GetPosition(this));
+        _windowWasAt = Position;
+        e.Pointer.Capture(this);
+    }
+
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+        if (!_dragging) return;
+
+        // Same arithmetic as the toolbar and the capture frame: PointToScreen re-evaluated against
+        // the window's current position gives the true pointer location however far it has already
+        // moved, and anchoring to the grab rather than the previous frame stops rounding
+        // accumulating across a long drag.
+        var now = this.PointToScreen(e.GetPosition(this));
+        Position = new PixelPoint(
+            _windowWasAt.X + (now.X - _grabbedAt.X),
+            _windowWasAt.Y + (now.Y - _grabbedAt.Y));
+    }
+
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+        if (!_dragging) return;
+
+        _dragging = false;
+        e.Pointer.Capture(null);
+        Moved?.Invoke(Position);
+    }
 
     public void ShowLoading(string? speaker = null) =>
         Dispatcher.UIThread.Post(() => Render(speaker, LoadingText, warning: null));

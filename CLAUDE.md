@@ -34,7 +34,7 @@ solution level it tries to force `net10.0` onto the Windows-only projects and fa
 dotnet test
 ```
 
-591 tests, all runnable on macOS and Linux.
+611 tests, all runnable on macOS and Linux.
 
 ```bash
 dotnet run --project tools/Replay -- --no-cache
@@ -565,6 +565,43 @@ fresh box straight through a suggestion works untouched — the suggestion catch
 that was previously an error ("too small"). `FromScreenPixels` must stay the exact inverse of
 `ToScreenPixels`: a proposal drawn with different letterbox arithmetic than the save uses would
 highlight one rectangle and store another.
+
+**Nothing lives on one surface alone.** Any *action* or *two-state toggle* must exist on both the
+toolbar and in Settings — the toolbar for someone inside a fullscreen game, Settings for someone
+who never switched the toolbar on. Snip was toolbar-and-hotkey only, which made it the one feature
+findable solely by hovering an unlabelled shape; the dialect switch and the recording toggle were
+Settings-only. All three are on both now. The exception is deliberate and narrow: controls with
+many values or free text — the profile list, the sliders, the key boxes, hotkey bindings — stay in
+Settings, because a toolbar cannot hold them and pretending otherwise would mean a worse version of
+both.
+
+**Move mode is one toggle for two windows, and it is the only state where either takes a click.**
+The capture outline and the translation panel are separate windows but a single intention — "let me
+move the thing that is in my way" — so one control unlocks both, borders both so the state is
+visible, and re-pins both. Turning it off must restore click-through on both: a mode the app can be
+left in by accident is a mode that silently eats every click aimed at the game. The outline is
+forced visible while unlocked, because being asked to drag something invisible is not an
+interaction, and it returns to hidden afterwards so the mode leaves no trace.
+
+**A dragged panel is stored as fractions, and the round trip must not creep.** `OverlayPlacement`
+has `Within` and `FractionsWithin` as inverses; a drop is converted straight back into the same two
+fractions the sliders write, so dragging and the sliders are one setting seen twice. A fraction
+cannot survive a trip through an integer pixel unchanged — freeX is about a thousand pixels, so the
+recovered value differs in the fourth decimal — and that is fine. What is tested is **idempotence in
+pixels**: place, read back, place again lands on the same pixel. Without that, a panel dragged to a
+corner walks across the screen over a few dozen sessions.
+
+**`ContentRhythm` weighs text signals above pixel signals, and that ordering is the whole design.**
+Motion is the obvious way to tell a film from a dialogue box and it is the one that lies: weather,
+an idling character or a scrolling sky behind a text panel changes every frame while the words sit
+still, so motion alone calls FFXIV a film. Persistence (how many consecutive polls one line
+survives) and emptiness (whether the region goes blank between lines) are both measured on the OCR
+text, are already paid for by the pipeline, and see through exactly that animation. Two rules keep
+it honest: a run is extended by "frame changed but the TEXT came back the same" — which is what the
+repeat gate reports and what defeats the animated-background case — and persistence is measured
+over the recent **half** of the window, because a stale run left by a dialogue box that has just
+ended would otherwise outvote every caption observed since. Switching costs a 12-second dwell, so
+alternating content settles on whichever it mostly is rather than chasing every transition.
 
 **Safe mode neither reads nor writes, and the second half is the one that would be forgotten.**
 `AppSettings.SafeMode` short-circuits `Load` to defaults and `Save` to a no-op. Two dozen call

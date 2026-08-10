@@ -20,6 +20,19 @@ public enum WatchMode
     /// the spend running away.
     /// </summary>
     Video,
+
+    /// <summary>
+    /// Work it out. <see cref="ContentRhythm"/> watches how the region behaves — whether lines
+    /// persist, whether it empties between them — and switches the timings itself, so a cutscene
+    /// inside a game gets video pacing without anybody reaching for a menu mid-scene.
+    ///
+    /// <para>
+    /// Never a <see cref="WatchPacing"/> of its own: it resolves to one of the two above on every
+    /// poll. Asking <see cref="WatchPacing.For"/> for it returns the Dialogue numbers, which is
+    /// what an undecided detector runs on anyway.
+    /// </para>
+    /// </summary>
+    Auto,
 }
 
 /// <summary>
@@ -165,7 +178,25 @@ public sealed class WatchSession(WatchPacing pacing, TimeProvider? clock = null)
     private DateTimeOffset? _lastTranslation;
     private bool _warned;
 
-    public WatchPacing Pacing { get; } = pacing;
+    public WatchPacing Pacing { get; private set; } = pacing;
+
+    /// <summary>
+    /// Swaps the timings mid-run, for <see cref="WatchMode.Auto"/> when the detector changes its
+    /// mind about what it is watching.
+    ///
+    /// <para>
+    /// Deliberately does NOT touch the clock, the request count or the cadence samples. The caps
+    /// are measured from when the user switched auto-watch on, and a run that has already spent
+    /// forty requests has spent them whatever the content turned out to be — resetting the
+    /// accounting on a mode change would make an alternating scene an unbounded session, which is
+    /// precisely the guard the caps exist to be.
+    /// </para>
+    /// </summary>
+    public void Adapt(WatchPacing pacing)
+    {
+        ArgumentNullException.ThrowIfNull(pacing);
+        Pacing = pacing;
+    }
 
     /// <summary>The Advanced-mode escape hatch: warn, but never switch off.</summary>
     public bool Unbounded { get; init; }

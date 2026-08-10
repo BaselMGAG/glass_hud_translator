@@ -188,6 +188,17 @@ immer da; die gewählte steht oben. Die Tastenkombination bleibt von links nach 
 kein Satz.</sub>
 </div>
 
+### Dinge aus dem Weg räumen
+
+Drück die **Hand** auf der Leiste — oder *Move things* unter Einstellungen → **Translating** — und
+sowohl der Aufnahmerahmen als auch das Übersetzungsfeld lassen sich anfassen. Zieh beides
+irgendwohin, zieh an einer Ecke des Rahmens, um seine Größe zu ändern. Beide zeigen währenddessen
+einen Rand, damit auf einen Blick klar ist, in welchem Zustand du bist.
+
+Nochmal drücken und beides ist wieder fixiert: Ränder weg, Klicks gehen wieder glatt ins Spiel. Das
+ist der einzige Zustand, in dem eines von beiden einen Klick abfängt — deshalb ein bewusster
+Schalter und nichts, in das die App von selbst geraten kann.
+
 ### Sehen, was aufgenommen wird
 
 Einstellungen → **Overlay** → *Zeigen, was aufgenommen wird* zeichnet einen dünnen Rahmen um das
