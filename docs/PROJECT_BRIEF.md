@@ -115,7 +115,7 @@ hotkeys, the overlay and the full translation round trip all run against the liv
 **It is early.** Specifically:
 
 - Click-through (clicking through the overlay to the game) hasn't been verified yet.
-- Display scaling above 100% hasn't been tested, and neither has a game on a second monitor.
+- The automatic dialogue-versus-video detection works, but hasn't been measured over a long film.
 - The Final Fantasy XIV glossary is a first draft and needs review by a native Arabic speaker.
 - Text-recognition accuracy against real game fonts hasn't been measured properly yet.
 - Only one game has a profile so far.

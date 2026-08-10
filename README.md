@@ -161,7 +161,7 @@ rather work from the hotkeys.
 <br>
 <sub>Simple: six actions, an expander, and a button that shrinks it to a handle.</sub>
 <br><br>
-<img src="docs/images/toolbar-advanced.png" alt="The same toolbar expanded, with five more buttons after a divider: the capture outline, the dialogue-versus-video switch, the Arabic vowel marks, pin a correction, and quit" width="470">
+<img src="docs/images/toolbar-advanced.png" alt="The same toolbar expanded, with five more buttons after a divider: the capture outline, the dialogue/video/automatic switch, the Arabic vowel marks, pin a correction, and quit" width="470">
 <br>
 <sub>Expanded, with auto-watch and the capture outline switched on — the active buttons light up.</sub>
 </div>
@@ -251,7 +251,8 @@ It tells you on the overlay after two minutes that it is still on and what it ha
 switches itself off after four — or sooner if it has spent more than four minutes of dialogue
 normally would. There is a switch in Settings to let it run without a limit.
 
-**Watching a video? Say so.** Settings → **Hotkeys** → *What is on screen*. Subtitles appear whole
+**Watching a video? Say so.** Settings → **Translating** → *What is on screen*, or the same
+button on the toolbar. Subtitles appear whole
 and leave after a few seconds, so waiting for the text to settle — right for a game that types
 dialogue out one character at a time — means the Arabic lands after the line has gone. Measured on a
 moving picture, that wait was 4.6 seconds against a subtitle that lives three. Video mode checks
@@ -392,12 +393,14 @@ Early, but working.
 | More than one key per provider | **working** |
 | Diacritics on or off | **working** |
 | A limit on automatic mode | **working** |
-| Video subtitle mode | **working**, not yet measured against a long film |
+| Video subtitle mode | **working** — about half a second quicker per line since v0.7.0 |
 | Recording the overlay | **working** — off by default, see Settings → Overlay |
 | Not paying twice for the same line misread | **working** |
-| The floating toolbar | written, not yet run on Windows |
-| The visible capture outline | written, not yet run on Windows |
-| Translate one thing once | written, not yet run on Windows |
+| The floating toolbar | **working** |
+| The visible capture outline | **working** |
+| Translate one thing once | **working** |
+| Moving the outline and panel by hand | **working** |
+| Working out dialogue from video by itself | **working**, not yet measured over a long film |
 | Click-through | not yet verified |
 
 Tested against **Final Fantasy XIV** and several other games on Windows across a long session:

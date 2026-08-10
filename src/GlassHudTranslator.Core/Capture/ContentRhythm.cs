@@ -29,8 +29,10 @@ public enum ContentKind
 /// The two live at opposite ends of every number in <see cref="WatchPacing"/>, and picking wrong
 /// is expensive in both directions: dialogue timings over video put the Arabic on screen after the
 /// line has gone (measured at 4.6 seconds), and video timings over a typewriter reveal translate
-/// half-written sentences and pay for each one. Neither of the projects this was measured against
-/// attempts the detection at all — both make it a setting and leave the consequence with the user.
+/// half-written sentences and pay for each one. The easy design is to make it a setting and leave
+/// the consequence with the user, and that is exactly wrong for somebody mid-scene: the right
+/// answer changes when a cutscene starts and changes back when it ends, and nobody is going to open
+/// a menu to say so.
 /// </para>
 ///
 /// <para>

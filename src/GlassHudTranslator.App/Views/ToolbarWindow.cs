@@ -39,10 +39,10 @@ public sealed record ToolbarActions(
 /// </para>
 ///
 /// <para>
-/// <b>Six buttons, then one that opens the rest.</b> The reference this was measured against puts
-/// about twenty unlabelled glyphs in a single strip, which is a guessing game for anyone, and the
-/// reader here is explicitly someone whose English is not good and who is not technical — that is
-/// why the Egyptian manual exists. So: six, larger, with names on hover in both languages, and an
+/// <b>Six buttons, then one that opens the rest.</b> A long strip of unlabelled glyphs is a
+/// guessing game for anyone, and the reader here is explicitly someone whose English is not good
+/// and who is not technical — that is why the Egyptian manual exists. So: six, larger, with names
+/// on hover in both languages, and an
 /// expander that is itself visible from the simple view so the advanced set is discoverable rather
 /// than hidden behind a preference. The same idea as the Basic/Advanced split still sitting on the
 /// roadmap, and deliberately the SAME idea: if that ships separately with its own notion of

@@ -3,7 +3,7 @@
 Notable changes. Started once the app was working end to end, so everything before the first entry
 is "the thing being described in the README".
 
-## Unreleased
+## v0.7.0 — 11 August 2026
 
 The release about arriving. Everything here exists because of two support messages: "nothing opens
 after Run anyway", and a player for whom every problem meant a trip into Settings.
@@ -78,6 +78,34 @@ after Run anyway", and a player for whom every problem meant a trip into Setting
   and deliberately the same concept rather than a second one. The "run without a limit" switch and
   the toolbar focus escape hatch now sit behind it: things that exist for one rare situation
   should take one extra click.
+
+### Fixed
+
+- **The app could mistake its own window for the thing it was watching.** Every fallback for "which
+  window is in front" included this app's own — Settings, the wizard, the picker, and the toolbar
+  you press to change modes. Bring one forward and the capture region was worked out against *it*:
+  the wrong pixels, the wrong size, and on two screens the wrong monitor entirely. It showed up as
+  three unrelated-looking faults at once — automatic mode deciding nothing, "this capture region was
+  drawn on a differently sized window" repeating forever, and a region that suddenly read nothing —
+  and it was worst exactly when you were testing, because pressing the toolbar was what caused it.
+- **The toolbar's mode button skipped "work it out for me".** It flipped between dialogue and video
+  only, so the third choice could be reached from Settings and nowhere else, while the same button
+  carried an icon for a state it could never show. It now cycles all three, and both places read one
+  list so they cannot drift apart again.
+- **Automatic mode could not tell a film from a dialogue box.** Three separate faults, all of them
+  arithmetic rather than judgement: it needed more evidence than its own timings could ever produce,
+  so over a film it simply never decided; it measured how long a line had been on screen in polls,
+  which mean different amounts of time depending on what is happening behind the text; and the
+  threshold it compared against was shorter than an ordinary subtitle, which the subtitling industry
+  publishes as up to seven seconds. It is measured in seconds now, against a number taken from that.
+- **Video mode is about half a second quicker on every line.** Over moving picture the app waited
+  for the picture to hold still before translating — which it never can, so the wait was pure delay
+  and bought nothing. Cut to the documented minimum.
+- **Video mode was silently dropping subtitles.** It refused to translate two lines less than a
+  second and a half apart, and a subtitle is allowed to be as short as five sixths of a second — so
+  a fast exchange lost every other line, with nothing said. The floor is one second now.
+- **A repeating warning that could not be dismissed.** "Once per layout" remembered only the last
+  layout, so anything alternating between two sizes warned on every single check.
 
 ## v0.6.0 — 10 August 2026
 
