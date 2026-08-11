@@ -34,27 +34,6 @@ public sealed class TranslationSession : IDisposable
     /// sentence at the moment something breaks is worst - it is what the user is looking at.
     /// </summary>
     private UiText Text => UiText.For(_settings.Language);
-    private CancellationTokenSource? _autoWatch;
-
-    /// <summary>
-    /// Decides which polled frames are worth translating. Owns the "has this changed" question that
-    /// used to be a bare signature comparison here - which answered yes on every frame of a
-    /// typewriter reveal and so translated one sentence four times over.
-    /// </summary>
-    private readonly FrameSettleGate _settle = new();
-
-    /// <summary>
-    /// The pacing and the caps for the run currently in progress, and the only thing that measures
-    /// how fast the watched content actually changes. Null when auto-watch is off.
-    /// </summary>
-    private WatchSession? _watch;
-
-    /// <summary>
-    /// Works out what the watched region actually is, for <see cref="WatchMode.Auto"/>. Fed on
-    /// every poll including the cheap ones — a poll that changed nothing is the commonest evidence
-    /// there is, and the one that says a line is being waited on.
-    /// </summary>
-    private readonly ContentRhythm _rhythm = new();
 
     /// <summary>
     /// Consecutive polls that threw. One bad frame used to end the whole run: the try/catch was
@@ -96,9 +75,19 @@ public sealed class TranslationSession : IDisposable
         _overlay = overlay;
         _settings = settings;
         _frames = PlatformServices.CreateFrameSource(framesDirectory);
+
+        // Built here rather than injected: it is not a policy anyone chooses between, it is the
+        // other half of this object.
+        _auto = new AutoWatch(this, settings, overlay);
     }
 
-    public bool IsAutoWatching => _autoWatch is not null;
+    /// <summary>The poll loop, and everything that decides when it should stop.</summary>
+    private readonly AutoWatch _auto;
+
+    public bool IsAutoWatching => _auto.IsRunning;
+
+    /// <summary>Switches the poll loop on or off. The loop itself lives in <see cref="AutoWatch"/>.</summary>
+    public void ToggleAutoWatch() => _auto.Toggle();
 
     /// <summary>
     /// What the current run has measured, for the Diagnostics tab. Null when auto-watch is off.
@@ -110,18 +99,9 @@ public sealed class TranslationSession : IDisposable
     /// place that answers it.
     /// </para>
     /// </summary>
-    public (TimeSpan? Cadence, int Requests, TimeSpan Elapsed, bool Outrunning)? WatchStats =>
-        _watch is { } watch
-            ? (watch.Cadence, watch.Requests, watch.Elapsed, watch.OutrunningTheFloor)
-            : null;
+    public (TimeSpan? Cadence, int Requests, TimeSpan Elapsed, bool Outrunning)? WatchStats => _auto.Stats;
 
-    /// <summary>
-    /// What the content detector has concluded, and what it is running as. Surfaced for the same
-    /// reason the cadence is: an automatic mode nobody can inspect is indistinguishable from a
-    /// bug, and "why is it waiting so long" has exactly one useful first answer.
-    /// </summary>
-    public (ContentKind Kind, WatchMode Running)? ContentVerdict =>
-        _watch is null ? null : (_rhythm.Kind, _settings.WatchMode == WatchMode.Auto ? _running : _settings.WatchMode);
+    public (ContentKind Kind, WatchMode Running)? ContentVerdict => _auto.Verdict;
 
     /// <summary>
     /// When set, every captured region is written here as a PNG. This is how a real frame corpus
@@ -175,266 +155,6 @@ public sealed class TranslationSession : IDisposable
         }
     }
 
-    public void ToggleAutoWatch()
-    {
-        if (_autoWatch is not null)
-        {
-            StopAutoWatch(Text.AutoWatchOff);
-            return;
-        }
-
-        _autoWatch = new CancellationTokenSource();
-        var token = _autoWatch.Token;
-
-        // Otherwise switching auto-watch off and straight back on sits on Unchanged until the
-        // player advances the dialogue, which reads as the toggle having done nothing. The repeat
-        // guard needs the same treatment for the same reason and one layer up: the gate would let
-        // the frame through and the pipeline would then drop it as a line it has already shown.
-        // Deliberately NOT ResetContext - the three lines the player was just reading are still the
-        // scene they are in, and throwing them away costs a worse translation for nothing.
-        _settle.Reset();
-        _services.Pipeline.ResetRepeatGuard();
-        _rhythm.Reset();
-        _consecutiveFailures = 0;
-        _consecutiveEmpty = 0;
-        _overlay.Notice = null;
-
-        // The mode is read here rather than per tick, so one run has one set of caps and one
-        // cadence estimate. Switching mode mid-run would silently reset the clock the caps are
-        // measured against, which is the one thing a cap must not allow.
-        // Auto resolves to Dialogue until the detector has seen enough, which is the cheap mistake
-        // to make while deciding: patience on a film costs a few late lines, impatience on a
-        // typewriter reveal costs a request per half-written sentence.
-        var pacing = WatchPacing.For(_settings.WatchMode);
-        if (_settings.SecondsBetweenTranslations > 0)
-            pacing = pacing with { MinimumInterval = TimeSpan.FromSeconds(_settings.SecondsBetweenTranslations) };
-
-        _watch = new WatchSession(pacing) { Unbounded = _settings.WatchWithoutLimit };
-        _watch.Start();
-        _settle.Retune(_watch.Settle());
-
-        var worker = new Thread(() => AutoWatchLoop(token))
-        {
-            IsBackground = true,
-            Name = "auto-watch",
-
-            // The game's render thread must always win. On weak hardware a capture-and-OCR tick
-            // competing at normal priority is visible as dropped frames.
-            Priority = ThreadPriority.BelowNormal,
-        };
-        worker.Start();
-
-        // On the overlay too, not only in Settings. Switching it on is the moment to say what it
-        // will cost and when it will stop by itself — afterwards the player is looking at the game.
-        var announcement = string.Format(Text.AutoWatchOn,
-            Text.WatchModeName(_settings.WatchMode),
-            _watch.Unbounded ? Text.NoLimit : pacing.StopAfter.TotalMinutes.ToString("0"));
-
-        Report(announcement);
-        _overlay.ShowMessage(announcement);
-    }
-
-    private void AutoWatchLoop(CancellationToken ct)
-    {
-        var watch = _watch!;
-        var expiry = TimeSpan.FromSeconds(_settings.AutoWatchExpirySeconds);
-        var lastChange = Stopwatch.GetTimestamp();
-
-        while (!ct.IsCancellationRequested)
-        {
-            try
-            {
-                // Re-read per tick rather than once, because Auto can swap the pacing underneath
-                // this loop. Two property reads and a divide; the poll it precedes costs a BitBlt.
-                Thread.Sleep(_settings.AutoWatchFps > 0
-                    ? TimeSpan.FromSeconds(1.0 / _settings.AutoWatchFps)
-                    : watch.Pacing.PollInterval);
-
-                if (ct.IsCancellationRequested) break;
-
-                // The session cap, measured from switch-on. The idle expiry below cannot do this
-                // job: it resets on any movement, so over a playing video - or a game with
-                // animation anywhere in the capture region - it never fires at all. A guard that a
-                // moving screen switches off is not a guard.
-                switch (watch.Check())
-                {
-                    case WatchVerdict.Stop:
-                        StopAutoWatch(string.Format(Text.AutoWatchReachedLimit,
-                            watch.Elapsed.TotalMinutes.ToString("0"), watch.Requests), onOverlay: true);
-                        return;
-
-                    case WatchVerdict.Warn:
-                        // Sticky, because it has to survive the translations that keep arriving
-                        // after it. This is the line the whole cap exists to deliver.
-                        _overlay.Notice = string.Format(Text.AutoWatchStillRunning,
-                            watch.Elapsed.TotalMinutes.ToString("0"), watch.Requests);
-                        Report(_overlay.Notice);
-                        break;
-                }
-
-                // The AFK expiry stays, unchanged, for what it was always good at: a toggle left on
-                // in front of a genuinely static screen.
-                if (Stopwatch.GetElapsedTime(lastChange) > expiry)
-                {
-                    StopAutoWatch(string.Format(Text.AutoWatchExpired, expiry.TotalSeconds.ToString("0")),
-                        onOverlay: true);
-                    return;
-                }
-
-                // The floor, asked before the frame reaches the gate for the same reason the busy
-                // check is: calling a frame Ready commits it, so a frame refused afterwards would
-                // be remembered as handled and the screen would sit unchanged for good.
-                if (!watch.MayTranslate()) continue;
-
-                var region = ResolveRegionAsync(ct).GetAwaiter().GetResult();
-                if (region is null) continue;
-
-                var frame = _frames.GetFrameAsync(region.Value, ct).GetAwaiter().GetResult();
-                if (frame is null) continue;
-
-                // BEFORE the gate is offered anything, not after. Deciding a frame is Ready is not
-                // a question - it commits that frame as the one now on the overlay - so offering a
-                // frame we are in no position to translate loses the line outright: the gate would
-                // answer Unchanged for every poll afterwards, and the player would sit looking at
-                // the previous line's Arabic until they advanced the dialogue again.
-                //
-                // The old code could afford the wrong order because a typewriter reveal produced
-                // four or five candidate frames and losing one cost nothing. The gate exists to
-                // make that exactly one, which is precisely what makes dropping it unrecoverable.
-                //
-                // _busy is also held by the manual hotkey and by Settings' own buttons, none of
-                // which are disabled while auto-watch runs - so this is an ordinary collision, not
-                // a rare one. It counts as activity either way: something is being translated.
-                if (_busy)
-                {
-                    lastChange = Stopwatch.GetTimestamp();
-                    continue;
-                }
-
-                // The cheap gate. Most frames during dialogue are identical to the one already
-                // translated and must never reach OCR - and a frame that HAS changed is not
-                // translated until it stops changing, so a line that types itself out on screen
-                // costs one request rather than one per revealed chunk.
-                // Retuned every poll from what the content has turned out to be. Cheap - it is a
-                // record assignment - and it is the whole of the adaptation: a dialogue box that
-                // advances every eight seconds gets a patient deadline, and the same code watching
-                // subtitles that change every three gets an impatient one, without anybody saying
-                // which is which.
-                _settle.Retune(watch.Settle());
-
-                var signature = FrameSignature.Compute(frame);
-                var verdict = _settle.Offer(signature);
-
-                if (verdict == FrameVerdict.Unchanged)
-                {
-                    // The commonest poll there is, and the one that says most: the line on the
-                    // overlay is still the line on screen. Somebody is being waited on.
-                    Adapt(watch, new RhythmSample(Changed: false));
-                    continue;
-                }
-
-                // Anything moving counts as activity, including a reveal still in progress -
-                // otherwise the AFK expiry could fire in the middle of a sentence appearing.
-                lastChange = Stopwatch.GetTimestamp();
-
-                if (verdict == FrameVerdict.Settling)
-                {
-                    // A frame mid-change that was never read. Genuinely no evidence either way, and
-                    // recorded as exactly that rather than allowed to vote with silence.
-                    Adapt(watch, new RhythmSample(Changed: true));
-                    continue;
-                }
-
-                _busy = true;
-                Read read;
-                try
-                {
-                    read = ProcessAsync(frame, Trigger.Poll, ct).GetAwaiter().GetResult();
-                }
-                finally
-                {
-                    _busy = false;
-                }
-
-                Adapt(watch, new RhythmSample(Changed: true, read.HasText, read.TextChanged));
-                _consecutiveFailures = 0;
-            }
-            catch (OperationCanceledException)
-            {
-                break;   // shutdown, or the toggle was switched off mid-poll
-            }
-            catch (Exception e)
-            {
-                // Per POLL, not per run. One frame that OCR chokes on, one transient database
-                // hiccup, one provider throwing something unexpected - none of those is a reason to
-                // end a session the user is in the middle of. Only a run of them is.
-                if (++_consecutiveFailures < FailuresBeforeGivingUp)
-                {
-                    Report(string.Format(Text.AutoWatchSkippedFrame, e.Message));
-                    continue;
-                }
-
-                StopAutoWatch(string.Format(Text.AutoWatchStopped, e.Message), onOverlay: true);
-                return;
-            }
-        }
-    }
-
-    /// <summary>What one poll learned about the content, for <see cref="ContentRhythm"/>.</summary>
-    private readonly record struct Read(bool? HasText, bool? TextChanged);
-
-    /// <summary>
-    /// Feeds the detector and, in <see cref="WatchMode.Auto"/>, swaps the pacing when it changes
-    /// its mind. A no-op in the two fixed modes — the detector still runs there, because what it
-    /// has worked out is shown in Diagnostics either way and an estimate nobody can see is
-    /// indistinguishable from a bug.
-    /// </summary>
-    private void Adapt(WatchSession watch, RhythmSample sample)
-    {
-        _rhythm.Observe(sample);
-        if (_settings.WatchMode != WatchMode.Auto) return;
-
-        var wanted = _rhythm.Resolved;
-        if (wanted == _running) return;
-
-        _running = wanted;
-
-        var pacing = WatchPacing.For(wanted);
-        if (_settings.SecondsBetweenTranslations > 0)
-            pacing = pacing with { MinimumInterval = TimeSpan.FromSeconds(_settings.SecondsBetweenTranslations) };
-
-        watch.Adapt(pacing);
-
-        // Said out loud, once per change. An automatic mode that switches silently is one nobody
-        // can trust or debug: the first question when the pacing feels wrong is which of the two
-        // it currently thinks it is in.
-        Report(string.Format(Text.WatchModeDetected, Text.WatchModeName(wanted)));
-    }
-
-    /// <summary>
-    /// Which of the two fixed modes Auto is currently running as. Meaningless outside Auto, where
-    /// the mode is whatever the user picked.
-    /// </summary>
-    private WatchMode _running = WatchMode.Dialogue;
-
-    /// <summary>
-    /// <paramref name="onOverlay"/> for anything the user did not ask for. Switching it off by
-    /// hotkey needs no announcement — they just pressed the key — but stopping by itself, hitting a
-    /// cap, or giving up after a run of errors must reach the screen the player is actually
-    /// looking at. Every one of these used to go to the Settings status line alone.
-    /// </summary>
-    private void StopAutoWatch(string message, bool onOverlay = false)
-    {
-        _autoWatch?.Cancel();
-        _autoWatch?.Dispose();
-        _autoWatch = null;
-        _watch = null;
-        _overlay.Notice = null;
-
-        Report(message);
-        if (onOverlay) _overlay.ShowMessage(message);
-    }
-
     /// <summary>
     /// What asked for this translation. It decides three things that genuinely differ between them
     /// — whether a repeated line is suppressed, whether the conversation context applies, and what
@@ -465,6 +185,48 @@ public sealed class TranslationSession : IDisposable
     /// reads as the feature being broken.
     /// </para>
     /// </summary>
+    /// <summary>What one poll learned about the content, for <see cref="ContentRhythm"/>.</summary>
+    internal readonly record struct Read(bool? HasText, bool? TextChanged);
+
+    /// <summary>
+    /// The surface <see cref="AutoWatch"/> drives this session through. Deliberately small, and
+    /// deliberately not an interface: there is one caller and one implementation, so an interface
+    /// would name a thing that already has a name. What it buys is that the loop cannot reach the
+    /// session's own state except through these — which is the class of accident the snip rules
+    /// exist to prevent.
+    /// </summary>
+    internal bool Busy => _busy;
+
+    internal void Report(string message) => Status?.Invoke(message);
+
+    internal void ResetRepeatGuard() => _services.Pipeline.ResetRepeatGuard();
+
+    /// <summary>
+    /// Forgets the run of empty reads. A new run starts the region-is-wrong diagnosis over, which
+    /// is right: the last run's silence says nothing about this one.
+    /// </summary>
+    internal void ResetEmptyRun() => _consecutiveEmpty = 0;
+
+    internal Task<Frame?> CaptureAsync(CaptureRegion region, CancellationToken ct) =>
+        _frames.GetFrameAsync(region, ct);
+
+    /// <summary>
+    /// One polled frame, translated and shown. Holds <see cref="Busy"/> for the duration, because
+    /// the manual hotkey and Settings' own buttons share it and neither is disabled during a run.
+    /// </summary>
+    internal async Task<Read> PollAsync(Frame frame, CancellationToken ct)
+    {
+        _busy = true;
+        try
+        {
+            return await ProcessAsync(frame, Trigger.Poll, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
     private async Task<Read> ProcessAsync(Frame frame, Trigger trigger, CancellationToken ct)
     {
         SaveFrameIfRequested(frame);
@@ -560,13 +322,13 @@ public sealed class TranslationSession : IDisposable
         // to see it.
         if (trigger == Trigger.Snip)
         {
-            _watch?.CountedOutsideTheRhythm();
+            _auto.CountedOutsideTheRhythm();
         }
         else
         {
             _consecutiveEmpty = 0;
-            if (trigger == Trigger.Poll) _watch?.Translated();
-            else _watch?.CountedOutsideTheRhythm();
+            if (trigger == Trigger.Poll) _auto.Translated();
+            else _auto.CountedOutsideTheRhythm();
         }
 
         // Captured before it is overwritten: whether this line differs from the last one shown is
@@ -641,7 +403,7 @@ public sealed class TranslationSession : IDisposable
                 .TranslateTextAsync(text, fresh: fresh, regionKey: _settings.LastRegionProfile, ct: ct)
                 .ConfigureAwait(false);
 
-            _watch?.CountedOutsideTheRhythm();
+            _auto.CountedOutsideTheRhythm();
 
             if (outcome.Result is not { } result)
             {
@@ -727,9 +489,9 @@ public sealed class TranslationSession : IDisposable
             // still believes it is displayed - so without this the player would be left looking at
             // a menu tooltip until the dialogue advanced. Forgetting costs one cache lookup: the
             // line was translated in this session, so it is already stored, and a hit is free.
-            if (_autoWatch is not null)
+            if (_auto.IsRunning)
             {
-                _settle.Reset();
+                _auto.ForgetWhatIsOnScreen();
                 _services.Pipeline.ResetRepeatGuard();
             }
         }
@@ -739,7 +501,7 @@ public sealed class TranslationSession : IDisposable
     /// Turns the stored fractional profile into screen pixels against the game's current client
     /// area, which is what makes a saved region survive the window being moved.
     /// </summary>
-    private async Task<CaptureRegion?> ResolveRegionAsync(CancellationToken ct)
+    internal async Task<CaptureRegion?> ResolveRegionAsync(CancellationToken ct)
     {
         var profile = await _services.Regions
             .LoadOrDefaultAsync(_services.Profile.Id, _settings.LastRegionProfile, ct).ConfigureAwait(false);
@@ -771,42 +533,49 @@ public sealed class TranslationSession : IDisposable
             GameWindowLocated?.Invoke(client);
         }
 
-        // Said once per (profile, region, layout) rather than every frame - auto-watch runs at 2 fps
-        // and a warning repeated 120 times a minute is noise the user learns to ignore.
-        //
-        // A SET rather than one slot, because one slot only suppresses an immediate repeat: a size
-        // alternating A, B, A, B misses every time and warns on every poll, which is precisely what
-        // a window switching between two states produces. Remembering every layout already
-        // mentioned makes "once per layout" mean what it says.
-        if (!profile.MatchesLayout(client.Width, client.Height, window.Scaling)
-            && _layoutWarnedFor.Add(LayoutKey(profile, client)))
+        // Everything from here is arithmetic over facts, so it lives in Core where it can be
+        // tested. What stays here is the gathering above - which window is the game, how big the
+        // desktop is - and the deciding below of how loud each complaint should be, which is a
+        // question about a person rather than about a rectangle.
+        var outcome = RegionResolver.Resolve(profile, client, window.Scaling, PlatformServices.VirtualDesktop());
+
+        foreach (var warning in outcome.Warnings) Mention(warning, profile, client);
+
+        if (outcome.Region is not { } region)
         {
-            Report(Text.RegionLayoutChanged);
-        }
-
-        var relative = profile.Resolve(client.Width, client.Height);
-        var region = relative.Translate(client.X, client.Y);
-
-        // The display layout can change under a stored region - a monitor unplugged, the game moved
-        // to a smaller screen. Capturing the overhang would BitBlt undefined pixels into OCR, which
-        // surfaces as garbage text and reads as the model getting worse.
-        var desktop = PlatformServices.VirtualDesktop();
-        if (desktop.IsEmpty || desktop.Contains(region)) return Announce(region);
-
-        var trimmed = region.ClampTo(desktop);
-        if (trimmed.IsEmpty)
-        {
-            Fail(Text.RegionOffScreenTrimmed);
+            Fail(Describe(outcome.Failure ?? RegionProblem.EntirelyOffScreen));
             return null;
         }
 
-        if (_trimmedWarnedFor.Add(LayoutKey(profile, client)))
-        {
-            Report(Text.RegionOffScreenTrimmed);
-        }
-
-        return Announce(trimmed);
+        return Announce(region);
     }
+
+    /// <summary>
+    /// Says a thing once per layout rather than once per frame. Auto-watch resolves a region twice
+    /// a second, so a warning repeated 120 times a minute is noise the user learns to ignore.
+    ///
+    /// <para>
+    /// A SET rather than one slot, because one slot only suppresses an IMMEDIATE repeat: a value
+    /// alternating A, B, A, B misses on every comparison and warns on every poll, which is exactly
+    /// what a window switching between two states produces - and something always alternates.
+    /// </para>
+    /// </summary>
+    private void Mention(RegionProblem warning, RegionProfile profile, CaptureRegion client)
+    {
+        var said = warning switch
+        {
+            RegionProblem.LayoutChanged => _layoutWarnedFor,
+            _ => _trimmedWarnedFor,
+        };
+
+        if (said.Add($"{warning}/{LayoutKey(profile, client)}")) Report(Describe(warning));
+    }
+
+    private string Describe(RegionProblem problem) => problem switch
+    {
+        RegionProblem.LayoutChanged => Text.RegionLayoutChanged,
+        _ => Text.RegionOffScreenTrimmed,
+    };
 
     /// <summary>
     /// Publishes the rectangle that is about to be captured, so the visible frame can outline it.
@@ -881,7 +650,6 @@ public sealed class TranslationSession : IDisposable
         }
     }
 
-    private void Report(string message) => Status?.Invoke(message);
 
     /// <summary>Reports to both the Settings status line and the overlay the user is looking at.</summary>
     private void Fail(string message)
@@ -895,8 +663,7 @@ public sealed class TranslationSession : IDisposable
 
     public void Dispose()
     {
-        _autoWatch?.Cancel();
-        _autoWatch?.Dispose();
+        _auto.Dispose();
         _frames.Dispose();
     }
 }

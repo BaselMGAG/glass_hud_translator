@@ -97,6 +97,26 @@ Measured at 26px with the bundled font: `LineHeight` 40 and 44 clip, 48 and abov
 is 54.9. Use `LineSpacing` instead — it adds to the natural height rather than replacing it, so it
 stays correct when the user changes font size in Settings.
 
+**Split the App on what becomes testable, not on what makes files shorter.** `TranslationSession`
+was 900 lines and the obvious cure — a Coordinator per noun — would have made it worse: a data-bag
+`SessionState` separates the fields from the rules that are *about* those fields, and this file's
+hardest rules are exactly that shape ("a snip must not touch `_consecutiveEmpty`", "a retry must not
+become the repeat reference"), each of them a bug that shipped once. The useful question here is
+never how long a file is, it is **which half of it could have a test and does not**. Region
+resolution was arithmetic over plain facts wedged between a Win32 call and an overlay, so it moved
+to Core as `RegionResolver` and took ten tests with it, two of which are defects that shipped. The
+poll loop stayed in the App because it genuinely drives I/O, but it is its own object now, because
+it is the one job in there that is not "translate this thing now". Same gather/judge split as
+`HealthCheck`, for the same reason.
+
+**A seam with one implementation does not get an interface.** `AutoWatch` holds the session
+directly. An interface would name something that already has a name, and this codebase carries
+enough names. What the seam is worth is not substitutability — it is that the poll loop's four
+pieces of state cannot be reached from the manual paths by accident, which is the class of bug the
+snip rules exist to prevent. The one thing that crosses back is accounting: a manual press during a
+run costs a request so it moves the session cap, but it is not the content's rhythm so it must not
+move the cadence, which is why `Translated` and `CountedOutsideTheRhythm` are separate calls.
+
 **`PlatformServices.cs` is the only file in the App allowed to contain `#if WINDOWS`.** If a second
 one appears, the platform seam has leaked and the macOS build has stopped being a faithful
 rehearsal of the Windows build. `PlatformSeamTests` enforces this, along with Core never referencing
