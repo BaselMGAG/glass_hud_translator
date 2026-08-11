@@ -160,6 +160,13 @@ public sealed record AppSettings
     [JsonPropertyName("minimumCharactersToTranslate")]
     public int MinimumCharactersToTranslate { get; set; } = 3;
 
+    /// <summary>
+    /// Lines never to translate, one per entry. Global rather than per-game for now: the roadmap
+    /// puts per-game rules with their own inheritance in a later session, and shipping a per-game
+    /// version first would mean two mechanisms to reconcile when it arrives.
+    /// </summary>
+    public List<string> IgnoredPhrases { get; set; } = [];
+
     [JsonPropertyName("lastRegionProfile")] public string LastRegionProfile { get; set; } = "dialogue";
 
     [JsonPropertyName("hasCompletedFirstRun")] public bool HasCompletedFirstRun { get; set; }

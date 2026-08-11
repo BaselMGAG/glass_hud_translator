@@ -12,6 +12,7 @@ namespace GlassHudTranslator.Core.Tests;
 /// right is "you are current" versus "I could not ask" - reporting the second as the first would
 /// tell someone behind a captive portal that they are up to date forever.
 /// </summary>
+[Collection(SettingsStaticCollection.Name)]
 public class UpdateCheckTests
 {
     private static readonly Version Current = new(0, 2, 1, 0);

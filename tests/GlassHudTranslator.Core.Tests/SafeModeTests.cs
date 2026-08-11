@@ -3,6 +3,7 @@ using Xunit;
 
 namespace GlassHudTranslator.Core.Tests;
 
+[Collection(SettingsStaticCollection.Name)]
 public class SafeModeTests
 {
     [Fact]

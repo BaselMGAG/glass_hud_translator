@@ -588,6 +588,90 @@ public sealed class TranslationSession : IDisposable
     }
 
     /// <summary>
+    /// Translates the line already on the overlay again, refusing the saved answer.
+    ///
+    /// <para>
+    /// The first thing anyone wants when a translation reads badly, and it was impossible until
+    /// now: the line is cached the moment it succeeds, so every later encounter — including any
+    /// attempt to ask again — replayed the same words. It costs a request, deliberately, and says
+    /// so in the note beside the button.
+    /// </para>
+    ///
+    /// <para>
+    /// Uses the BODY of the last line rather than re-capturing. Re-capturing would translate
+    /// whatever is on screen NOW, which after a second of play is a different line — so the button
+    /// would appear to work while quietly answering a question nobody asked.
+    /// </para>
+    /// </summary>
+    public async Task RetryAsync(CancellationToken ct = default)
+    {
+        if (_lastSourceText is not { Length: > 0 } body)
+        {
+            Report(Text.NothingToRetry);
+            return;
+        }
+
+        await RetranslateAsync(body, fresh: true, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Translates text the user has typed or corrected, rather than anything on screen.
+    ///
+    /// <para>
+    /// Shared by the retry button and by "fix what was read". Deliberately outside every piece of
+    /// state auto-watch depends on, for the reasons the snip documents: it must not become the
+    /// repeat reference (the poll that follows is still looking at the original line), must not
+    /// touch the settle gate, and must not enter the cadence the adaptive deadline is taken from.
+    /// It IS counted against the session cap, because it costs a request like any other.
+    /// </para>
+    /// </summary>
+    public async Task RetranslateAsync(string text, bool fresh = false, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            Report(Text.NothingToEdit);
+            return;
+        }
+
+        Report(Text.Retrying);
+
+        try
+        {
+            var outcome = await _services.Pipeline
+                .TranslateTextAsync(text, fresh: fresh, regionKey: _settings.LastRegionProfile, ct: ct)
+                .ConfigureAwait(false);
+
+            _watch?.CountedOutsideTheRhythm();
+
+            if (outcome.Result is not { } result)
+            {
+                Report(Text.NothingToRetry);
+                return;
+            }
+
+            // The overlay is updated but the repeat reference deliberately is not: the next poll is
+            // reading the same pixels as before and is still a repeat OF the original line.
+            _lastArabic = result.Text;
+
+            if (result.IsFallbackEnglish)
+                _overlay.ShowFallbackEnglish(null, result.Text);
+            else
+                _overlay.ShowTranslation(null, result.Text);
+
+            var source = result.FromCache ? "cache" : $"{result.Provider}/{result.Model}";
+            Report($"{source} · {outcome.Total.TotalMilliseconds:F0} ms");
+        }
+        catch (OperationCanceledException)
+        {
+            // Ordinary: the window closed, or the user pressed it twice.
+        }
+        catch (Exception e)
+        {
+            Fail(string.Format(Text.TranslationFailed, e.Message));
+        }
+    }
+
+    /// <summary>
     /// Filed under its own name in the log and the history. A free string as far as the store is
     /// concerned, so this needed no schema change.
     /// </summary>

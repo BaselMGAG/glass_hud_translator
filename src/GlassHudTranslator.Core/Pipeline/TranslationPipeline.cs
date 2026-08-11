@@ -99,7 +99,8 @@ public sealed record PipelineOutcome(
     string? RegionKey = null,
     SourceKind Source = SourceKind.Screen,
     int RejectedWordCount = 0,
-    bool Repeat = false)
+    bool Repeat = false,
+    bool Ignored = false)
 {
     public bool ProducedText => Result is not null && !string.IsNullOrWhiteSpace(Result.Text);
 }
@@ -164,6 +165,20 @@ public sealed class TranslationPipeline(
     /// had been burned, and the discarded line had already been cached and pushed into context.
     /// </summary>
     public int MinimumBodyCharacters { get; set; }
+
+    /// <summary>
+    /// Lines the user has said never to translate. Sits beside <see cref="MinimumBodyCharacters"/>
+    /// because it is the same kind of rule and belongs in the same place: ahead of the cache lookup,
+    /// so an ignored line costs no request, no cache row, no context slot and no quota.
+    ///
+    /// <para>
+    /// This one is quota before it is polish. A hotbar label or a «Press E to continue» drifting
+    /// into the capture region is a DISTINCT string on most frames, so the cache cannot absorb it —
+    /// every appearance is a fresh key and a fresh request. It is the first thing since the cache
+    /// itself that reduces spend rather than merely not increasing it.
+    /// </para>
+    /// </summary>
+    public IgnoreList Ignored { get; set; } = IgnoreList.Empty;
 
     /// <summary>
     /// Whether the overlay shows tashkeel. Off by default.
@@ -252,6 +267,16 @@ public sealed class TranslationPipeline(
                 regionKey, source, recognised.RejectedWordCount);
         }
 
+        // Same place, same reasoning, and reported separately - "you told me to skip this" is a
+        // different fact from "there was nothing there", and only one of them is worth a word on
+        // the overlay when the user pressed a key expecting an answer.
+        if (Ignored.ShouldSkip(body))
+        {
+            return new PipelineOutcome(recognised.RawText, normalized, speaker, body, [], null,
+                recognised.Confidence, Stopwatch.GetElapsedTime(started),
+                regionKey, source, recognised.RejectedWordCount, Ignored: true);
+        }
+
         // The second net, and the same rule as the one above it: ahead of the cache, ahead of the
         // router, ahead of everything with a side effect. A line already on the overlay, read again
         // with a comma turned into a full stop, is not a new line - but it is a new cache key, so
@@ -270,7 +295,7 @@ public sealed class TranslationPipeline(
             var hit = new TranslationResult(cached.Arabic, ProviderNames.Cache, cached.Model, true,
                 Stopwatch.GetElapsedTime(started), TranslationLogOutcomes.Cached);
             Remember(body, how);
-            await LogAsync(recognised, normalized, speaker, hit, game, regionKey, ct).ConfigureAwait(false);
+            await LogAsync(recognised.RawText, normalized, speaker, hit, game, regionKey, ct).ConfigureAwait(false);
 
             return new PipelineOutcome(recognised.RawText, normalized, speaker, body, [], Present(hit),
                 recognised.Confidence, Stopwatch.GetElapsedTime(started),
@@ -301,11 +326,96 @@ public sealed class TranslationPipeline(
             Remember(body, how);
         }
 
-        await LogAsync(recognised, normalized, speaker, result, game, regionKey, ct).ConfigureAwait(false);
+        await LogAsync(recognised.RawText, normalized, speaker, result, game, regionKey, ct).ConfigureAwait(false);
 
         return new PipelineOutcome(recognised.RawText, normalized, speaker, body, hits, Present(result),
             recognised.Confidence, Stopwatch.GetElapsedTime(started),
             regionKey, source, recognised.RejectedWordCount);
+    }
+
+    /// <summary>
+    /// Translates text the caller already has, with no capture and no OCR. Two features share it,
+    /// and they are the same operation with one flag between them.
+    ///
+    /// <para>
+    /// <b>Retry</b> passes the body unchanged with <paramref name="fresh"/> true. Bypassing the
+    /// cache is the entire point: the line is in there precisely because it was translated once,
+    /// so a retry that consulted the cache would return the same answer the user is complaining
+    /// about, instantly, forever. It costs a request, deliberately and visibly.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Edit and retranslate</b> passes a corrected body. That is a different string, so it is a
+    /// different key and the cache is consulted normally — a user fixing «Y&#39;shtola» to
+    /// «Y&#39;shtola» the way another line already spells it should get the cached answer for free.
+    /// </para>
+    ///
+    /// <para>
+    /// Neither participates in the repeat guard or the rolling context by default. A retry is not a
+    /// new line in the conversation, it is the same line again; recording it would make the poll
+    /// that follows treat the real dialogue as a repeat of it, which is the snip lesson in a new
+    /// place. The caller can ask for context with <paramref name="options"/> if it ever wants it.
+    /// </para>
+    /// </summary>
+    public async Task<PipelineOutcome> TranslateTextAsync(
+        string body,
+        string? speaker = null,
+        bool fresh = false,
+        string? regionKey = null,
+        SourceKind source = SourceKind.Screen,
+        ProcessOptions? options = null,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(body);
+
+        var how = options ?? ProcessOptions.Isolated;
+        var started = Stopwatch.GetTimestamp();
+        var requestedAt = DateTimeOffset.UtcNow;
+        var game = GameName;
+        var styleHint = StyleHint;
+
+        body = body.Trim();
+        var key = CacheKey.For(body, Register);
+
+        if (!fresh)
+        {
+            var cached = await cache.TryGetAsync(key, ct).ConfigureAwait(false);
+            if (cached is not null)
+            {
+                var hit = new TranslationResult(cached.Arabic, ProviderNames.Cache, cached.Model,
+                    true, Stopwatch.GetElapsedTime(started), TranslationLogOutcomes.Cached);
+
+                Remember(body, how);
+                await LogAsync(body, body, speaker, hit, game, regionKey, ct).ConfigureAwait(false);
+
+                return new PipelineOutcome(body, body, speaker, body, [], Present(hit),
+                    OcrConfidence: 0, Stopwatch.GetElapsedTime(started), regionKey, source);
+            }
+        }
+
+        var hits = _glossary.Match(body);
+        var result = await router.TranslateAsync(
+            new TranslationRequest(body, speaker, hits,
+                how.UseContext ? SnapshotContext() : [], Register, requestedAt,
+                game, styleHint, Diacritics), ct)
+            .ConfigureAwait(false);
+
+        if (result.Outcome == TranslationLogOutcomes.Ok)
+        {
+            // Same CancellationToken.None as the capture path, for the same reason: the request is
+            // already spent by the time we get here. A retry overwrites the row it bypassed, so the
+            // answer the user chose to pay for is the one served from then on.
+            await cache.PutAsync(new CachedTranslation(key, body, result.Text, result.Provider,
+                result.Model, false, DateTimeOffset.UtcNow, 0), CancellationToken.None)
+                .ConfigureAwait(false);
+
+            Remember(body, how);
+        }
+
+        await LogAsync(body, body, speaker, result, game, regionKey, ct).ConfigureAwait(false);
+
+        return new PipelineOutcome(body, body, speaker, body, hits, Present(result),
+            OcrConfidence: 0, Stopwatch.GetElapsedTime(started), regionKey, source);
     }
 
     /// <summary>
@@ -395,10 +505,10 @@ public sealed class TranslationPipeline(
         lock (_context) return [.. _context];
     }
 
-    private Task LogAsync(OcrResult recognised, string normalized, string? speaker,
+    private Task LogAsync(string rawOcr, string normalized, string? speaker,
         TranslationResult result, string game, string? regionKey, CancellationToken ct) =>
         log?.AppendAsync(new TranslationLogEntry(
-            DateTimeOffset.UtcNow, recognised.RawText, normalized, speaker,
+            DateTimeOffset.UtcNow, rawOcr, normalized, speaker,
             result.Provider, result.Model, result.Text, result.Latency,
             result.FromCache, result.Outcome, game, regionKey), ct) ?? Task.CompletedTask;
 }

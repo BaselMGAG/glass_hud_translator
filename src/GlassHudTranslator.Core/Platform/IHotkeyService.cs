@@ -48,6 +48,18 @@ public enum HotkeyAction
     /// </para>
     /// </summary>
     SnipTranslate,
+
+    /// <summary>
+    /// Translate the line on the overlay again, ignoring the cache.
+    ///
+    /// <para>
+    /// The first thing anyone wants when a translation comes out wrong, and until now there was no
+    /// way to ask for it: the line was cached the moment it succeeded, so every later encounter
+    /// replayed the same answer. Bound rather than buried in Settings because the moment you want
+    /// it is the moment you are reading the bad line, in a game, with the window nowhere in sight.
+    /// </para>
+    /// </summary>
+    RetryTranslation,
 }
 
 public sealed record HotkeyRegistration(HotkeyAction Action, Hotkey Hotkey, bool Succeeded, string? Error = null);

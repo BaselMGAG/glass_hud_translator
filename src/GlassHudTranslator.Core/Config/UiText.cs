@@ -490,6 +490,12 @@ public sealed class UiText
         HotkeyAction.ToggleOverlay => HotkeyToggleOverlay,
         HotkeyAction.OpenSettings => HotkeyOpenSettings,
         HotkeyAction.SnipTranslate => HotkeySnipTranslate,
+        HotkeyAction.RetryTranslation => HotkeyRetryTranslation,
+
+        // Reached only if an action is added without a name. It is an English enum identifier in
+        // an otherwise Arabic window - the exact leak this whole class exists to make impossible -
+        // so EveryHotkeyActionHasATranslatedName fails the build's tests rather than a user finding
+        // "RetryTranslation" in their hotkey list.
         _ => action.ToString(),
     };
 
@@ -500,6 +506,37 @@ public sealed class UiText
     public required string HotkeyToggleOverlay { get; init; }
     public required string HotkeyOpenSettings { get; init; }
     public required string HotkeySnipTranslate { get; init; }
+    public required string HotkeyRetryTranslation { get; init; }
+
+    // ── saying "no" to a line, and asking for a better answer ────────────────────────────────
+    public required string RetryTranslation { get; init; }
+    public required string Retrying { get; init; }
+    public required string NothingToRetry { get; init; }
+    public required string RetriedNote { get; init; }
+    public required string EditSourceHeading { get; init; }
+    public required string EditSourceNote { get; init; }
+    public required string RetranslateEdited { get; init; }
+    public required string NothingToEdit { get; init; }
+    public required string IgnoredPhrasesHeading { get; init; }
+    public required string IgnoredPhrasesNote { get; init; }
+    public required string IgnoredPhrasesSaved { get; init; }
+    public required string LineIgnored { get; init; }
+    public required string ToolbarRetry { get; init; }
+
+    // ── the history tab ──────────────────────────────────────────────────────────────────────
+    public required string TabHistory { get; init; }
+    public required string HistoryNote { get; init; }
+    public required string HistorySearchHint { get; init; }
+    public required string HistoryRefresh { get; init; }
+    public required string HistoryEmpty { get; init; }
+    public required string HistoryShowing { get; init; }
+    public required string HistoryPinEdit { get; init; }
+    public required string HistoryPinned { get; init; }
+    public required string HistoryIgnoreThis { get; init; }
+    public required string HistoryIgnoreAdded { get; init; }
+    public required string HistoryRetranslate { get; init; }
+    public required string HistorySelectFirst { get; init; }
+    public required string HistoryNotTranslated { get; init; }
 
     public static UiText For(UiLanguage language) => language == UiLanguage.Arabic ? Ar : En;
 
@@ -1018,6 +1055,45 @@ public sealed class UiText
         HotkeyToggleOverlay = "Show / hide the overlay",
         HotkeyOpenSettings = "Open Settings",
         HotkeySnipTranslate = "Translate one thing once",
+        HotkeyRetryTranslation = "Translate this line again",
+
+        RetryTranslation = "Translate again",
+        Retrying = "Translating that line again…",
+        NothingToRetry = "Nothing on screen to translate again yet.",
+        RetriedNote =
+            "Asks for a fresh translation of the line showing now, ignoring the saved one. It costs "
+            + "a request, which is the point: the saved answer is what you are trying to replace.",
+        EditSourceHeading = "Fix what was read",
+        EditSourceNote =
+            "If the text recognition misread a word, correct it here and translate again. This "
+            + "changes the English that gets sent, not the Arabic that comes back.",
+        RetranslateEdited = "Translate the corrected text",
+        NothingToEdit = "Nothing has been read yet.",
+        IgnoredPhrasesHeading = "Never translate these lines",
+        IgnoredPhrasesNote =
+            "One line per entry. Anything matching exactly is skipped before anything is sent, so "
+            + "it costs nothing at all — useful for a button prompt or a HUD label that keeps "
+            + "drifting into the capture region. Small differences in how it is read are allowed "
+            + "for. The History tab can add a line here for you.",
+        IgnoredPhrasesSaved = "Saved. {0} lines will be skipped.",
+        LineIgnored = "That line is on your never-translate list.",
+        ToolbarRetry = "Translate again",
+
+        TabHistory = "History",
+        HistoryNote =
+            "Every line this app has translated, newest first. Search the English, the Arabic or "
+            + "the speaker. Correcting a line here fixes it everywhere it appears from now on.",
+        HistorySearchHint = "Search…",
+        HistoryRefresh = "Refresh",
+        HistoryEmpty = "Nothing yet. Translate something and it will appear here.",
+        HistoryShowing = "Showing {0} of {1} lines.",
+        HistoryPinEdit = "Save this correction",
+        HistoryPinned = "Saved. That line will read this way from now on.",
+        HistoryIgnoreThis = "Never translate this",
+        HistoryIgnoreAdded = "Added to the never-translate list.",
+        HistoryRetranslate = "Translate again",
+        HistorySelectFirst = "Pick a line from the list first.",
+        HistoryNotTranslated = "(not translated)",
     };
 
     public static readonly UiText Ar = new()
@@ -1510,5 +1586,43 @@ public sealed class UiText
         HotkeyToggleOverlay = "إظهار / إخفاء الطبقة",
         HotkeyOpenSettings = "فتح الإعدادات",
         HotkeySnipTranslate = "ترجمة شيء واحد مرة واحدة",
+        HotkeyRetryTranslation = "ترجمة هذا السطر من جديد",
+
+        RetryTranslation = "ترجم من جديد",
+        Retrying = "يُعيد ترجمة السطر…",
+        NothingToRetry = "لا يوجد سطر على الشاشة لإعادة ترجمته بعد.",
+        RetriedNote =
+            "يطلب ترجمة جديدة للسطر الظاهر الآن متجاهلاً المحفوظة. يكلّف طلباً، وهذا هو المقصود: "
+            + "الإجابة المحفوظة هي ما تحاول استبداله.",
+        EditSourceHeading = "صحّح ما قُرئ",
+        EditSourceNote =
+            "إن أخطأت القراءة الضوئية في كلمة، صحّحها هنا ثم أعد الترجمة. هذا يغيّر النصّ "
+            + "الإنجليزي المُرسَل، لا العربية العائدة.",
+        RetranslateEdited = "ترجم النصّ بعد التصحيح",
+        NothingToEdit = "لم يُقرأ شيء بعد.",
+        IgnoredPhrasesHeading = "لا تترجم هذه السطور أبداً",
+        IgnoredPhrasesNote =
+            "سطر واحد لكل إدخال. ما يطابق أحدها يُتخطّى قبل إرسال أي شيء، فلا يكلّف شيئاً على "
+            + "الإطلاق — مفيد لعبارة زرّ أو لافتة واجهة تدخل منطقة الالتقاط باستمرار. ويُتسامَح مع "
+            + "الفروق الصغيرة في القراءة. وتبويب «السجلّ» يستطيع أن يضيف سطراً هنا نيابةً عنك.",
+        IgnoredPhrasesSaved = "حُفظ. سيُتخطّى {0} من السطور.",
+        LineIgnored = "هذا السطر في قائمة «لا تترجم» عندك.",
+        ToolbarRetry = "ترجم من جديد",
+
+        TabHistory = "السجلّ",
+        HistoryNote =
+            "كل سطر ترجمه البرنامج، الأحدث أولاً. ابحث في الإنجليزية أو العربية أو اسم المتحدّث. "
+            + "وتصحيح سطر هنا يصلحه في كل مرة يظهر فيها من الآن فصاعداً.",
+        HistorySearchHint = "ابحث…",
+        HistoryRefresh = "تحديث",
+        HistoryEmpty = "لا شيء بعد. ترجم شيئاً وسيظهر هنا.",
+        HistoryShowing = "يعرض {0} من {1} سطراً.",
+        HistoryPinEdit = "احفظ هذا التصحيح",
+        HistoryPinned = "حُفظ. سيُقرأ هذا السطر هكذا من الآن فصاعداً.",
+        HistoryIgnoreThis = "لا تترجم هذا أبداً",
+        HistoryIgnoreAdded = "أُضيف إلى قائمة «لا تترجم».",
+        HistoryRetranslate = "ترجم من جديد",
+        HistorySelectFirst = "اختر سطراً من القائمة أولاً.",
+        HistoryNotTranslated = "(لم تُترجم)",
     };
 }

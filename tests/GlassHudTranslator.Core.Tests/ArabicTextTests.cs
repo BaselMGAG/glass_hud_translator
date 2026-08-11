@@ -8,6 +8,7 @@ using Xunit;
 
 namespace GlassHudTranslator.Core.Tests;
 
+[Collection(SettingsStaticCollection.Name)]
 public class ArabicDiacriticsTests
 {
     [Fact]
@@ -69,6 +70,7 @@ public class ArabicDiacriticsTests
 /// Where the strip happens, which matters more than how. It runs on the way OUT, so the cache and
 /// the log keep what the provider actually said and the switch is instant in both directions.
 /// </summary>
+[Collection(SettingsStaticCollection.Name)]
 public class PipelineDiacriticsTests
 {
     private static readonly Frame AnyFrame = new FrameBuilder(8, 8, new Rgb(0, 0, 0)).Build();
@@ -171,6 +173,7 @@ public class PipelineDiacriticsTests
     }
 }
 
+[Collection(SettingsStaticCollection.Name)]
 public class DiacriticsSettingTests
 {
     [Fact]

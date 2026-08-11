@@ -159,6 +159,24 @@ public class UiTextTests
     }
 
     [Fact]
+    public void EveryHotkeyActionHasATranslatedName()
+    {
+        // UiText is a class of required properties precisely so that adding a string without
+        // translating it is a compile error. HotkeyDescription breaks that guarantee on purpose - it ends
+        // in `_ => action.ToString()`, because a switch over an enum cannot be required to be
+        // exhaustive - so the guarantee has to be restored here instead. Without this, adding an
+        // action and forgetting its name shows the user a bare English identifier like
+        // "RetryTranslation" in the middle of an Arabic hotkey list, and nothing would complain.
+        foreach (var action in Enum.GetValues<HotkeyAction>())
+        {
+            foreach (var text in new[] { UiText.En, UiText.Ar })
+            {
+                Assert.NotEqual(action.ToString(), text.HotkeyDescription(action));
+            }
+        }
+    }
+
+    [Fact]
     public void SettingsDefaultToEnglish()
     {
         // English stays the default because it is what the screenshots and documentation show.

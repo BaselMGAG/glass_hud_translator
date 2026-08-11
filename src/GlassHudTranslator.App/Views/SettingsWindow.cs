@@ -10,6 +10,7 @@ using GlassHudTranslator.Core.Translation;
 using GlassHudTranslator.Core.Update;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -174,8 +175,18 @@ public sealed class SettingsWindow : Window
         tabs.Items.Add(Tab(_text.TabTranslating, BuildTranslatingTab()));
         tabs.Items.Add(Tab(_text.TabOverlay, BuildOverlayTab()));
         tabs.Items.Add(Tab(_text.TabHotkeys, BuildHotkeysTab()));
+        tabs.Items.Add(Tab(_text.TabHistory, BuildHistoryTab()));
         tabs.Items.Add(Tab(_text.TabDiagnostics, BuildDiagnosticsTab()));
         TabNames = tabs.Items.OfType<TabItem>().Select(t => (string)t.Header!).ToList();
+
+        // Reloaded on arrival rather than only on a button. Settings stays open across a whole
+        // session, so a list built once at startup would show nothing after the first hour of play
+        // - which reads as the history not recording anything.
+        tabs.SelectionChanged += (_, _) =>
+        {
+            if (tabs.SelectedItem is TabItem { Header: string header } && header == _text.TabHistory)
+                _ = RefreshHistoryAsync();
+        };
 
         // Docked, not scrolled with the tab body: every action on every tab reports here, and a
         // confirmation you have to scroll to find is a confirmation nobody reads.
@@ -735,7 +746,108 @@ public sealed class SettingsWindow : Window
         correctRow.Children.Add(Button(_text.PinCorrection, () => _ = CorrectCurrentAsync()));
         stack.Children.Add(correctRow);
 
+        // Three ways to disagree with a line, in the order somebody reaches for them: ask again,
+        // fix what was misread, or say never again. The first is on the toolbar and a hotkey too,
+        // because the moment you want it you are in a game looking at the bad line.
+        stack.Children.Add(Button(_text.RetryTranslation, () => _ = _session.RetryAsync()));
+        stack.Children.Add(Note(_text.RetriedNote));
+
+        stack.Children.Add(Section(_text.EditSourceHeading));
+        stack.Children.Add(Note(_text.EditSourceNote));
+        _editedSource = new TextBox
+        {
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = 54,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+
+            // The English that was read, so it stays left-to-right even in the mirrored layout.
+            FlowDirection = FlowDirection.LeftToRight,
+        };
+        stack.Children.Add(_editedSource);
+
+        var editRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        editRow.Children.Add(Button(_text.RetranslateEdited, () => _ = RetranslateEditedAsync()));
+        stack.Children.Add(editRow);
+
+        stack.Children.Add(Section(_text.IgnoredPhrasesHeading));
+        stack.Children.Add(Note(_text.IgnoredPhrasesNote));
+        _ignoredPhrases = new TextBox
+        {
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.NoWrap,
+            MinHeight = 76,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            FlowDirection = FlowDirection.LeftToRight,
+            Text = string.Join('\n', _settings.IgnoredPhrases),
+        };
+        _ignoredPhrases.LostFocus += (_, _) => SaveIgnoredPhrases();
+        stack.Children.Add(_ignoredPhrases);
+
         return stack;
+    }
+
+    private TextBox? _editedSource;
+    private TextBox? _ignoredPhrases;
+
+    /// <summary>
+    /// Fills the edit box with what was actually read, so the user corrects a word rather than
+    /// retyping a sentence. Pressing it on an empty box is how the text gets there — the same
+    /// two-step the correction box uses, for the same reason: nobody should have to transcribe
+    /// what the app is already holding.
+    /// </summary>
+    private async Task RetranslateEditedAsync()
+    {
+        if (_editedSource is not { } box) return;
+
+        var edited = box.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(edited))
+        {
+            if (_session.Current is not { } current)
+            {
+                _status.Text = _text.NothingToEdit;
+                return;
+            }
+
+            box.Text = current.Source;
+            _status.Text = _text.EditThenPin;
+            return;
+        }
+
+        await _session.RetranslateAsync(edited);
+    }
+
+    /// <summary>
+    /// Saves the never-translate list and applies it to the running pipeline at once. Applying it
+    /// only on restart would be the worst kind of setting: the user watches the line they just
+    /// banned get translated again and concludes the feature does not work.
+    /// </summary>
+    private void SaveIgnoredPhrases()
+    {
+        if (_ignoredPhrases is not { } box) return;
+
+        var list = IgnoreList.Parse(box.Text);
+        _settings.IgnoredPhrases = [.. list.Phrases];
+        _settings.Save();
+        _services.Pipeline.Ignored = list;
+
+        // Rewritten from the parsed list, so blanks and duplicates visibly disappear rather than
+        // being silently dropped somewhere the user cannot see.
+        box.Text = list.ToString();
+        _status.Text = string.Format(_text.IgnoredPhrasesSaved, list.Count);
+    }
+
+    /// <summary>Adds one line to the never-translate list from somewhere else in the window.</summary>
+    private void AddIgnoredPhrase(string phrase)
+    {
+        var list = IgnoreList.Parse(
+            string.Join('\n', _settings.IgnoredPhrases.Append(phrase)));
+
+        _settings.IgnoredPhrases = [.. list.Phrases];
+        _settings.Save();
+        _services.Pipeline.Ignored = list;
+
+        if (_ignoredPhrases is { } box) box.Text = list.ToString();
     }
 
     private Control BuildOverlayTab()
@@ -1048,6 +1160,185 @@ public sealed class SettingsWindow : Window
 
     private Slider? _overlayVertical;
     private Slider? _overlayHorizontal;
+
+    /// <summary>
+    /// Every line the app has translated, and the three things a user can do about one.
+    ///
+    /// <para>
+    /// The log table has been written since v0.5.0 and read by nothing. It is simultaneously the
+    /// correction dataset, the evidence for whether the Arabic is any good, and — now — the only
+    /// place a line that has scrolled off the overlay can be recovered from.
+    /// </para>
+    ///
+    /// <para>
+    /// The list is Arabic-leading but the English column stays left-to-right, for the same reason
+    /// the quota readout does: a Latin sentence inside a mirrored paragraph reorders, and a
+    /// reordered English line is not merely ugly, it is a different sentence.
+    /// </para>
+    /// </summary>
+    private Control BuildHistoryTab()
+    {
+        var stack = new StackPanel { Spacing = 12 };
+
+        stack.Children.Add(Note(_text.HistoryNote));
+
+        _historySearch = new TextBox { Watermark = _text.HistorySearchHint, Width = 260 };
+
+        // Filter as they type. A search box that needs Enter reads as broken to somebody who has
+        // typed three letters and seen nothing happen.
+        _historySearch.TextChanged += (_, _) => _ = RefreshHistoryAsync();
+
+        var searchRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        searchRow.Children.Add(_historySearch);
+        searchRow.Children.Add(Button(_text.HistoryRefresh, () => _ = RefreshHistoryAsync()));
+        stack.Children.Add(searchRow);
+
+        _historyList = new ListBox
+        {
+            Height = 260,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            ItemTemplate = new FuncDataTemplate<HistoryRow>((row, _) => new StackPanel
+            {
+                Spacing = 2,
+                Margin = new Thickness(0, 4),
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = row.Source,
+                        TextWrapping = TextWrapping.Wrap,
+                        FlowDirection = FlowDirection.LeftToRight,
+                        Foreground = new SolidColorBrush(Color.Parse("#c8ccd0")),
+                    },
+                    new TextBlock
+                    {
+                        Text = row.Arabic ?? _text.HistoryNotTranslated,
+                        TextWrapping = TextWrapping.Wrap,
+                        FontFamily = Fonts.Arabic,
+                        LineSpacing = 4,
+                    },
+                },
+            }),
+        };
+        _historyList.SelectionChanged += (_, _) => ShowSelectedHistory();
+        stack.Children.Add(_historyList);
+
+        _historyCount = Readout();
+        stack.Children.Add(_historyCount);
+
+        // The Arabic of the selected line, editable. Correcting it here writes an override, so the
+        // line reads that way everywhere it appears from now on rather than only in this list.
+        _historyEdit = new TextBox
+        {
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = 54,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            FontFamily = Fonts.Arabic,
+        };
+        stack.Children.Add(_historyEdit);
+
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        actions.Children.Add(Button(_text.HistoryPinEdit, () => _ = PinHistoryEditAsync()));
+        actions.Children.Add(Button(_text.HistoryRetranslate, () => _ = RetranslateSelectedAsync()));
+        actions.Children.Add(Button(_text.HistoryIgnoreThis, IgnoreSelected));
+        stack.Children.Add(actions);
+
+        return stack;
+    }
+
+    private TextBox? _historySearch;
+    private ListBox? _historyList;
+    private TextBox? _historyEdit;
+    private TextBlock? _historyCount;
+    private long _historyTotal;
+
+    /// <summary>
+    /// Reloads the list. Always limited — nothing prunes the log, so on the machine of the person
+    /// who has used the app most this is tens of thousands of rows, and rendering all of them would
+    /// freeze the window for exactly the user with the most to lose.
+    /// </summary>
+    public async Task RefreshHistoryAsync()
+    {
+        if (_historyList is not { } list) return;
+
+        try
+        {
+            var rows = await _services.Log.RecentAsync(_historySearch?.Text, ct: CancellationToken.None);
+            _historyTotal = await _services.Log.CountAsync(CancellationToken.None);
+
+            list.ItemsSource = rows;
+
+            if (_historyCount is { } count)
+            {
+                count.Text = rows.Count == 0
+                    ? _text.HistoryEmpty
+                    : string.Format(_text.HistoryShowing, rows.Count, _historyTotal);
+            }
+        }
+        catch (Exception e)
+        {
+            // A history view that throws must not take the Settings window with it.
+            if (_historyCount is { } count) count.Text = e.Message;
+        }
+    }
+
+    private HistoryRow? Selected => _historyList?.SelectedItem as HistoryRow;
+
+    private void ShowSelectedHistory()
+    {
+        if (_historyEdit is { } edit && Selected is { } row) edit.Text = row.Arabic ?? "";
+    }
+
+    /// <summary>
+    /// Stores the edited Arabic as an override, which always wins over whatever a model produces
+    /// for that line from now on. Same mechanism as the correction hotkey, reached from a list
+    /// rather than from whatever happens to be on the overlay at this second.
+    /// </summary>
+    private async Task PinHistoryEditAsync()
+    {
+        if (Selected is not { } row)
+        {
+            _status.Text = _text.HistorySelectFirst;
+            return;
+        }
+
+        var corrected = _historyEdit?.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(corrected)) return;
+
+        await _services.Cache.PutOverrideAsync(
+            CacheKey.For(row.Source, _settings.Register), row.Source, corrected, CancellationToken.None);
+
+        _status.Text = _text.HistoryPinned;
+    }
+
+    private async Task RetranslateSelectedAsync()
+    {
+        if (Selected is not { } row)
+        {
+            _status.Text = _text.HistorySelectFirst;
+            return;
+        }
+
+        await _session.RetranslateAsync(row.Source, fresh: true);
+        await RefreshHistoryAsync();
+    }
+
+    /// <summary>
+    /// The reason the never-translate list can be whole-line rather than a pattern: the button
+    /// hands over the exact text that was read, so there is nothing for the user to guess at.
+    /// </summary>
+    private void IgnoreSelected()
+    {
+        if (Selected is not { } row)
+        {
+            _status.Text = _text.HistorySelectFirst;
+            return;
+        }
+
+        AddIgnoredPhrase(row.Source);
+        _status.Text = _text.HistoryIgnoreAdded;
+    }
 
     private Control BuildDiagnosticsTab()
     {

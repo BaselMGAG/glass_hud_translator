@@ -48,6 +48,15 @@ public static class Icons
         "M 3,8 L 3,4 L 7,4 M 17,4 L 21,4 L 21,8 M 21,16 L 21,20 L 17,20 M 7,20 L 3,20 L 3,16",
         "M 12,10 A 2,2 0 1 0 12,14 A 2,2 0 1 0 12,10 Z");
 
+    /// <summary>
+    /// A circular arrow: ask again. Drawn as an arc plus a solid arrowhead rather than a glyph,
+    /// like everything else here — the bundled Arabic font has no symbols at all, so a character
+    /// icon would depend on the OS fallback this project bundles a font to avoid.
+    /// </summary>
+    public static readonly IconGeometry Retry = new(
+        "M 20,12 A 8,8 0 1 1 17.66,6.34",
+        "M 21,3 L 21,9 L 15,9 Z");
+
     /// <summary>A rectangle with grab handles: the region that gets read, every time.</summary>
     public static readonly IconGeometry PickRegion = new(
         "M 4,6 L 20,6 L 20,18 L 4,18 Z",

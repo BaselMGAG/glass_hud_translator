@@ -143,6 +143,27 @@ guard exists to prevent had already happened, and only the display was suppresse
 `TranslationPipeline.MinimumBodyCharacters` now. Any future "don't translate this" rule goes in the
 same place, ahead of `cache.TryGetAsync`, or it is decoration.
 
+**A retry must bypass the cache, and only a retry.** The line is in the cache *because* it was
+translated once, so a retry that consulted it would hand back the same words instantly and forever —
+the one behaviour a retry button cannot have. `TranslationPipeline.TranslateTextAsync` takes
+`fresh`, and the retry path is the only caller that sets it. Editing the misread text is the same
+method with `fresh` false, deliberately: a corrected line is a *different* string, so it is a
+different key, and a user fixing a word to the spelling another line already uses should get that
+line's answer for nothing. A retry also does not become the repeat reference — the next poll is
+still looking at the original line and is still a repeat of it, which is the snip lesson in a new
+place.
+
+**The never-translate list is whole-line, and jitter-tolerant, and both halves are load-bearing.**
+Whole-line because a substring rule lets one careless entry silence everything and cannot be
+explained in a sentence to somebody typing into a settings box; it is affordable only because the
+History tab hands over the exact text that was read, so there is nothing to guess at. Jitter-tolerant
+because OCR is not repeatable, and an exact-match rule would let the next frame's «Press E ta
+continue» through — leaving the user charged for a line they believe they switched off, which is
+worse than having no rule. It reuses `TextSimilarity`, whose budget is proportional to the shorter
+string, so a three-character phrase still needs an exact match. And it sits beside
+`MinimumBodyCharacters`, ahead of the cache lookup, because that is where every "don't translate
+this" rule goes or it is decoration.
+
 **There are two nets before the cache now, and the second one exists because the first cannot see
 text.** `FrameSettleGate` compares binarised thumbnails, so a subtitle burnt into moving footage
 differs from the previous frame in whatever the picture is doing behind it — the words can be
@@ -981,6 +1002,16 @@ of arithmetic exposes. **A test whose input is more generous than production is 
 is a test of a different program** — and the fix that generalises is the one now in
 `TheReadBudgetAtDialoguePacingIsEnoughToDecideWith`: assert the relationship between the constants,
 not just the behaviour they produce.
+
+**Found by adding the first tests that touch settings statics (v0.7.1):** `AppSettings.SafeMode`
+is a static — it has to be, it is set in `Program.Main` before any settings read — and xUnit runs
+test *classes* in parallel, so while `SafeModeTests` held it true any other class calling
+`AppSettings.Load` concurrently was short-circuited to defaults and saw a file it had just written
+come back empty. Latent since safe mode shipped; it surfaced the moment new test classes changed the
+scheduling enough to overlap the two, which is the worst way for it to appear because it looks
+exactly like whatever change happens to be in flight. `SettingsStaticCollection` serialises every
+class that touches it. **A static in production code is a shared fixture in the test suite whether
+or not anybody wrote one.**
 
 **Found by one evening of real use of v0.7.0, and the first one is the most embarrassing kind:**
 

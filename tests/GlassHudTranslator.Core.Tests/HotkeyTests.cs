@@ -4,6 +4,7 @@ using Xunit;
 
 namespace GlassHudTranslator.Core.Tests;
 
+[Collection(SettingsStaticCollection.Name)]
 public class HotkeyTests
 {
     [Theory]
@@ -76,6 +77,7 @@ public class HotkeyTests
     }
 }
 
+[Collection(SettingsStaticCollection.Name)]
 public class AppSettingsTests
 {
     private static string TempPath() => Path.Combine(Path.GetTempPath(), $"settings-{Guid.NewGuid():N}.json");

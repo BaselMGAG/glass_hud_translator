@@ -14,6 +14,7 @@ public sealed record ToolbarActions(
     Action TranslateNow,
     Action ToggleAutoWatch,
     Action Snip,
+    Action Retry,
     Action PickRegion,
     Action ToggleMoveMode,
     Action ToggleCaptureFrame,
@@ -128,6 +129,8 @@ public sealed class ToolbarWindow : FloatingWindow
                 Make("watch", Icons.AutoWatch, t => t.ToolbarAutoWatch, actions.ToggleAutoWatch,
                     HotkeyAction.ToggleAutoWatch),
                 Make("snip", Icons.Snip, t => t.ToolbarSnip, actions.Snip),
+                Make("retry", Icons.Retry, t => t.ToolbarRetry, actions.Retry,
+                    HotkeyAction.RetryTranslation),
                 Make("region", Icons.PickRegion, t => t.ToolbarRegion, actions.PickRegion,
                     HotkeyAction.PickRegion),
 

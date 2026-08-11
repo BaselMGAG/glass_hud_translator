@@ -271,3 +271,104 @@ public class RegionProfileStoreTests
             Assert.True(await store.HasAsync("ffxiv", name, ct), name);
     }
 }
+
+/// <summary>
+/// Reading the history back. The log has been written since v0.5.0 and read by nothing until now,
+/// so these are the first tests that treat it as a queryable thing rather than an append target.
+/// </summary>
+public class HistoryQueryTests
+{
+    private static TranslationLogEntry Line(string english, string arabic, string? speaker = null) =>
+        new(DateTimeOffset.UtcNow, english, english, speaker, "gemini", "m", arabic,
+            TimeSpan.FromMilliseconds(400), false, TranslationLogOutcomes.Ok, "ffxiv", "dialogue");
+
+    [Fact]
+    public async Task TheNewestLineComesBackFirst()
+    {
+        await using var db = await AppDatabase.OpenInMemoryAsync();
+        var log = new TranslationLog(db);
+
+        await log.AppendAsync(Line("The first line.", "الأول"), default);
+        await log.AppendAsync(Line("The second line.", "الثاني"), default);
+
+        var rows = await log.RecentAsync();
+
+        Assert.Equal("The second line.", rows[0].Source);
+        Assert.Equal("The first line.", rows[1].Source);
+    }
+
+    [Fact]
+    public async Task SearchLooksAtTheEnglishTheArabicAndTheSpeaker()
+    {
+        // Somebody hunting for a line remembers it one of three ways. Matching only the English
+        // makes the box feel broken to an Arabic reader, who is the person this app is for.
+        await using var db = await AppDatabase.OpenInMemoryAsync();
+        var log = new TranslationLog(db);
+
+        await log.AppendAsync(Line("Come to Limsa Lominsa.", "تعال إلى ليمسا لومينسا", "Y'shtola"), default);
+        await log.AppendAsync(Line("A chill wind blows.", "تهبّ ريح باردة"), default);
+
+        Assert.Single(await log.RecentAsync("Limsa"));
+        Assert.Single(await log.RecentAsync("ليمسا"));
+        Assert.Single(await log.RecentAsync("Y'shtola"));
+        Assert.Equal(2, (await log.RecentAsync()).Count);
+    }
+
+    [Fact]
+    public async Task SearchIgnoresCase()
+    {
+        await using var db = await AppDatabase.OpenInMemoryAsync();
+        var log = new TranslationLog(db);
+        await log.AppendAsync(Line("Come to Limsa Lominsa.", "تعال"), default);
+
+        Assert.Single(await log.RecentAsync("limsa"));
+    }
+
+    [Fact]
+    public async Task AWildcardTypedIntoTheSearchBoxIsLiteral()
+    {
+        // Without ESCAPE, typing % returns everything - which reads as the filter being ignored,
+        // and there is nothing on screen to explain it.
+        await using var db = await AppDatabase.OpenInMemoryAsync();
+        var log = new TranslationLog(db);
+
+        await log.AppendAsync(Line("Fully charged: 100%", "مشحون"), default);
+        await log.AppendAsync(Line("A chill wind blows.", "تهبّ ريح"), default);
+
+        Assert.Single(await log.RecentAsync("100%"));
+        Assert.Empty(await log.RecentAsync("%zzz%"));
+    }
+
+    [Fact]
+    public async Task TheResultIsAlwaysCappedSoALongSessionCannotFreezeTheWindow()
+    {
+        // Nothing prunes this table - it is the correction dataset - so it grows without limit and
+        // the view must not try to render all of it.
+        await using var db = await AppDatabase.OpenInMemoryAsync();
+        var log = new TranslationLog(db);
+
+        for (var i = 0; i < 30; i++) await log.AppendAsync(Line($"Line {i}.", "ترجمة"), default);
+
+        Assert.Equal(5, (await log.RecentAsync(limit: 5)).Count);
+        Assert.Equal(30, (await log.RecentAsync(limit: int.MaxValue)).Count);
+    }
+
+    [Fact]
+    public async Task RowsFromBeforeProvenanceExistedComeBackAsUnknownRatherThanThrowing()
+    {
+        // v3 added game and region. An older row carries null in both, and a reader that assumed a
+        // string would crash the history view on exactly the installation with the most history.
+        await using var db = await AppDatabase.OpenInMemoryAsync();
+        var log = new TranslationLog(db);
+
+        await log.AppendAsync(new TranslationLogEntry(
+            DateTimeOffset.UtcNow, "raw", "raw", null, null, null, null,
+            TimeSpan.Zero, false, TranslationLogOutcomes.Stale), default);
+
+        var row = (await log.RecentAsync())[0];
+
+        Assert.Null(row.Game);
+        Assert.Null(row.Arabic);
+        Assert.Equal(TranslationLogOutcomes.Stale, row.Outcome);
+    }
+}

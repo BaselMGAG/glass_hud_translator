@@ -3,6 +3,41 @@
 Notable changes. Started once the app was working end to end, so everything before the first entry
 is "the thing being described in the README".
 
+## Unreleased
+
+Doing something about a bad line, instead of watching it go past.
+
+### Added
+
+- **Translate this line again.** `Ctrl+Shift+G`, the toolbar, or Settings → Translating. Asks for a
+  fresh translation of the line on screen, ignoring the saved one — which is the whole point, since
+  the saved answer is what you are trying to replace. It costs a request and the note beside the
+  button says so.
+- **Fix what was read.** If the text recognition misreads a word, correct the English in Settings →
+  Translating and translate that instead. Pressing the button on an empty box fills it with what was
+  actually read, so you correct a word rather than retyping a sentence. A corrected line is a
+  different line, so if the app has already translated it, the answer comes back free.
+- **Lines you never want translated.** One per row in Settings → Translating. Anything matching is
+  skipped *before* anything is sent, so it costs nothing at all — no request, no quota, no entry in
+  the history. This is the first thing since the cache that reduces spending rather than merely not
+  increasing it, and it is aimed at the case the cache cannot help with: a button prompt or a HUD
+  label that drifts into the capture region reads slightly differently on every frame, so every
+  appearance was a fresh request. Small differences in how a line is read are allowed for, because
+  text recognition never returns quite the same thing twice.
+- **A History tab.** Every line the app has translated, newest first, searchable by the English, the
+  Arabic or the speaker. The app has been recording this since v0.5.0 and nothing could read it.
+  Three things you can do to any line in it: correct the Arabic and save it — which fixes that line
+  everywhere it appears from then on, not just in the list — translate it again, or add it to the
+  never-translate list. That last one is why the never-translate list can ask for a whole line: the
+  button hands over the exact text, so there is nothing to guess at.
+
+### Fixed
+
+- A test-suite fault, not a user-facing one, but worth recording: safe mode's switch is a global,
+  and the tests that read settings could run at the same moment as the test that turns it on — so a
+  settings file written by one test came back empty to another. It had been possible since safe mode
+  shipped and appeared only when unrelated new tests changed the timing.
+
 ## v0.7.0 — 11 August 2026
 
 The release about arriving. Everything here exists because of two support messages: "nothing opens

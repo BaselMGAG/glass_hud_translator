@@ -140,6 +140,9 @@ public static class DefaultHotkeys
             // X for "cut this out", and one of the few Ctrl+Shift letters neither FFXIV nor
             // Windows itself has already claimed.
             [HotkeyAction.SnipTranslate] = new(HotkeyModifiers.Control | HotkeyModifiers.Shift, "X"),
+
+            // G, because R is the region picker and every other mnemonic for "again" is taken.
+            [HotkeyAction.RetryTranslation] = new(HotkeyModifiers.Control | HotkeyModifiers.Shift, "G"),
         };
 
     public static string Describe(HotkeyAction action) => action switch
@@ -151,6 +154,7 @@ public static class DefaultHotkeys
         HotkeyAction.ToggleOverlay => "Show / hide the overlay",
         HotkeyAction.OpenSettings => "Open Settings",
         HotkeyAction.SnipTranslate => "Translate one thing once",
+        HotkeyAction.RetryTranslation => "Translate this line again",
         _ => action.ToString(),
     };
 }

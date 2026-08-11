@@ -333,3 +333,170 @@ internal sealed class SwitchingProvider(Action duringCall) : ITranslationProvide
         return Task.FromResult("ترجمة");
     }
 }
+
+/// <summary>
+/// The two features that let a user do something about a line rather than just watch it: phrases
+/// that are never translated, and translating text the caller already has.
+/// </summary>
+public class PipelineRecourseTests
+{
+    private static readonly Frame AnyFrame = new FrameBuilder(8, 8, new Rgb(0, 0, 0)).Build();
+
+    private static TranslationPipeline Build(
+        ScriptedOcr ocr, MemoryCache cache, FakeProvider provider) =>
+        new(ocr, cache, new GlossaryMatcher(GlossaryStore.Empty),
+            new ProviderRouter([(provider, 600)]));
+
+    [Fact]
+    public async Task AnIgnoredLineCostsNothingAtAll()
+    {
+        // The whole claim, and every clause of it matters. The guard sits ahead of the cache, so an
+        // ignored line must not reach the provider (no request, no quota), must not be looked up
+        // (the hit rate is a diagnostic and a line nobody asked about would skew it), and must not
+        // be stored. Putting the check anywhere later would let each of those happen in turn and
+        // suppress only the display - which is the exact defect the too-short guard already had
+        // once, when it lived in the App and ran on the returned outcome.
+        var ocr = new ScriptedOcr();
+        var cache = new MemoryCache();
+        var provider = new FakeProvider("fake").Returns("ترجمة");
+        var pipeline = Build(ocr, cache, provider);
+        pipeline.Ignored = new IgnoreList(["Press E to continue"]);
+
+        ocr.Reads("Press E to continue");
+        var outcome = await pipeline.ProcessAsync(AnyFrame);
+
+        Assert.True(outcome.Ignored);
+        Assert.Null(outcome.Result);
+        Assert.Empty(provider.Requests);
+        Assert.Equal(0, cache.Lookups);
+        Assert.Empty(cache.Rows);
+    }
+
+    [Fact]
+    public async Task AnIgnoredLineIsReportedSeparatelyFromAnEmptyOne()
+    {
+        // Both leave Result null, which is correct - nothing was attempted either way - but they
+        // are different answers to somebody who pressed a key: one means "your rule caught this",
+        // the other means "there was nothing there". Only the first should ever be reassuring.
+        var ocr = new ScriptedOcr();
+        var pipeline = Build(ocr, new MemoryCache(), new FakeProvider("fake").Returns("ترجمة"));
+        pipeline.Ignored = new IgnoreList(["Open map"]);
+
+        ocr.Reads("");
+        Assert.False((await pipeline.ProcessAsync(AnyFrame)).Ignored);
+
+        ocr.Reads("Open map");
+        Assert.True((await pipeline.ProcessAsync(AnyFrame)).Ignored);
+    }
+
+    [Fact]
+    public async Task AnIgnoredLineDoesNotEnterTheRollingContext()
+    {
+        // It was never on screen as far as the conversation is concerned, so quoting it back to the
+        // model as a previous line would spend tokens describing a hotbar label as dialogue.
+        var ocr = new ScriptedOcr();
+        var provider = new FakeProvider("fake");
+        provider.Returns("ترجمة");
+        provider.Returns("ترجمة");
+        var pipeline = Build(ocr, new MemoryCache(), provider);
+        pipeline.Ignored = new IgnoreList(["Press E to continue"]);
+
+        ocr.Reads("The Scions stand ready.");
+        await pipeline.ProcessAsync(AnyFrame);
+
+        ocr.Reads("Press E to continue");
+        await pipeline.ProcessAsync(AnyFrame);
+
+        ocr.Reads("We must reach Limsa before nightfall.");
+        await pipeline.ProcessAsync(AnyFrame);
+
+        Assert.Equal(["The Scions stand ready."], provider.Requests[^1].ContextLines);
+    }
+
+    [Fact]
+    public async Task RetryBypassesTheCacheOrItWouldReturnTheAnswerBeingComplainedAbout()
+    {
+        // The line is in the cache BECAUSE it was translated once. A retry that consulted the cache
+        // would hand back the same words instantly and forever, which is the one behaviour a retry
+        // button must never have.
+        var cache = new MemoryCache();
+        var provider = new FakeProvider("fake").Returns("ترجمة ثانية");
+        var pipeline = Build(new ScriptedOcr(), cache, provider);
+
+        var body = "Come with me.";
+        var key = CacheKey.For(body, ArabicRegister.ModernStandard);
+        cache.Rows[key] = new CachedTranslation(key, body, "ترجمة أولى", "gemini", "m", false,
+            DateTimeOffset.UtcNow, 0);
+
+        var outcome = await pipeline.TranslateTextAsync(body, fresh: true);
+
+        Assert.Equal("ترجمة ثانية", outcome.Result!.Text);
+        Assert.False(outcome.Result.FromCache);
+        Assert.Single(provider.Requests);
+
+        // And the new answer replaces the old one, so the line the user paid to improve is the one
+        // served from now on rather than being discarded the moment it leaves the screen.
+        Assert.Equal("ترجمة ثانية", cache.Rows[key].Arabic);
+    }
+
+    [Fact]
+    public async Task EditingTheTextIsANewLineSoTheCacheIsConsultedNormally()
+    {
+        // A user fixing a misread word to the spelling another line already uses should get that
+        // line's answer for free. Only retry pays.
+        var cache = new MemoryCache();
+        var provider = new FakeProvider("fake").Returns("لا ينبغي طلب هذا");
+        var pipeline = Build(new ScriptedOcr(), cache, provider);
+
+        var corrected = "Come with me.";
+        var key = CacheKey.For(corrected, ArabicRegister.ModernStandard);
+        cache.Rows[key] = new CachedTranslation(key, corrected, "تعال معي.", "gemini", "m", false,
+            DateTimeOffset.UtcNow, 0);
+
+        var outcome = await pipeline.TranslateTextAsync(corrected);
+
+        Assert.Equal("تعال معي.", outcome.Result!.Text);
+        Assert.True(outcome.Result.FromCache);
+        Assert.Empty(provider.Requests);
+    }
+
+    [Fact]
+    public async Task ARetryDoesNotBecomeTheLineLaterPollsAreComparedAgainst()
+    {
+        // Same lesson the snip taught. A retry is the line the user is already looking at, said
+        // again - so recording it as "the last line shown" would make the very next poll of the
+        // real dialogue box look like a repeat of it and suppress the thing being read.
+        var ocr = new ScriptedOcr();
+        var cache = new MemoryCache();
+        var provider = new FakeProvider("fake");
+        provider.Returns("ترجمة");
+        provider.Returns("ترجمة");
+        var pipeline = Build(ocr, cache, provider);
+
+        ocr.Reads("The Scions stand ready.");
+        await pipeline.ProcessAsync(AnyFrame, options: ProcessOptions.Polled);
+
+        await pipeline.TranslateTextAsync("The Scions stand ready.", fresh: true);
+
+        // The poll that follows reads the same pixels. It is a repeat of the ORIGINAL line, and it
+        // must still be recognised as one - the retry must not have disturbed that reference.
+        ocr.Reads("The Scions stand ready.");
+        var poll = await pipeline.ProcessAsync(AnyFrame, options: ProcessOptions.Polled);
+
+        Assert.True(poll.Repeat);
+    }
+
+    [Fact]
+    public async Task RetryingWhenTheProviderFailsDoesNotCacheTheFallback()
+    {
+        // Same rule as the capture path: caching the English fallback would poison the row
+        // permanently, and a retry is exactly when a user is most likely to hit a failing provider.
+        var cache = new MemoryCache();
+        var provider = new FakeProvider("fake").Fails(ProviderFailure.Transient, times: 6);
+        var pipeline = Build(new ScriptedOcr(), cache, provider);
+
+        await pipeline.TranslateTextAsync("Come with me.", fresh: true);
+
+        Assert.Empty(cache.Rows);
+    }
+}

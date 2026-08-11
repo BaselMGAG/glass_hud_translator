@@ -128,6 +128,7 @@ public partial class App : Application
         _services.Pipeline.Register = settings.Register;
         _services.Pipeline.Diacritics = settings.Diacritics;
         _services.Pipeline.MinimumBodyCharacters = settings.MinimumCharactersToTranslate;
+        _services.Pipeline.Ignored = new Core.Text.IgnoreList(settings.IgnoredPhrases);
 
         _session = new TranslationSession(_services, overlay, settings, RepoPaths.TestFrames)
         {
@@ -311,6 +312,7 @@ public partial class App : Application
                     RefreshToolbar(settings);
                 },
                 Snip: () => _ = settingsWindow.SnipAsync(),
+                Retry: () => _ = _session!.RetryAsync(),
                 PickRegion: () => _ = settingsWindow.PickRegionAsync(settings.LastRegionProfile),
                 ToggleMoveMode: () => _ = ToggleMoveModeAsync(settings, settingsWindow),
                 ToggleCaptureFrame: () => _ = CycleCaptureFrameAsync(settings),
@@ -581,6 +583,9 @@ public partial class App : Application
                 case HotkeyAction.SnipTranslate:
                     _ = settingsWindow.SnipAsync();
                     break;
+                case HotkeyAction.RetryTranslation:
+                    _ = _session!.RetryAsync();
+                    break;
                 case HotkeyAction.OpenSettings:
                     // Settings has no taskbar button of its own, so once it is behind a fullscreen
                     // game there is no way back to it without leaving the game and hunting. Every
@@ -827,8 +832,15 @@ public partial class App : Application
 
         var settings = new AppSettings { ToolbarExpanded = false };
         var nothing = new Action(() => { });
-        var actions = new ToolbarActions(nothing, nothing, nothing, nothing, nothing, nothing,
-            nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing);
+        // Counted rather than listed, because this is the second construction site of a record that
+        // grows every session and a miscount here breaks the one rehearsal that proves the icon
+        // paths parse. Both sites have now needed hand-fixing twice.
+        var actions = new ToolbarActions(
+            TranslateNow: nothing, ToggleAutoWatch: nothing, Snip: nothing, Retry: nothing,
+            PickRegion: nothing, ToggleMoveMode: nothing, ToggleCaptureFrame: nothing,
+            ToggleOverlay: nothing, OpenSettings: nothing, ToggleWatchMode: nothing,
+            ToggleDiacritics: nothing, ToggleDialect: nothing, ToggleRecording: nothing,
+            PinCorrection: nothing, Quit: nothing);
 
         var toolbar = new ToolbarWindow(
             UiText.For(Program.Option("--toolbar-test-lang") == "ar" ? UiLanguage.Arabic : UiLanguage.English),
