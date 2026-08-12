@@ -310,10 +310,33 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
                     continue;
                 }
 
-                TranslationSession.Read read;
-                read = _session.PollAsync(frame, ct).GetAwaiter().GetResult();
+                // Two ways to arrive here and they cost very different things.
+                //
+                // Ready is the free path: the scene is quiet, two polls were identical, and the
+                // frame is the line. Translate it, exactly as before.
+                //
+                // Read is the gate saying the pixels cannot decide - this scene never holds still
+                // enough for a 1536-cell thumbnail to prove anything, or the deadline has expired.
+                // The frame is OCR'd and the WORDS decide, inside the pipeline and before the first
+                // metered call. Most of those readings cost one local Tesseract pass and stop
+                // there, which is the difference between spending 100 ms on a frame that turned out
+                // to be scenery and spending several seconds - during all of which this thread is
+                // blocked and nothing is watching the screen.
+                var confirmed = true;
 
-                PollTrace.Write($"read       text={read.HasText} changed={read.TextChanged}");
+                var read = verdict == FrameVerdict.Read
+                    ? _session.PollAsync(frame, ct, (body, illegible) =>
+                    {
+                        var answer = _settle.Confirm(body, illegible);
+                        confirmed = answer == ReadVerdict.Translate;
+
+                        PollTrace.Write($"  confirm  {answer} body='{Short(body)}' illegible={illegible}");
+                        return confirmed;
+                    }).GetAwaiter().GetResult()
+                    : _session.PollAsync(frame, ct).GetAwaiter().GetResult();
+
+                PollTrace.Write($"read       text={read.HasText} changed={read.TextChanged} "
+                    + $"confirmed={confirmed}");
 
                 Adapt(watch, new RhythmSample(Changed: true, read.HasText, read.TextChanged));
                 _consecutiveFailures = 0;
@@ -386,6 +409,10 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
 
         PollTrace.Write($"mode       changed to {_settings.WatchMode} mid-run, now running {_running}");
     }
+
+    /// <summary>Enough of a line to recognise it in a trace, and never enough to fill one.</summary>
+    private static string Short(string? text) =>
+        text is null ? "" : text.Length <= 48 ? text : text[..48] + "…";
 
     private void Adapt(WatchSession watch, RhythmSample sample)
     {

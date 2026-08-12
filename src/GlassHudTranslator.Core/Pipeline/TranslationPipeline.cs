@@ -80,7 +80,35 @@ public sealed record ProcessOptions
     /// </para>
     /// </summary>
     public bool RemembersLine { get; init; } = true;
+
+    /// <summary>
+    /// Asked, after the frame has been read and before anything is spent on it, whether this
+    /// reading is worth acting on. Null for every caller but the poll loop.
+    ///
+    /// <para>
+    /// It exists because the one thing a caller may want to decide is the one thing it cannot see:
+    /// <see cref="FrameSettleGate"/> hands out <see cref="FrameVerdict.Read"/> when the pixels have
+    /// run out of things to say, and the only way to finish that decision is to look at the words —
+    /// which are produced in here, four lines after OCR and well before the first metered call.
+    /// Returning false costs one local Tesseract pass and nothing else.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>It sits above the vision escalation and not merely above the router</b>, which is a
+    /// departure from every other guard in this file. The others sit ahead of <c>cache.TryGetAsync</c>
+    /// because that is where the spending starts; the second reader was hoisted ABOVE them all, so
+    /// "ahead of the cache" is no longer far enough forward to be ahead of the money.
+    /// </para>
+    /// </summary>
+    public BodyConfirmation? Confirm { get; init; }
 }
+
+/// <summary>
+/// Whether a reading is worth spending on. <paramref name="wordsSeenButIllegible"/> separates a
+/// blank region from one where words were seen and every one was thrown away — the distinction
+/// <c>IOcrEngine</c> documents and <see cref="Ocr.EscalationPolicy"/> already turns on.
+/// </summary>
+public delegate bool BodyConfirmation(string body, bool wordsSeenButIllegible);
 
 /// <summary>
 /// <paramref name="Result"/> is null when no translation was attempted - the region was empty, the
@@ -101,7 +129,8 @@ public sealed record PipelineOutcome(
     SourceKind Source = SourceKind.Screen,
     int RejectedWordCount = 0,
     bool Repeat = false,
-    bool Ignored = false)
+    bool Ignored = false,
+    bool Unconfirmed = false)
 {
     public bool ProducedText => Result is not null && !string.IsNullOrWhiteSpace(Result.Text);
 }
@@ -269,6 +298,37 @@ public sealed class TranslationPipeline(
 
         var recognised = await ocr.RecognizeAsync(frame, ct).ConfigureAwait(false);
 
+        // What the normalisation below was computed from, so that the escalation can tell whether
+        // it has to be redone. Compared by reference deliberately: only an adopted second reading
+        // replaces the string, and nothing else in this method touches it.
+        var normalizedFrom = recognised.RawText;
+
+        var normalized = TextNormalizer.Normalize(recognised.RawText, _corrections);
+        var (speaker, body) = DialogueParser.Parse(normalized);
+
+        // Words on the frame, none of them readable - as opposed to a blank region, which produces
+        // the same empty body and means the opposite thing.
+        var illegible = string.IsNullOrWhiteSpace(recognised.RawText)
+            && recognised.RejectedWordCount >= EscalationPolicy.RejectedWordsThatMeanText;
+
+        // The caller's veto, and the first thing in this method that can end it. Ahead of the
+        // escalation rather than merely ahead of the cache, because the second reader is metered
+        // too and was deliberately hoisted above every other guard here.
+        //
+        // This is what stops a frame the gate is still making its mind up about from costing a
+        // vision request, a provider round trip, a cache row, a line of context and - because the
+        // poll loop drives this synchronously - several seconds during which nothing is watching
+        // the screen at all. Refusing here costs one local Tesseract pass.
+        if (how.Confirm is { } confirm && !confirm(body, illegible))
+        {
+            PollTrace.Write($"  unconfirmed body='{Short(body)}' illegible={illegible} "
+                + $"kept={recognised.WordCount} dropped={recognised.RejectedWordCount}");
+
+            return new PipelineOutcome(recognised.RawText, normalized, speaker, body, [], null,
+                recognised.Confidence, Stopwatch.GetElapsedTime(started),
+                regionKey, source, recognised.RejectedWordCount, Unconfirmed: true);
+        }
+
         // A second reading, when the first one is not worth using and the user has paid in.
         //
         // Placed HERE, before the guards rather than after them, and that placement is what makes
@@ -298,8 +358,15 @@ public sealed class TranslationPipeline(
             recognised = recognised with { RawText = reading.Text, Words = [] };
         }
 
-        var normalized = TextNormalizer.Normalize(recognised.RawText, _corrections);
-        var (speaker, body) = DialogueParser.Parse(normalized);
+        // Again, and only when a second reading actually replaced the first. Normalising twice on
+        // the escalation path is the price of having the confirmation see the words at all, and it
+        // is a pure function of RawText - so the alternative, parsing once below the escalation,
+        // would put every guard back underneath the one metered call that has no cache.
+        if (!ReferenceEquals(recognised.RawText, normalizedFrom))
+        {
+            normalized = TextNormalizer.Normalize(recognised.RawText, _corrections);
+            (speaker, body) = DialogueParser.Parse(normalized);
+        }
 
         ExpireStaleContext();
 

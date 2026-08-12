@@ -211,6 +211,62 @@ three is right for a sentence and absurd for a word, because "yes" and "no" are 
 The reference is never advanced on a match, or a caption drifting three characters at a time would
 never be translated at all.
 
+**The pixels decide WHEN TO LOOK; the words decide what to translate. No cell budget can do both,
+and that is measured.** With the sentence pixel-identical between polls, a dialogue box over mild
+foliage moves 3–6 cells of 1536, moderate motion 13–18, heavy 46–58 — while one more revealed WORD
+moves 14–18. **The two populations overlap.** A strict tolerance therefore never settles over any
+real scene and every release comes from the cap, which fires mid-animation; a loose one hides a
+whole word, which is the defect the gate was built for. Both failures were reachable from the same
+constant, and the second is worse. So `FrameVerdict.Read` exists: a frame the pixels cannot judge is
+OCR'd, and **two consecutive readings of the same words** is the release, via `FrameSettleGate.
+Confirm`. That one test does four jobs — it rejects a garble (a garbled capture produces a
+*different* garble every time, which is this file's own rule), rejects a typewriter reveal (a reveal
+is a growing prefix, so no two consecutive readings match), accepts a finished line whatever the
+foliage is doing, and reuses instruments that were already here and already calibrated. The
+asymmetry moves up one notch and still holds: **polls to avoid readings, readings to avoid
+requests, never the reverse.**
+
+**Agreement is two tests because one budget cannot serve both ends of the length range.**
+`TextSimilarity.LooksLikeARepeat` is an *absolute* three edits, right for a short line and far too
+tight for a sixty-character sentence whose OCR wobbles by five. `ReadingJudge.Agreement >= SameThing`
+(0.90) sits beside it. Deliberately **not** `Unrelated` (0.35): consecutive garbles off one region
+share an alphabet — the same spaces, the same `ee`, the same stray punctuation — and measure 0.25 to
+0.38 against each other, straddling that floor, while a jittery reading of one real sentence measures
+above 0.9. The gap between those populations is wide and the threshold belongs in the middle of it,
+not at the edge of the noisier one.
+
+**`ReadsBeforeGivingUp` gives UP, not in — and that is a deliberate retreat from a promise the cap
+used to make.** The cap once translated whatever was on screen when it expired, on the grounds that
+showing nothing is worse than showing one frame caught mid-change. That was a claim about *pixels*
+never settling, and pixels that never settle turn out to be completely ordinary — it is a dialogue
+box over a windy field. What reaches this bound now is a region whose *text* does not read the same
+way twice half a second apart, which is either scenery or something changing faster than a person
+can read, and neither is worth a request. Firing it costs a fallback to one reading per cap instead
+of one per poll, so a dead region settles into a low bounded duty cycle rather than running Tesseract
+twice a second forever.
+
+**The learned scene-motion tolerance survives, but it now only ever routes to a *reading*.** The
+`Ready` fast path additionally requires `SceneMovement <= MaxDifferingCells` — a measurably quiet
+screen, where the learned and strict tolerances coincide — so the free path is bit-identical to what
+it always was, and a loose tolerance can no longer commit a frame with no OCR behind it. It still
+widens the `Unchanged` test, and that is safe with a large margin: a genuinely new line measures
+99–134 cells against a tolerance of 6–52 at every motion level tested. Getting `Unchanged` wrong in
+the other direction merely costs a reading that the repeat guard then drops.
+
+**A caller's veto must sit above the vision escalation, not merely above the cache.** Every other
+"don't translate this" rule in the pipeline sits ahead of `cache.TryGetAsync`, because that is where
+spending used to start. It is not any more — the second reader was deliberately hoisted above those
+guards so the "words seen, none legible" frame could reach it at all, and that frame is exactly what
+a capture taken mid-change looks like for a moment. `ProcessOptions.Confirm` therefore runs directly
+after normalise/parse and before the escalation. Normalising twice on the escalation path is the
+price, and it is a pure function of `RawText`.
+
+**Anything `WatchSession.Settle()` omits is reset to its default twice a second.** `AutoWatch` calls
+`Retune(watch.Settle())` on *every poll*, so a `SettleOptions` field handed to the gate's constructor
+survives every unit test written against it and dies on the first poll in production. That is why
+`MaxDifferingCells` has never been reachable from configuration. Any new field on `SettleOptions`
+that is meant to be tunable has to be threaded through `Settle()` as well.
+
 **Suppressible and being-the-reference are different questions, and a test is what forced them
 apart.** `ProcessOptions` carries `SuppressRepeats` and `RemembersLine` separately. A hotkey press
 must never be dropped — it is a question and it gets an answer — but it does put a line on the
@@ -619,8 +675,10 @@ one, so one sentence cost four requests to show four progressively less wrong ve
 The asymmetry that makes it safe is the one `StableOcrReader` was written around: another poll is a
 BitBlt and a 64×24 thumbnail, another translation is a metered request, so the gate spends polls to
 avoid requests and never the reverse. `SettleOptions.Cap` is not optional — without it a game whose
-subtitles animate continuously settles never and translates never. It compares *signatures*, not
-OCR text, which is what keeps deciding-to-wait free. `tools/Replay` deliberately does **not** apply
+subtitles animate continuously would wait forever; it is the deadline after which the gate stops
+asking the pixels and starts asking the words, which is a different job from the one it used to
+have (see "The pixels decide WHEN TO LOOK" above — the cap no longer commits a frame). It compares
+*signatures*, not OCR text, which is what keeps deciding-to-wait free. `tools/Replay` deliberately does **not** apply
 it: its corpus is a set of distinct frames rather than a time series off one screen, so a settle
 gate there would skip most of the frames the harness exists to push through.
 
@@ -1213,6 +1271,44 @@ or not anybody wrote one.**
   larger than the OCR and comparable to the whole network round trip. It is 400 ms now, the
   documented floor. `MinimumInterval` was worse than slow: at 1500 ms it silently **dropped** any
   caption arriving sooner, and the published minimum subtitle duration is 833 ms.
+
+**Found by "auto translate does not switch to the next sentence", reported three times before it
+was believed, and the root cause had been sitting in a synthetic corpus the whole time:**
+
+- **`MaxDifferingCells = 2` is below the noise floor of every real scene.** With the text completely
+  unchanged, mild foliage moves 3–6 cells of 1536. So over any game with weather, or an idling
+  character, or a sky, a finished line could never be *declared* finished — it could only run out of
+  time. Every release came from the three-second cap, which fires mid-animation by construction, and
+  the frame that reached OCR was whatever the screen happened to be doing. The user saw
+  `an gp - ESS BF OE Ri, SI iat ee SES mia kyo ee 1` translated into fluent Arabic.
+- **What hid it for months: every frame in `test-frames/` has a static background and measures
+  exactly zero.** The gate settled instantly there and all sixteen of its tests passed. `CLAUDE.md`
+  had already warned that the synthetic corpus says nothing about a real game's moving 3D scene;
+  this is that warning coming true, in the one component whose entire job is deciding whether the
+  picture has stopped moving.
+- **The first fix was wrong in an instructive way.** Learning the scene's noise floor and widening
+  the tolerance to match is the obvious repair, it passed a suite of new motion tests, and it is
+  still not a fix: the signal and the noise **overlap**, so at moderate motion the tolerance that
+  absorbs the foliage is also wide enough to swallow a revealed word. Three estimators were tried
+  before that became clear — a median (contaminated by the reveal it was meant to see past), a
+  sample gate on provably-still polls (unreachable, since it needed the floor in order to learn the
+  floor), and a minimum with no warm-up (one reveal sample became the "floor"). **When two
+  populations overlap, no threshold between them is the answer and better estimators are just a
+  slower way of finding that out.**
+- **The cap was being paid for twice.** A cap-forced garbage frame reached the vision escalation
+  *and* the text router, and `AutoWatch.Loop` blocks its own poll thread on that
+  (`PollAsync(...).GetAwaiter().GetResult()`). Measured from the user's trace: **18.6 seconds of
+  blindness in a 25.3-second window — 73% of wall clock** — during which lines the player clicked
+  through were never offered to the gate at all. That is "does not switch to the next sentence",
+  literally, and it is also why `ContentRhythm` could not classify anything: the read budget its
+  thresholds were tuned against assumed polls that were not happening. The fix is not concurrency —
+  it is that an unconfirmed reading now costs one local Tesseract pass instead of a metered round
+  trip, so the blind window collapses from seconds to ~100 ms.
+- **The lesson worth keeping is the one about instruments.** The gate was asked a question — "has
+  the text stopped changing" — that its instrument cannot answer, and every fix that stayed inside
+  the instrument failed. `TextSimilarity` and `ReadingJudge` were both already in the codebase,
+  both already calibrated for exactly this kind of question. **When a component keeps needing a
+  better threshold, check first whether it is measuring the wrong thing.**
 
 **Latent, found by inspection and not yet hit in the wild:** the bundled `NotoSansArabic-Regular.ttf`
 contains **no Latin at all** — not `A`, not `%`, and none of `✓ ✗ ⚠ → · ⏎`. Every Latin word in the

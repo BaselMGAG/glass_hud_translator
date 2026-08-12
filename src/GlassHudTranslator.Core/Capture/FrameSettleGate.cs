@@ -67,6 +67,29 @@ public sealed record SettleOptions
     /// </para>
     /// </summary>
     public int MotionVariance { get; init; } = 4;
+
+    /// <summary>
+    /// How many readings a stretch may take before the gate stops reading and lets the deadline
+    /// start again. It gives UP, not in: nothing is translated at this bound.
+    ///
+    /// <para>
+    /// <b>This replaces a guarantee that turned out to be about the wrong thing.</b> The cap used
+    /// to promise that a screen which never holds still is translated anyway, on the grounds that
+    /// showing nothing is worse than showing one frame caught mid-change. That was a claim about
+    /// PIXELS never settling, and it is no longer the question: the words decide now, and pixels
+    /// that never settle are perfectly ordinary — it is a dialogue box over a windy field. The only
+    /// content that reaches this bound is content whose TEXT does not read the same twice half a
+    /// second apart, which is either a garble or something changing faster than a person can read.
+    /// Neither is worth a request, and one of them is the worst answer the app can give.
+    /// </para>
+    ///
+    /// <para>
+    /// What it costs when it fires is a fallback to one reading per <see cref="Cap"/> rather than
+    /// one per poll, so a region full of scenery settles into a low, bounded duty cycle instead of
+    /// running Tesseract twice a second forever.
+    /// </para>
+    /// </summary>
+    public int ReadsBeforeGivingUp { get; init; } = 4;
 }
 
 /// <summary>What auto-watch should do with the frame it just captured.</summary>
@@ -78,8 +101,28 @@ public enum FrameVerdict
     /// <summary>Something moved, but it is still moving. Wait for the next poll.</summary>
     Settling,
 
+    /// <summary>
+    /// Read this frame and tell the gate what it said, via <see cref="FrameSettleGate.Confirm"/>.
+    /// Do NOT translate it and do not treat it as displayed — the pixels have run out of things to
+    /// say about this frame and the text has to answer instead.
+    /// </summary>
+    Read,
+
     /// <summary>Changed and then held still. This is the frame to translate.</summary>
     Ready,
+}
+
+/// <summary>What the gate makes of a reading it asked for.</summary>
+public enum ReadVerdict
+{
+    /// <summary>Nothing there, or not a frame this gate asked about. Drop it, silently and free.</summary>
+    Nothing,
+
+    /// <summary>Something is there but it has not proved it has stopped. Read again next poll.</summary>
+    KeepReading,
+
+    /// <summary>Twice the same. This is the line — translate it and commit the frame.</summary>
+    Translate,
 }
 
 /// <summary>
@@ -101,9 +144,39 @@ public enum FrameVerdict
 /// </para>
 ///
 /// <para>
-/// It compares SIGNATURES rather than OCR text, which is what keeps it free: deciding to wait costs
-/// no OCR pass at all, where the text-level equivalent would run Tesseract on every intermediate
-/// state to discover it should have skipped them.
+/// It compares SIGNATURES rather than OCR text, which is what keeps deciding-to-wait free: no OCR
+/// pass at all, where the text-level equivalent would run Tesseract on every intermediate state to
+/// discover it should have skipped them. That is true of the fast path and only of the fast path.
+/// </para>
+///
+/// <para>
+/// <b>Over a moving scene the signature cannot answer the question at all, and the gate now says
+/// so instead of guessing.</b> Measured with the sentence pixel-identical between polls, a dialogue
+/// box over mild foliage moves 3-6 cells of 1536, moderate motion 13-18, heavy 46-58 — while one
+/// more revealed WORD moves 14-18. The two populations overlap, so no cell budget separates "the
+/// text grew" from "the leaves moved"; a strict threshold never settles and a loose one hides a
+/// whole word. Every release then comes from <see cref="SettleOptions.Cap"/>, which fires
+/// mid-animation, and the frame that reaches OCR is whatever the screen happened to be doing.
+/// That is the "auto translate does not switch to the next sentence" report.
+/// </para>
+///
+/// <para>
+/// So the pixels keep the job they are good at — deciding WHEN TO LOOK — and hand the one they
+/// cannot do to the only instrument that can. A frame whose scene is too restless to settle, or one
+/// that has run out of time, comes back as <see cref="FrameVerdict.Read"/>: OCR it, and tell the
+/// gate what it said. <b>Two consecutive readings of the same words</b> is the release, and that
+/// single test does four jobs at once. It rejects a garble, because a garbled capture produces a
+/// DIFFERENT garble every time — this codebase's own rule, and the reason <c>VisionMemo</c> exists.
+/// It rejects a typewriter reveal, because a reveal is a growing prefix and two consecutive reads
+/// of one never match. It accepts a line that has stopped changing whatever the foliage behind it
+/// is doing. And it is <see cref="Text.TextSimilarity"/>, already here and already calibrated for
+/// exactly this jitter.
+/// </para>
+///
+/// <para>
+/// The asymmetry still holds, one notch up: a reading is a local Tesseract pass on a small crop,
+/// and a translation is a metered request that also blocks the poll thread for seconds. So the gate
+/// now spends polls to avoid readings, and readings to avoid requests, and never the reverse.
 /// </para>
 /// </summary>
 public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider? clock = null)
@@ -117,6 +190,33 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
     private FrameSignature? _lastPoll;
     private int _stillTicks;
     private DateTimeOffset _movingSince;
+
+    /// <summary>
+    /// The frame currently being read, if the gate has given up on the pixels for this change.
+    /// Non-null is the whole of "we are in a reading stretch": while it is set every poll answers
+    /// <see cref="FrameVerdict.Read"/> and the decision belongs to <see cref="Confirm"/>.
+    /// </summary>
+    private FrameSignature? _reading;
+
+    /// <summary>The previous reading, which the next one has to agree with to be released.</summary>
+    private string? _lastRead;
+
+    /// <summary>Readings taken in this stretch. Bounds it, so a never-agreeing screen still ends.</summary>
+    private int _reads;
+
+    /// <summary>
+    /// What a reading with words on it but none of them legible is called, so that "illegible
+    /// twice running" can agree with itself the way a sentence does.
+    ///
+    /// <para>
+    /// Its own value rather than an early discard, and that is what preserves the second reader:
+    /// the vision lane's flagship case is words seen and none read, and it deserves to be escalated
+    /// once the screen has held STILL that way — but not on the single mid-change capture that
+    /// produces the same symptom for a moment. The leading space keeps it out of the space of real
+    /// bodies, which are trimmed.
+    /// </para>
+    /// </summary>
+    private const string Illegible = " illegible";
 
     /// <summary>How much consecutive polls have differed recently. The scene's own restlessness.</summary>
     private readonly Queue<int> _movement = new();
@@ -177,6 +277,16 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
     public FrameVerdict Offer(FrameSignature signature)
     {
         ArgumentNullException.ThrowIfNull(signature);
+
+        // Once a reading stretch has begun, the pixels have already been asked and have already
+        // failed to answer. Handing the decision back to them mid-stretch would abandon a reading
+        // half-taken every time the scene twitched, which over a moving scene is every poll.
+        if (_reading is not null)
+        {
+            _lastPoll = signature;
+            _reading = signature;
+            return FrameVerdict.Read;
+        }
 
         // Sampled on EVERY poll, and read back as a low percentile rather than a median. Sampling
         // only the polls that are provably still would be cleaner, but those are unreachable when
@@ -241,10 +351,121 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
         var outOfTime = now - _movingSince >= _options.Cap;
         if (!settled && !outOfTime) return FrameVerdict.Settling;
 
-        _translated = signature;
+        // The free path, and it survives untouched for the screen it was written for. When the
+        // scene is measurably quiet the learned tolerance IS the strict one, so this is the same
+        // decision the gate has always made: two identical polls, translate, no OCR spent deciding.
+        if (settled && SceneMovement <= _options.MaxDifferingCells)
+        {
+            _translated = signature;
+            _pending = null;
+            _stillTicks = 0;
+            return FrameVerdict.Ready;
+        }
+
+        // Everything else asks the text. Two cases arrive here and they mean different things —
+        // "the pixels look still but this scene is too restless for that to prove anything" and
+        // "this screen has never stopped moving at all" — and the answer to both is the same one:
+        // stop guessing from a 1536-cell thumbnail and read the words.
+        _reading = signature;
+        _lastRead = null;
+        _reads = 0;
+        return FrameVerdict.Read;
+    }
+
+    /// <summary>
+    /// Answers a <see cref="FrameVerdict.Read"/> with what the frame actually said.
+    ///
+    /// <para>
+    /// <paramref name="wordsSeenButIllegible"/> is the distinction <c>IOcrEngine</c> already
+    /// documents and the escalation policy already depends on: an empty body because the region is
+    /// blank and an empty body because ten words were seen and every one was thrown away are
+    /// different facts, and only the second is worth reading again.
+    /// </para>
+    /// </summary>
+    public ReadVerdict Confirm(string? body, bool wordsSeenButIllegible)
+    {
+        // Not a frame this gate asked about. A manual press, a snip, a retry - all of them reach
+        // the pipeline without a reading stretch open, and none of them is the gate's business.
+        if (_reading is null) return ReadVerdict.Nothing;
+
+        _reads++;
+
+        var reading = string.IsNullOrWhiteSpace(body)
+            ? (wordsSeenButIllegible ? Illegible : "")
+            : body.Trim();
+
+        // Nothing on screen. The commonest frame there is, free to establish, and it must not start
+        // a countdown to translating nothing.
+        if (reading.Length == 0) return Discard();
+
+        if (_lastRead is null)
+        {
+            _lastRead = reading;
+            return ReadVerdict.KeepReading;
+        }
+
+        if (Agrees(reading, _lastRead)) return Release();
+
+        _lastRead = reading;
+
+        // Bounded, and it gives UP rather than giving in. A stretch that keeps producing readings
+        // which never match stops reading and lets the cap start again, so the duty cycle falls
+        // back to one Tesseract pass per cap instead of one per poll. What it must never do is
+        // translate the thing it could not read twice: that is the frame the old cap released, and
+        // a confident Arabic sentence about pixels that were never a sentence is the single worst
+        // answer this app can give the person it is built for.
+        return _reads >= _options.ReadsBeforeGivingUp ? Discard() : ReadVerdict.KeepReading;
+    }
+
+    /// <summary>
+    /// Whether two readings are the same words. Two tests, because one budget cannot serve both
+    /// ends of the length range.
+    ///
+    /// <para>
+    /// <see cref="Text.TextSimilarity.LooksLikeARepeat"/> is an ABSOLUTE budget of three edits,
+    /// which is right for a short line and far too tight for a long one — a sixty-character
+    /// sentence whose OCR wobbles by five characters is plainly the same sentence and fails it. So
+    /// a proportional test sits beside it, at <see cref="Ocr.ReadingJudge.SameThing"/>, which was
+    /// calibrated for this exact question one layer up: how much a second reading has to look like
+    /// the first before it counts as the same thing rather than a different one.
+    /// </para>
+    ///
+    /// <para>
+    /// Both are needed and neither alone suffices. Deliberately NOT
+    /// <see cref="Ocr.ReadingJudge.Unrelated"/>: consecutive garbles off one region share an
+    /// alphabet — the same spaces, the same <c>ee</c>, the same stray punctuation — and measure
+    /// 0.25 to 0.38 against each other, which straddles that floor. A jittery reading of one real
+    /// sentence measures above 0.9. The gap between those two populations is wide, and this sits
+    /// in the middle of it rather than at the edge of the noisier one.
+    /// </para>
+    /// </summary>
+    private static bool Agrees(string current, string previous) =>
+        Text.TextSimilarity.LooksLikeARepeat(current, previous)
+        || Ocr.ReadingJudge.Agreement(current, previous) >= Ocr.ReadingJudge.SameThing;
+
+    private ReadVerdict Release()
+    {
+        _translated = _reading;
+        _reading = null;
+        _lastRead = null;
+        _reads = 0;
         _pending = null;
         _stillTicks = 0;
-        return FrameVerdict.Ready;
+        return ReadVerdict.Translate;
+    }
+
+    private ReadVerdict Discard()
+    {
+        _reading = null;
+        _lastRead = null;
+        _reads = 0;
+        _pending = null;
+        _stillTicks = 0;
+
+        // A fresh cap rather than an immediate retry: the change this stretch was about turned out
+        // to be nothing, so the next one deserves the whole deadline to prove otherwise.
+        _movingSince = _clock.GetUtcNow();
+        return ReadVerdict.Nothing;
     }
 
     /// <summary>
@@ -257,6 +478,9 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
         _translated = null;
         _pending = null;
         _stillTicks = 0;
+        _reading = null;
+        _lastRead = null;
+        _reads = 0;
 
         // The movement samples are kept deliberately. They describe the SCENE, which has not
         // changed just because auto-watch was toggled - and throwing them away would put the gate

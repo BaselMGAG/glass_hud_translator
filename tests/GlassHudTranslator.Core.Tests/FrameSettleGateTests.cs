@@ -92,9 +92,66 @@ public class FrameSettleGateTests
         clock.Advance(TimeSpan.FromSeconds(1));
         Assert.Equal(FrameVerdict.Settling, gate.Offer(Revealed(3)));
 
-        // Three seconds since the change began, still moving, still nothing shown. Go anyway.
+        // Three seconds since the change began, still moving, still nothing shown. Stop waiting -
+        // but the cap no longer decides that this frame IS the line, because it cannot: it fires
+        // mid-animation by construction. It hands over to the words instead.
         clock.Advance(TimeSpan.FromSeconds(1));
-        Assert.Equal(FrameVerdict.Ready, gate.Offer(Revealed(4)));
+        Assert.Equal(FrameVerdict.Read, gate.Offer(Revealed(4)));
+
+        // And the guarantee the cap was really making survives, now stated in the unit that can
+        // actually carry it. A line whose OCR wobbles by more characters than the repeat budget
+        // allows - "Y'shtola" read once with the apostrophe and once without, twice over - is still
+        // one line and is still translated, because the second test is proportional rather than
+        // absolute.
+        var jittery = new[]
+        {
+            "The Warrior of Light approaches the aetheryte plaza at dusk",
+            "The Warrior of Light approaehes the aetheryte plaza at dusk",
+        };
+
+        var verdicts = new List<ReadVerdict>();
+        foreach (var reading in jittery)
+        {
+            verdicts.Add(gate.Confirm(reading, wordsSeenButIllegible: false));
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+            gate.Offer(Revealed(5));
+        }
+
+        Assert.Equal(ReadVerdict.KeepReading, verdicts[0]);
+        Assert.Equal(ReadVerdict.Translate, verdicts[1]);
+    }
+
+    [Fact]
+    public void AScreenWhoseWordsNeverAgreeIsDroppedRatherThanTranslated()
+    {
+        // The other side of the same coin, and a DELIBERATE retreat from what the cap used to
+        // promise. It used to translate whatever was on screen when the deadline expired, on the
+        // grounds that showing nothing is worse than showing one frame caught mid-change. That
+        // reasoning was about pixels never settling - and pixels that never settle turn out to be
+        // ordinary, because a dialogue box over a windy field never settles either.
+        //
+        // What reaches this point now is a region whose TEXT does not read the same way twice half
+        // a second apart, and there is no reading of that which is worth a request: it is scenery,
+        // or it is changing faster than a person can read. The old behaviour spent a request on
+        // each one and cached a confident Arabic sentence about pixels that were never a sentence.
+        var clock = new FakeTimeProvider();
+        var gate = new FrameSettleGate(
+            new SettleOptions { RequiredStillTicks = 2, Cap = TimeSpan.FromSeconds(3) }, clock);
+
+        gate.Offer(Revealed(1));
+        clock.Advance(TimeSpan.FromSeconds(3));
+        Assert.Equal(FrameVerdict.Read, gate.Offer(Revealed(2)));
+
+        var verdicts = new List<ReadVerdict>();
+        foreach (var reading in new[] { "one", "two", "three", "four", "five" })
+        {
+            verdicts.Add(gate.Confirm(reading, wordsSeenButIllegible: false));
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+            gate.Offer(Revealed(3));
+        }
+
+        Assert.DoesNotContain(ReadVerdict.Translate, verdicts);
+        Assert.Contains(ReadVerdict.Nothing, verdicts);
     }
 
     [Fact]
@@ -112,7 +169,10 @@ public class FrameSettleGateTests
             clock.Advance(TimeSpan.FromMilliseconds(700));
         }
 
-        Assert.Equal(FrameVerdict.Ready, gate.Offer(Revealed(4)));
+        // Two seconds of a change that never stopped producing new frames: the deadline arrives on
+        // schedule rather than being pushed back by each one. Read rather than Ready because the
+        // cap has stopped claiming this frame is the line - see the test above.
+        Assert.Equal(FrameVerdict.Read, gate.Offer(Revealed(4)));
     }
 
     [Fact]

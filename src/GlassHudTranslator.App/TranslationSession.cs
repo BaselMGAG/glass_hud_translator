@@ -210,6 +210,28 @@ public sealed class TranslationSession : IDisposable
     /// </summary>
     internal void ResetEmptyRun() => _consecutiveEmpty = 0;
 
+    /// <summary>
+    /// The answer to «ممكن ما يشوفش الكلام لازم اعيد تحديد المكان» — said once, naming the hotkey,
+    /// instead of once per poll or not at all.
+    ///
+    /// <para>
+    /// Called from both empty-read paths, which is the whole reason it is a method. A frame the
+    /// settle gate is still deciding about and a frame that finished as nothing are different facts
+    /// everywhere else, and the same fact here: the rectangle held no text either way, and a
+    /// rectangle pointed at the wrong part of the screen only ever produces the first kind.
+    /// </para>
+    /// </summary>
+    private void BlameTheRegionIfThisKeepsHappening()
+    {
+        if (++_consecutiveEmpty != EmptyReadsBeforeBlamingTheRegion) return;
+
+        var advice = string.Format(Text.RegionSeemsWrong,
+            _settings.HotkeyFor(HotkeyAction.PickRegion).ToString());
+
+        Report(advice);
+        _overlay.ShowMessage(advice);
+    }
+
     internal Task<Frame?> CaptureAsync(CaptureRegion region, CancellationToken ct) =>
         _frames.GetFrameAsync(region, ct);
 
@@ -217,12 +239,13 @@ public sealed class TranslationSession : IDisposable
     /// One polled frame, translated and shown. Holds <see cref="Busy"/> for the duration, because
     /// the manual hotkey and Settings' own buttons share it and neither is disabled during a run.
     /// </summary>
-    internal async Task<Read> PollAsync(Frame frame, CancellationToken ct)
+    internal async Task<Read> PollAsync(
+        Frame frame, CancellationToken ct, BodyConfirmation? confirm = null)
     {
         _busy = true;
         try
         {
-            return await ProcessAsync(frame, Trigger.Poll, ct).ConfigureAwait(false);
+            return await ProcessAsync(frame, Trigger.Poll, ct, confirm).ConfigureAwait(false);
         }
         finally
         {
@@ -230,7 +253,8 @@ public sealed class TranslationSession : IDisposable
         }
     }
 
-    private async Task<Read> ProcessAsync(Frame frame, Trigger trigger, CancellationToken ct)
+    private async Task<Read> ProcessAsync(
+        Frame frame, Trigger trigger, CancellationToken ct, BodyConfirmation? confirm = null)
     {
         SaveFrameIfRequested(frame);
         _services.Pipeline.Register = _settings.Register;
@@ -254,9 +278,41 @@ public sealed class TranslationSession : IDisposable
             _ => (ProcessOptions.Manual, _settings.LastRegionProfile),
         };
 
+        // Only a poll can carry one, and only the poll loop knows what to do with the answer.
+        if (confirm is not null) options = options with { Confirm = confirm };
+
         var outcome = await _services.Pipeline
             .ProcessAsync(frame, regionKey, SourceKind.Screen, options, ct)
             .ConfigureAwait(false);
+
+        // The gate is still making its mind up about this frame, so nothing here has happened yet:
+        // no translation, no overlay change, no empty-read count. Leaving the previous line up is
+        // deliberate and is the only honest thing to show - it is still the best available claim
+        // about what is on the screen, and clearing it would flash the overlay blank once per
+        // reading. The detector does get told, because a frame that reached OCR at all is evidence.
+        if (outcome.Unconfirmed)
+        {
+            var sawWords = outcome.Body.Trim().Length > 0
+                || outcome.RejectedWordCount >= Core.Ocr.EscalationPolicy.RejectedWordsThatMeanText;
+
+            if (sawWords)
+            {
+                _consecutiveEmpty = 0;
+                return new Read(HasText: true, TextChanged: null);
+            }
+
+            // Nothing in the rectangle at all, and it still has to count. A wrong capture region
+            // produces NOTHING BUT unconfirmed empty readings, so letting this path skip the tally
+            // would silence «ممكن ما يشوفش الكلام لازم اعيد تحديد المكان» permanently - the advice
+            // would be unreachable in precisely the situation it was added for.
+            //
+            // Clearing is the same reasoning one branch down: the region has gone blank, and
+            // leaving the previous Arabic up captions one line with the one before it.
+            _overlay.Clear();
+            BlameTheRegionIfThisKeepsHappening();
+
+            return new Read(HasText: false, TextChanged: null);
+        }
 
         // Only frames that held text: the confidence of an empty read is 0 by construction and
         // says nothing about the region, and a snip is a different rectangle - folding either in
@@ -302,17 +358,8 @@ public sealed class TranslationSession : IDisposable
                 return new Read(HasText: true, TextChanged: null);
             }
 
-            // Unless it has been nothing for a long time. Then the region is the story, and this is
-            // the answer to «ممكن ما يشوفش الكلام لازم اعيد تحديد المكان» - said once, naming the
-            // hotkey, instead of once per poll or not at all.
-            if (++_consecutiveEmpty == EmptyReadsBeforeBlamingTheRegion)
-            {
-                var advice = string.Format(Text.RegionSeemsWrong,
-                    _settings.HotkeyFor(HotkeyAction.PickRegion).ToString());
-
-                Report(advice);
-                _overlay.ShowMessage(advice);
-            }
+            // Unless it has been nothing for a long time. Then the region is the story.
+            BlameTheRegionIfThisKeepsHappening();
 
             // Nothing in the rectangle at all. Captions live in gaps; a dialogue box holds its
             // text until the player advances, so this is the strong signal for moving text.

@@ -77,8 +77,16 @@ public sealed record WatchPacing
 
     public required int RequiredStillTicks { get; init; }
 
-    /// <summary>Translate anyway after this, even if the frame never holds still.</summary>
+    /// <summary>Stop waiting for the pixels after this and start reading the words instead.</summary>
     public required TimeSpan SettleCap { get; init; }
+
+    /// <summary>
+    /// How many readings that never agree the gate takes before it stops reading and waits out the
+    /// deadline again. Required rather than defaulted for the reason every field here is: the two
+    /// modes disagree about every number, and a new one that silently takes the same value in both
+    /// has not been decided, only skipped.
+    /// </summary>
+    public required int ReadsBeforeGivingUp { get; init; }
 
     /// <summary>
     /// The shortest gap allowed between two translations. A READABILITY bound before it is a
@@ -134,6 +142,11 @@ public sealed record WatchPacing
             // caption mid fade-in, and a subtitle fade is one to three frames - well under this.
             SettleCap = TimeSpan.FromMilliseconds(400),
 
+            // Three, not four. Readings are 250 ms apart at this poll rate, so three of them is
+            // 750 ms of a caption that is only allowed to live for about a second at its shortest -
+            // a bound any looser stops being a bound within the life of the thing it is bounding.
+            ReadsBeforeGivingUp = 3,
+
             // Was 1500, which is longer than a subtitle is allowed to be short: Netflix's floor is
             // 20 frames, five sixths of a second, so a conformant track can legally change faster
             // than we were willing to look. Every caption arriving inside the floor was not delayed,
@@ -156,6 +169,12 @@ public sealed record WatchPacing
             RequiredStillTicks = 2,
             SettleCap = TimeSpan.FromSeconds(3),
             MinimumInterval = TimeSpan.Zero,
+
+            // Four, at 500 ms apart, so two seconds of a region whose text never reads the same
+            // way twice is enough to conclude it is not showing a sentence. A dialogue box holds
+            // its line until the player advances it, so reaching this at all means the region is
+            // looking at scenery.
+            ReadsBeforeGivingUp = 4,
 
             // The two numbers this was asked for. The request ceilings sit well above anything a
             // cutscene produces, so in ordinary play it is the clock that speaks - they are there
@@ -373,10 +392,16 @@ public sealed class WatchSession(WatchPacing pacing, TimeProvider? clock = null)
             if (cap < MinimumSettleCap) cap = MinimumSettleCap;
         }
 
+        // Every field of SettleOptions is either set here or is a default that this method is
+        // content to reassert, and that is not a stylistic point. AutoWatch calls Retune(Settle())
+        // on EVERY poll, so anything omitted here is not "left alone" - it is reset to its default
+        // twice a second. A value handed to the gate's constructor survives every unit test written
+        // against it and dies on the first poll in production.
         return new SettleOptions
         {
             RequiredStillTicks = Pacing.RequiredStillTicks,
             Cap = cap,
+            ReadsBeforeGivingUp = Pacing.ReadsBeforeGivingUp,
         };
     }
 

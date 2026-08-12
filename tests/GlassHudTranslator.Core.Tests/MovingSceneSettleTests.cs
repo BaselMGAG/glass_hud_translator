@@ -67,23 +67,26 @@ public class MovingSceneSettleTests
             "is not modelling motion and the test below proves nothing");
     }
 
+    /// <summary>What the words on the frame read as. A finished line reads the same every time.</summary>
+    private static string Words(int words) =>
+        string.Join(" ", Enumerable.Range(0, words).Select(i => $"word{i}"));
+
     [Theory]
     [InlineData(4)]
     [InlineData(12)]
-    public void AFinishedLineOverAMovingSceneIsTreatedAsFinished(int patches)
+    [InlineData(30)]
+    public void AFinishedLineOverAMovingSceneIsTranslatedOnceAndFromItsWords(int patches)
     {
-        // THE regression. The line is complete and unchanging from tick 2 onwards; only the scene
-        // moves. The gate must conclude the text has stopped, and it must do so from STILLNESS
-        // rather than by running out of patience - because a cap-forced release lands mid-animation
-        // and reads as fragments, which is what the user saw.
+        // THE regression, and the shape of the fix is in what it asserts. The line is complete and
+        // unchanging from tick 2 onwards; only the scene moves. The gate is NOT asked to conclude
+        // that from the pixels - it cannot, at any threshold, because one more revealed word and a
+        // few more moving leaves cost the same handful of cells. It is asked to stop guessing and
+        // read, and to release when the words agree with themselves.
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
         var gate = new FrameSettleGate(clock: clock);
 
-        // A line already on screen, sitting there. This is what production looks like and what the
-        // real trace showed - long runs of the same line while the player reads it - and it is how
-        // the gate gets to measure the scene. A test that starts cold measures the four seconds
-        // before any measurement exists, which is a different thing and is asserted separately
-        // below.
+        // A line already on screen, sitting there while the player reads it. This is what the real
+        // trace showed, and it is how the gate gets to measure the scene at all.
         var tick = 0;
         for (var i = 0; i < 12; i++)
         {
@@ -92,24 +95,29 @@ public class MovingSceneSettleTests
         }
 
         // Now the player advances it: a new line appears and then holds still.
-        var verdicts = new List<FrameVerdict>();
-        var since = clock.GetUtcNow();
+        var translations = 0;
+        var reads = 0;
 
-        foreach (var words in new[] { 6, 8, 8, 8, 8, 8 })
+        foreach (var words in new[] { 6, 8, 8, 8, 8, 8, 8, 8 })
         {
-            verdicts.Add(gate.Offer(Scene(words, ++tick, patches)));
+            if (gate.Offer(Scene(words, ++tick, patches)) == FrameVerdict.Read)
+            {
+                reads++;
+                if (gate.Confirm(Words(words), wordsSeenButIllegible: false) == ReadVerdict.Translate)
+                    translations++;
+            }
+
             clock.Advance(TimeSpan.FromMilliseconds(500));
         }
 
-        Assert.Contains(FrameVerdict.Ready, verdicts);
+        Assert.Equal(1, translations);
 
-        // And from STILLNESS rather than from running out of patience. The cap is three seconds and
-        // these polls are half a second apart, so a Ready among the first five is the gate deciding
-        // the text has stopped - which is the whole point, because a cap-forced release lands mid
-        // animation and reads as fragments.
-        Assert.Contains(FrameVerdict.Ready, verdicts.Take(5));
-        Assert.True(gate.SceneMovement > 0 || patches == 0,
-            "the gate never measured the scene, so it cannot have adapted to it");
+        // Two readings half a second apart is the release. More than four would mean the pixels
+        // were still being waited on, which is the defect.
+        Assert.InRange(reads, 2, 4);
+
+        Assert.True(gate.SceneMovement > 0,
+            "the gate never measured the scene, so nothing here proves it adapted to one");
     }
 
     [Fact]
@@ -129,22 +137,144 @@ public class MovingSceneSettleTests
         Assert.Equal(0, gate.SceneMovement);
     }
 
-    [Fact]
-    public void ATypewriterRevealOverAMovingSceneIsStillTranslatedOnce()
+    [Theory]
+    [InlineData(4)]
+    [InlineData(12)]
+    [InlineData(30)]
+    public void ATypewriterRevealOverAMovingSceneIsStillTranslatedOnce(int patches)
     {
-        // The other half, and the reason the tolerance cannot simply be raised without thought:
-        // whatever makes a moving scene settle must NOT make a line that is still being typed look
-        // finished. That is the defect the gate was built for in the first place.
+        // The other half, and the reason no pixel tolerance can be raised to fix the first one:
+        // whatever lets a moving scene through must NOT let a line that is still being typed look
+        // finished. That is the defect this gate was built for.
+        //
+        // Two consecutive readings is what separates them, and it does so for a reason that holds
+        // at every motion level rather than at the ones that happen to be in this corpus: a reveal
+        // is a GROWING PREFIX, so no two consecutive readings of one are ever the same string,
+        // however still or restless the leaves behind it are.
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
         var gate = new FrameSettleGate(clock: clock);
 
-        var readies = 0;
-        foreach (var (words, tick) in new[] { (1, 1), (3, 2), (5, 3), (7, 4), (8, 5), (8, 6), (8, 7) })
+        var translations = 0;
+        var translatedAt = 0;
+        var tick = 0;
+
+        foreach (var words in new[] { 1, 3, 5, 7, 8, 8, 8, 8, 8 })
         {
-            if (gate.Offer(Scene(words, tick, patches: 4)) == FrameVerdict.Ready) readies++;
+            var verdict = gate.Offer(Scene(words, ++tick, patches));
+
+            if (verdict == FrameVerdict.Read
+                && gate.Confirm(Words(words), wordsSeenButIllegible: false) == ReadVerdict.Translate)
+            {
+                translations++;
+                translatedAt = words;
+            }
+            else if (verdict == FrameVerdict.Ready)
+            {
+                translations++;
+                translatedAt = words;
+            }
+
             clock.Advance(TimeSpan.FromMilliseconds(500));
         }
 
-        Assert.Equal(1, readies);
+        Assert.Equal(1, translations);
+
+        // And the once has to be the FINISHED line. Translating a half-typed one exactly once is
+        // the original defect wearing the fix's clothes.
+        Assert.Equal(8, translatedAt);
+    }
+
+    [Fact]
+    public void AGarbleThatDiffersEveryTimeIsNeverTranslatedNoMatterHowLongItPersists()
+    {
+        // The frames the cap used to release, and the reason the give-in refuses an illegible
+        // reading however many times it is taken. A garbled capture produces a DIFFERENT garble
+        // every time - that is this project's own documented rule, and it is what makes "twice the
+        // same" a filter rather than a delay. Under the old gate every one of these was translated:
+        // a request spent, a cache row written that can never be hit, and a confident Arabic
+        // sentence about pixels that were never a sentence.
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var gate = new FrameSettleGate(clock: clock);
+
+        var garbles = new[]
+        {
+            "an gp - ESS BF OE Ri, SI iat ee SES mia kyo ee 1",
+            "SS Ch Gen, eee ee OS 2 ere eA ee an, a, - 4 : oe",
+            "y= aoe ES ee mem SC oe | ee 3 ee",
+            "= | | s = . = a @ s (R) =o @ | | | ee a =",
+            "oe 4 : a, an ee Ae ere 2 SO ee ,neG hC SS",
+            "1 ee oyk aim SES ee tai IS ,iR EO FB SSE - pg na",
+        };
+
+        var translations = 0;
+        var tick = 0;
+
+        // A DIFFERENT garble on every poll, which is the whole point - the same pixels re-read
+        // produce a fresh misreading each time, so nothing here ever agrees with anything.
+        for (var poll = 0; poll < 24; poll++)
+        {
+            if (gate.Offer(Scene(6, ++tick, patches: 12)) == FrameVerdict.Read
+                && gate.Confirm(garbles[poll % garbles.Length], wordsSeenButIllegible: false)
+                    == ReadVerdict.Translate)
+                translations++;
+
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+
+        Assert.Equal(0, translations);
+    }
+
+    [Fact]
+    public void WordsSeenAndNoneLegibleIsReleasedOnlyOnceItHasBeenStablyIllegible()
+    {
+        // The vision lane's flagship case, and the one thing the garble rule must not swallow with
+        // it. "Ten words seen, none read" is exactly what a frame worth escalating looks like - but
+        // it is also what a frame captured mid-fade looks like for a moment, and only one of those
+        // is worth paying a multimodal request for. Stably illegible is the difference.
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var gate = new FrameSettleGate(clock: clock);
+
+        var answers = new List<ReadVerdict>();
+        var tick = 0;
+
+        for (var poll = 0; poll < 12 && !answers.Contains(ReadVerdict.Translate); poll++)
+        {
+            if (gate.Offer(Scene(6, ++tick, patches: 12)) == FrameVerdict.Read)
+                answers.Add(gate.Confirm("", wordsSeenButIllegible: true));
+
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+
+        // The first reading buys nothing - one mid-change capture looks exactly like this. The
+        // second one, saying the same thing, is what makes it worth a second reader's attention.
+        Assert.Equal(ReadVerdict.KeepReading, answers[0]);
+        Assert.Equal(ReadVerdict.Translate, answers[1]);
+    }
+
+    [Fact]
+    public void AnEmptyRegionCostsOneReadingAndNothingElse()
+    {
+        // The commonest frame there is - the gap between two lines - and it must not start a
+        // countdown to translating nothing. Free to establish, and it restarts the deadline rather
+        // than retrying immediately, so a blank screen does not OCR itself twice a second forever.
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var gate = new FrameSettleGate(clock: clock);
+
+        var tick = 0;
+        var reads = 0;
+
+        for (var poll = 0; poll < 10; poll++)
+        {
+            if (gate.Offer(Scene(0, ++tick, patches: 12)) == FrameVerdict.Read)
+            {
+                reads++;
+                Assert.Equal(ReadVerdict.Nothing, gate.Confirm("", wordsSeenButIllegible: false));
+            }
+
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+
+        // One per cap, not one per poll: ten polls is five seconds, and the dialogue cap is three.
+        Assert.InRange(reads, 1, 3);
     }
 }
