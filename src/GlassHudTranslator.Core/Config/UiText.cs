@@ -158,6 +158,15 @@ public sealed class UiText
     // literals inside TranslationSession until the Arabic interface's own overlay started
     // answering in English at the exact moment something had gone wrong.
     public required string NothingCaptured { get; init; }
+
+    /// <summary>
+    /// The key was pressed while an automatic cycle was still running and the cycle never finished.
+    /// Said out loud because the alternative — which is what shipped — is a key that does nothing
+    /// at all, at the moment somebody has reached for it precisely because they think automatic
+    /// mode has gone wrong.
+    /// </summary>
+    public required string StillWorking { get; init; }
+
     public required string TranslationFailed { get; init; }
     public required string AutoWatchOff { get; init; }
     public required string AutoWatchOn { get; init; }
@@ -689,6 +698,7 @@ public sealed class UiText
         Translating = "Translating...",
 
         NothingCaptured = "Nothing was captured. Is the game running in Borderless Windowed mode?",
+        StillWorking = "Still working on the previous line. Try again in a moment.",
         TranslationFailed = "Translation failed: {0}",
         AutoWatchOff = "Auto-watch off.",
         AutoWatchOn = "Auto-watch on, {0}. It stops itself after {1} minutes.",
@@ -1258,6 +1268,7 @@ public sealed class UiText
         Translating = "جارٍ الترجمة...",
 
         NothingCaptured = "لم يُلتقط شيء. هل اللعبة شغّالة بوضع النافذة بلا إطار؟",
+        StillWorking = "ما زال يعمل على السطر السابق. أعد المحاولة بعد لحظة.",
         TranslationFailed = "أخفقت الترجمة: {0}",
         AutoWatchOff = "أُوقفت المتابعة التلقائية.",
         AutoWatchOn = "المتابعة التلقائية شغّالة، {0}. وتتوقّف وحدها بعد {1} دقائق.",

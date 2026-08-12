@@ -760,6 +760,42 @@ raising it from 2 fps to 6 buys 334 ms of that 4,625 and triples the CPU. It is 
 `MaxDifferingCells = 2` out of 1536 can never be satisfied by full-motion video, so the gate never
 settles and every release comes from the cap. **Tune the cap, not the poll rate.**
 
+**"Tune the cap, not the poll rate" has now expired too, and for the opposite reason.** That was
+true while every release came from the three-second cap: the poll rate was worth 334 ms of a 4,625 ms
+delay. Once the gate settles on stillness in a couple of ticks, the poll rate **is** the delay,
+twice over — it sets how soon a change is noticed *and* how far apart the two confirming readings
+are. Dialogue is 4 fps now, with `RequiredStillTicks` raised from 2 to 3 so the stillness
+*requirement* stays half a second: that margin is what stands between a reveal pausing on a comma
+and a half-written sentence being translated, paid for, and paid for again when it finishes. The
+budget is asserted directly in `AutomaticModeCostsHalfASecondOfStillnessAndNoMoreWaitingThanThat`,
+because both halves are tunable and only their sum is observable.
+
+**`ContentRhythm.Window` is counted in POLLS, so it shortens whenever the poll rate rises.** Raising
+dialogue to 4 fps halved the evidence window without anybody opening that file, and the read budget
+fell to 2.5 against a `MinimumReads` of 3 — so Auto could no longer leave Dialogue at all. Same
+defect as the original `MinimumReads` bug, same place, opposite direction: two constants chosen
+independently in different files, neither wrong alone. `Window` is 60 now, and the test asserts the
+window in **seconds** as well as in reads, because the seconds are what `LongerThanAnyCaption` is
+measured against.
+
+**A hotkey press must never be silently dropped, and `if (_busy) return;` did exactly that.** A poll
+may be dropped because another is a quarter of a second away; a key press is a question somebody
+asked out loud. Pressing translate during any part of an automatic cycle did nothing at all — no
+answer, no message, no overlay change — and it arrives at precisely the moment the user has reached
+for it *because* automatic mode looked wrong. It waits for the loop now, and says so if the wait
+runs out.
+
+**A manual press tells the gate what is on screen.** `FrameSettleGate.NowShowing` — without it a key
+press cost the following automatic cycle for nothing: the gate still held the previous frame as
+displayed, called the next poll a change, settled it, spent a reading on it, and handed the pipeline
+a line it had just shown, which the repeat guard then threw away. All correct, all wasted, and
+wasted in the one place the user is already unhappy about the delay.
+
+**`FrameSettleGate.GaveUp` counts the only thing that is genuinely a skipped line.** A stretch that
+was read and then refused, because the words never read the same way twice. It is on every gate line
+in the trace, so "did it skip?" stops being a matter of opinion — if it is zero and a line was still
+missed, the fault is somewhere else.
+
 **That cap is now at its floor, so the advice above has expired — read the arithmetic before tuning
 again.** Over video the cap is not a deadline, it is a pure wait: the stillness test cannot pass, so
 nothing is bought by it except not catching a caption mid fade-in, and a subtitle fade is one to

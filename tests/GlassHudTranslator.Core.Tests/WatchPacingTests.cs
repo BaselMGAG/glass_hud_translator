@@ -20,12 +20,53 @@ public class WatchPacingTests
         // never pass, so every release comes from this cap - at three seconds the Arabic arrived
         // after the subtitle it translated had already left the screen.
         Assert.True(video.SettleCap < dialogue.SettleCap);
-        Assert.True(video.PollsPerSecond > dialogue.PollsPerSecond);
+
+        // The poll rate is deliberately NOT part of impatience any more, and used to be asserted
+        // here as if it were. It is how quickly a change is NOTICED, and both modes want that as
+        // quickly as it is cheap to have — a small BitBlt and a 64x24 thumbnail, four times a
+        // second, below normal priority. What separates the modes is how long they then WAIT, which
+        // is the cap above and the floor below. Dialogue was raised to match video once the poll
+        // rate stopped being a rounding error in the delay and became half of it.
+        Assert.Equal(video.PollsPerSecond, dialogue.PollsPerSecond);
+        Assert.True(dialogue.PollsPerSecond >= 4,
+            "notice a change within a quarter of a second, or automatic mode cannot be close to "
+            + "what pressing the key yourself costs");
 
         // And the other half: without a floor, "translate as soon as it changes" over video is a
         // request per poll.
         Assert.True(video.MinimumInterval > TimeSpan.Zero);
         Assert.Equal(TimeSpan.Zero, dialogue.MinimumInterval);
+    }
+
+    [Fact]
+    public void AutomaticModeCostsHalfASecondOfStillnessAndNoMoreWaitingThanThat()
+    {
+        // <b>The whole of what separates automatic mode from pressing the key yourself.</b> A key
+        // press costs one capture, one reading and the round trip; automatic mode pays all of that
+        // plus however long it waits to be sure the line has finished appearing. Reported as "auto
+        // translate takes longer than translate now", and the two halves of that wait are the only
+        // things this asserts, because they are the only things anyone can tune.
+        var dialogue = WatchPacing.For(WatchMode.Dialogue);
+        var poll = TimeSpan.FromSeconds(1 / dialogue.PollsPerSecond);
+
+        // Half of it: how long after the line appears before any poll sees it at all.
+        Assert.True(poll <= TimeSpan.FromMilliseconds(250),
+            $"a change goes unnoticed for up to {poll.TotalMilliseconds:F0} ms before anything looks");
+
+        // The other half: how much stillness is then required. This is the safety margin, and it is
+        // the number that must NOT come down with the poll rate - half a second of a line not
+        // changing is what stands between a reveal pausing on a comma and a half-written sentence
+        // being translated, paid for, and then paid for again when it finishes.
+        var stillness = poll * (dialogue.RequiredStillTicks - 1);
+
+        Assert.Equal(TimeSpan.FromMilliseconds(500), stillness);
+
+        // So the worst case from "the line appeared" to "translate it" is the two added together,
+        // and it is under a second. Anything above that and automatic mode stops feeling like the
+        // same app as the hotkey.
+        Assert.True(poll + stillness <= TimeSpan.FromSeconds(1),
+            $"automatic mode waits up to {(poll + stillness).TotalMilliseconds:F0} ms before it "
+            + "even starts translating");
     }
 
     [Fact]

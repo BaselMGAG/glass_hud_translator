@@ -121,7 +121,23 @@ public sealed class TranslationSession : IDisposable
 
     public async Task TranslateNowAsync(CancellationToken ct = default)
     {
-        if (_busy) return;
+        // <b>Waits for the loop rather than walking away from the user.</b> This used to be a bare
+        // `if (_busy) return;`, which meant that pressing the key during any part of an automatic
+        // cycle — a reading, a translation, a provider that was taking its time — did absolutely
+        // nothing: no answer, no message, no overlay change. From outside that is the hotkey being
+        // broken, and it arrives at exactly the moment the user has reached for it because
+        // automatic mode has just missed a line. Reported as "pressed translate now and it does not
+        // keep auto".
+        //
+        // A poll is allowed to be dropped because another is a quarter of a second away. A key
+        // press is a question somebody asked out loud, and this file's oldest rule is that it gets
+        // an answer.
+        if (!await WaitForTheLoopAsync(ct).ConfigureAwait(false))
+        {
+            Fail(Text.StillWorking);
+            return;
+        }
+
         _busy = true;
 
         try
@@ -139,6 +155,11 @@ public sealed class TranslationSession : IDisposable
             }
 
             _ = await ProcessAsync(frame, Trigger.Hotkey, ct).ConfigureAwait(false);
+
+            // Told AFTER the translation rather than before it, so a press that failed leaves the
+            // gate believing nothing — the next poll then re-reads the line, which is exactly what
+            // should happen when the answer never arrived.
+            _auto.NowShowing(FrameSignature.Compute(frame));
         }
         catch (OperationCanceledException)
         {
@@ -239,6 +260,33 @@ public sealed class TranslationSession : IDisposable
 
     /// <summary>Why the last capture came back empty, for anything that has to explain itself.</summary>
     internal string? LastCaptureFailure => _frames.LastFailure;
+
+    /// <summary>
+    /// How long a key press will wait for an automatic cycle to finish before giving up on it.
+    ///
+    /// <para>
+    /// Sized against the thing being waited for: a reading plus a provider round trip is about a
+    /// second and a half in the ordinary case, and the router's own total budget bounds the bad one.
+    /// Long enough that the press lands rather than vanishing; short enough that a genuinely stuck
+    /// provider produces a sentence on screen instead of a key that seems dead.
+    /// </para>
+    /// </summary>
+    private static readonly TimeSpan LongestWaitForTheLoop = TimeSpan.FromSeconds(6);
+
+    private async Task<bool> WaitForTheLoopAsync(CancellationToken ct)
+    {
+        if (!_busy) return true;
+
+        var waitedFrom = Stopwatch.GetTimestamp();
+
+        while (_busy && Stopwatch.GetElapsedTime(waitedFrom) < LongestWaitForTheLoop)
+        {
+            ct.ThrowIfCancellationRequested();
+            await Task.Delay(40, ct).ConfigureAwait(false);
+        }
+
+        return !_busy;
+    }
 
     /// <summary>
     /// The watched rectangle has no text in it at all, so nothing that was on it is on it any more.

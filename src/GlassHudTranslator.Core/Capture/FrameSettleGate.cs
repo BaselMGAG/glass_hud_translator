@@ -260,6 +260,43 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
         }
     }
 
+    /// <summary>
+    /// Reading stretches that ended with nothing translated, for Diagnostics. A line the gate
+    /// genuinely gave up on is the one thing that looks, from the player's chair, exactly like the
+    /// app skipping — so "did it skip?" stops being a matter of opinion.
+    /// </summary>
+    public int GaveUp { get; private set; }
+
+    /// <summary>
+    /// This frame is what the player is looking at now, put there by something other than the gate.
+    ///
+    /// <para>
+    /// <b>The manual hotkey is the caller, and without it a key press costs the next automatic
+    /// cycle for nothing.</b> A press translates the line and puts it on the overlay, but the gate
+    /// was never told — so it still held the PREVIOUS frame as displayed, called the very next poll
+    /// a change, settled it, spent a reading on it, and handed the pipeline a line it had just
+    /// shown, which the repeat guard then threw away. All correct, all wasted, and on a machine
+    /// where a reading costs a few hundred milliseconds it is wasted in the one place the user is
+    /// already unhappy about the delay.
+    /// </para>
+    ///
+    /// <para>
+    /// Deliberately NOT <see cref="Reset"/>: the scene measurements stay, and so does everything
+    /// about the current change except the fact that it is now finished.
+    /// </para>
+    /// </summary>
+    public void NowShowing(FrameSignature signature)
+    {
+        ArgumentNullException.ThrowIfNull(signature);
+
+        _translated = signature;
+        _pending = null;
+        _stillTicks = 0;
+        _reading = null;
+        _lastRead = null;
+        _reads = 0;
+    }
+
     /// <summary>What "still" means on this screen right now.</summary>
     private int StillnessTolerance
     {
@@ -527,6 +564,7 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
     private ReadVerdict Discard(bool theRegionIsEmpty)
     {
         if (theRegionIsEmpty) _translated = null;
+        else GaveUp++;
 
         _reading = null;
         _lastRead = null;

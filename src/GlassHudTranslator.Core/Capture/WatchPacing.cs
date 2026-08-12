@@ -165,8 +165,27 @@ public sealed record WatchPacing
 
         _ => new WatchPacing
         {
-            PollsPerSecond = 2,
-            RequiredStillTicks = 2,
+            // Four, and the advice this file used to give — "tune the cap, not the poll rate" — has
+            // expired along with the arithmetic behind it. That was written when every release came
+            // from the three-second cap, so the poll rate was worth 334 ms of a 4,625 ms delay and
+            // tripling it was obviously the wrong lever. It is not true any more: over a dialogue
+            // box the gate settles on stillness in two ticks, so the poll rate IS the delay, twice
+            // over. It sets how soon a change is noticed, and it sets how far apart the two
+            // confirming readings are.
+            //
+            // Measured against the alternative the player has, which is pressing the key themselves:
+            // that costs one capture, one reading and the round trip. Automatic mode adds the settle
+            // on top, and this halves it.
+            PollsPerSecond = 4,
+
+            // THREE, not two, and it moves with the poll rate rather than staying put. The rule is
+            // half a second of genuine stillness, which at 2 fps was two ticks and at 4 fps is
+            // three; leaving it at two would quietly halve the safety margin as well as the wait.
+            // That margin is what stands between a line pausing on a comma mid-reveal and being
+            // translated half-written — the v0.5.2 defect, which costs a request to show a fragment
+            // and then a second request for the same sentence finished.
+            RequiredStillTicks = 3,
+
             SettleCap = TimeSpan.FromSeconds(3),
             MinimumInterval = TimeSpan.Zero,
 

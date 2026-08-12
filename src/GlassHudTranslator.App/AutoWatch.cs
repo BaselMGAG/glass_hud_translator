@@ -117,6 +117,22 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
     /// </summary>
     public void ForgetWhatIsOnScreen() => _settle.Reset();
 
+    /// <summary>
+    /// A key press has just put a line on the overlay, so the gate should stop treating the frame
+    /// before it as the current one. Saves the next cycle a settle and a reading it would spend
+    /// arriving at a line the repeat guard was going to throw away anyway.
+    /// </summary>
+    public void NowShowing(FrameSignature signature)
+    {
+        if (_cancel is null) return;   // nothing running: the gate is reset on the way in anyway
+
+        _settle.NowShowing(signature);
+        PollTrace.Write("manual     a key press put a line up; gate told it is the current frame");
+    }
+
+    /// <summary>Reading stretches that ended with nothing translated, for Diagnostics.</summary>
+    public int GaveUp => _settle.GaveUp;
+
     public void Toggle()
     {
         if (_cancel is not null)
@@ -302,7 +318,7 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
                 var verdict = _settle.Offer(signature);
 
                 PollTrace.Write($"gate       {verdict} scene-moves={_settle.SceneMovement} "
-                    + $"{_rhythm.Explain()}");
+                    + $"gave-up={_settle.GaveUp} {_rhythm.Explain()}");
 
                 if (verdict == FrameVerdict.Unchanged)
                 {

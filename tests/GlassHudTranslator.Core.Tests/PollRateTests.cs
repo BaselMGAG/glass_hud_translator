@@ -30,18 +30,21 @@ public class PollRateTests
         Assert.Equal(pacing.PollInterval, legacy.PollIntervalFor(pacing));
     }
 
-    [Fact]
-    public void VideoActuallyPollsFasterThanDialogueOnASettingsFileFromAnOlderRelease()
+    [Theory]
+    [InlineData(WatchMode.Dialogue)]
+    [InlineData(WatchMode.Video)]
+    public void BothModesPollAtTheirOwnRateOnASettingsFileFromAnOlderRelease(WatchMode mode)
     {
-        // The claim in the file made concrete. Before this, both of these were 500 ms.
+        // The claim in the file made concrete. A settings file written by any earlier release pins
+        // autoWatchFps at 2, and while that was honoured every mode polled every 500 ms whatever it
+        // asked for - which is how video's four-a-second went a whole release without ever running.
         var stored = new AppSettings { AutoWatchFps = AppSettings.LegacyDefaultFps };
+        var interval = stored.PollIntervalFor(WatchPacing.For(mode));
 
-        var dialogue = stored.PollIntervalFor(WatchPacing.For(WatchMode.Dialogue));
-        var video = stored.PollIntervalFor(WatchPacing.For(WatchMode.Video));
+        Assert.Equal(TimeSpan.FromMilliseconds(250), interval);
 
-        Assert.True(video < dialogue,
-            $"video polls every {video.TotalMilliseconds:F0} ms and dialogue every "
-            + $"{dialogue.TotalMilliseconds:F0} ms - the mode's rate is being overridden again");
+        Assert.True(interval < TimeSpan.FromMilliseconds(AppSettings.LegacyDefaultFps * 250),
+            $"{mode} polls every {interval.TotalMilliseconds:F0} ms - the stored override is back");
     }
 
     [Fact]

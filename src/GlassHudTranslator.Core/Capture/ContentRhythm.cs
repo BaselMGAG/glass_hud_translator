@@ -87,11 +87,25 @@ public enum ContentKind
 public sealed class ContentRhythm(TimeProvider? clock = null)
 {
     /// <summary>
-    /// Polls kept. At the dialogue rate that is about fifteen seconds and at the video rate about
-    /// seven — deliberately a window of EVIDENCE rather than of time, because what matters is how
-    /// many observations back the verdict, not how long ago they started.
+    /// Polls kept. At four polls a second — which is what both modes run at now — that is fifteen
+    /// seconds, comfortably longer than <see cref="LongerThanAnyCaption"/>.
+    ///
+    /// <para>
+    /// <b>It is counted in polls and it therefore moves whenever the poll rate does, which is a
+    /// trap this project has now walked into twice.</b> It was 30, which was fifteen seconds while
+    /// dialogue polled twice a second. Doubling the dialogue rate to cut the delay halved the
+    /// evidence window without anybody touching this file, and the read budget below fell to two
+    /// and a half against a minimum of three — so Auto could no longer leave Dialogue at all. The
+    /// same defect as the last one, in the same place, from the opposite direction: two constants
+    /// chosen independently in different files, neither wrong alone.
+    /// </para>
+    ///
+    /// <para>
+    /// <c>TheReadBudgetAtDialoguePacingIsEnoughToDecideWith</c> asserts the relationship rather than
+    /// either number, which is the only version of this that survives the next tuning pass.
+    /// </para>
     /// </summary>
-    public const int Window = 30;
+    public const int Window = 60;
 
     /// <summary>
     /// Reads needed before the empty fraction means anything. Below this, "no text seen" is far

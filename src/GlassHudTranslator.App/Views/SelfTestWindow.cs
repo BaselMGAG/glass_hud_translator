@@ -236,6 +236,13 @@ public static class SelfTest
         Say("that shows the same word over and over is the fault, and the word names it.");
         Say("");
 
+        Say("The two numbers to read first are on every gate line. 'scene-moves' is how much this");
+        Say("screen moves on its own, in cells of 1536, which no real game has ever been measured");
+        Say("on. 'gave-up' counts lines the gate READ and then refused, because the words never");
+        Say("read the same way twice - that is the only thing here that is genuinely a skipped");
+        Say("line, so if it is 0 and a line was still missed, the fault is somewhere else.");
+        Say("");
+
         var trace = Core.Diagnostics.PollTrace.Recent();
         if (trace.Count == 0) Say("(auto-watch has not run since the app started)");
         foreach (var line in trace) Say("   " + line);

@@ -316,6 +316,19 @@ public class ContentRhythmTests
             Assert.True(readsInWindow >= ContentRhythm.MinimumReads,
                 $"At {mode} pacing a full window holds only {readsInWindow:0.0} reads, and " +
                 $"MinimumReads is {ContentRhythm.MinimumReads}. The gate can never open.");
+
+            // And the window has to be long enough in SECONDS as well as rich enough in reads,
+            // because the motion signal is gated on a full window and persistence is measured
+            // against a threshold in seconds. Window is counted in polls, so it silently shortens
+            // every time the poll rate goes up — which is exactly how raising the dialogue rate to
+            // cut the delay broke the read budget above without anyone editing ContentRhythm.
+            var windowSeconds = ContentRhythm.Window / pacing.PollsPerSecond;
+
+            Assert.True(windowSeconds >= ContentRhythm.LongerThanAnyCaption.TotalSeconds,
+                $"At {mode} pacing a full window is only {windowSeconds:0.0}s, which is shorter "
+                + $"than the {ContentRhythm.LongerThanAnyCaption.TotalSeconds:0}s a caption is "
+                + "allowed to hold still for - so the weakest signal would decide before the "
+                + "strongest one had matured.");
         }
     }
 
