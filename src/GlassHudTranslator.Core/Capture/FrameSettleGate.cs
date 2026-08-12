@@ -126,6 +126,20 @@ public sealed record SettleOptions
     /// </para>
     /// </summary>
     public TimeSpan VerifyUnchangedAfter { get; init; } = TimeSpan.FromSeconds(15);
+
+    /// <summary>
+    /// The whole life of one reading stretch, however well its readings are going.
+    ///
+    /// <para>
+    /// <see cref="ReadsBeforeGivingUp"/> bounds a stretch whose readings never AGREE — scenery,
+    /// where every reading is a fresh garble. This bounds one whose readings keep GROWING, which
+    /// the gate deliberately refuses to count as a failure, because a typewriter reveal is a growing
+    /// prefix and giving up on one is giving up on the line. Without a second ceiling a screen that
+    /// grows forever — a scrolling chat log, a karaoke caption — would hold the stretch open
+    /// indefinitely, and a stretch is blind to the rest of the region for its whole length.
+    /// </para>
+    /// </summary>
+    public TimeSpan LongestArrival { get; init; } = TimeSpan.FromSeconds(4);
 }
 
 /// <summary>What auto-watch should do with the frame it just captured.</summary>
@@ -243,6 +257,25 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
     /// <summary>When the pixels first started insisting nothing had changed. Null while something is.</summary>
     private DateTimeOffset? _unchangedSince;
 
+    /// <summary>When the current reading stretch opened. Bounds one that keeps growing.</summary>
+    private DateTimeOffset _stretchStartedAt;
+
+    /// <summary>Whether a one-to-three character growth has already been given the benefit of the doubt.</summary>
+    private bool _smallGrowthDeferred;
+
+    /// <summary>
+    /// One lock, taken by every public member, because two threads genuinely reach this object.
+    ///
+    /// <para>
+    /// The poll thread is inside <see cref="Offer"/> or <see cref="Confirm"/> while the UI thread
+    /// can arrive at <see cref="Reset"/> and <see cref="Retune"/> through a mode change, and at
+    /// <see cref="NowShowing"/> through a key press, and at <see cref="ForgetWhatIsOnScreen"/>
+    /// through a snip. That is reachable today, not a hypothetical. The gate calls nothing external
+    /// and takes no other lock, so it can never be held across I/O and there is no ordering hazard.
+    /// </para>
+    /// </summary>
+    private readonly Lock _sync = new();
+
     /// <summary>
     /// What a reading with words on it but none of them legible is called, so that "illegible
     /// twice running" can agree with itself the way a sentence does.
@@ -295,7 +328,7 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
         Math.Max(2, (int)Math.Round(span.TotalSeconds * _options.PollsPerSecond));
 
     /// <summary>How many polls the current change has been settling for. Diagnostics only.</summary>
-    public int StillTicks => _stillTicks;
+    public int StillTicks { get { lock (_sync) return _stillTicks; } }
 
     /// <summary>
     /// How much the scene moves on its own, in cells, as a median over recent polls.
@@ -311,19 +344,23 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
     {
         get
         {
-            // Nothing is claimed until the scene has been watched for a few seconds. With one or
-            // two samples the only thing measured may BE the change - a reveal's own 14-to-18 cells
-            // become the "floor", the tolerance opens to swallow a whole word, and the gate calls
-            // the second poll of a typewriter reveal finished. Until then the static default
-            // stands, which is strict, and strict merely means waiting for the cap.
-            if (_movement.Count < MinimumSamples) return 0;
+            lock (_sync)
+            {
+                // Nothing is claimed until the scene has been watched for a few seconds. With one
+                // or two samples the only thing measured may BE the change - a reveal's own
+                // 14-to-18 cells become the "floor", the tolerance opens to swallow a whole word,
+                // and the gate calls the second poll of a typewriter reveal finished. Until then
+                // the static default stands, which is strict, and strict merely means waiting.
+                if (_movement.Count < MinimumSamples) return 0;
 
-            // The MINIMUM, not a mean or a median. The scene's restlessness is by definition the
-            // smallest difference two consecutive polls can show, because text appearing only ever
-            // ADDS to it - so a reveal, however many polls it spans, cannot drag this upward. Every
-            // averaging estimator can, and does: sampled across a reveal, a median rises far enough
-            // to hide the NEXT reveal, which is the gate defeating itself one line later.
-            return _movement.Min();
+                // The MINIMUM, not a mean or a median. The scene's restlessness is by definition
+                // the smallest difference two consecutive polls can show, because text appearing
+                // only ever ADDS to it - so a reveal, however many polls it spans, cannot drag this
+                // upward. Every averaging estimator can, and does: sampled across a reveal, a
+                // median rises far enough to hide the NEXT reveal, which is the gate defeating
+                // itself one line later.
+                return _movement.Min();
+            }
         }
     }
 
@@ -356,6 +393,11 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
     {
         ArgumentNullException.ThrowIfNull(signature);
 
+        lock (_sync) NowShowingCore(signature);
+    }
+
+    private void NowShowingCore(FrameSignature signature)
+    {
         _translated = signature;
         _pending = null;
         _stillTicks = 0;
@@ -381,22 +423,18 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
     public FrameVerdict Offer(FrameSignature signature)
     {
         ArgumentNullException.ThrowIfNull(signature);
+        lock (_sync) return OfferCore(signature);
+    }
 
-        // Once a reading stretch has begun, the pixels have already been asked and have already
-        // failed to answer. Handing the decision back to them mid-stretch would abandon a reading
-        // half-taken every time the scene twitched, which over a moving scene is every poll.
-        if (_reading is not null)
-        {
-            _lastPoll = signature;
-            _reading = signature;
-            return FrameVerdict.Read;
-        }
-
-        // Sampled on EVERY poll, and read back as a low percentile rather than a median. Sampling
-        // only the polls that are provably still would be cleaner, but those are unreachable when
-        // the scene moves more than the current tolerance allows - the gate would need the floor in
-        // order to learn the floor. A quarter-percentile is dragged upward by nothing a reveal can
-        // do, because a reveal is a handful of polls and a line sitting on screen is dozens.
+    private FrameVerdict OfferCore(FrameSignature signature)
+    {
+        // Sampled on EVERY poll, INCLUDING the polls of an open reading stretch - the sample used
+        // to sit below the early return, so the scene estimate simply stopped being taken for the
+        // whole of one. That was invisible while a stretch was four polls and is not now that a
+        // growing line can hold one open for seconds. The samples taken during a stretch are the
+        // good ones anyway: the text is not changing, so what they measure is exactly the scene's
+        // own restlessness. SceneMovement is a Min, so more samples can only lower it, which is the
+        // strict direction.
         if (_lastPoll is not null)
         {
             _movement.Enqueue(signature.DifferenceCount(_lastPoll));
@@ -404,6 +442,15 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
         }
 
         _lastPoll = signature;
+
+        // Once a reading stretch has begun, the pixels have already been asked and have already
+        // failed to answer. Handing the decision back to them mid-stretch would abandon a reading
+        // half-taken every time the scene twitched, which over a moving scene is every poll.
+        if (_reading is not null)
+        {
+            _reading = signature;
+            return FrameVerdict.Read;
+        }
 
         // Identical to what is already on the overlay. The overwhelmingly common case during
         // dialogue, and the reason this is checked first. Deliberately still the default threshold
@@ -428,10 +475,7 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
             if (settledAt - _unchangedSince >= _options.VerifyUnchangedAfter)
             {
                 _unchangedSince = settledAt;
-                _reading = signature;
-                _lastRead = null;
-                _reads = 0;
-                return FrameVerdict.Read;
+                return StartReading(signature);
             }
 
             return FrameVerdict.Unchanged;
@@ -488,9 +532,17 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
         // "the pixels look still but this scene is too restless for that to prove anything" and
         // "this screen has never stopped moving at all" — and the answer to both is the same one:
         // stop guessing from a 1536-cell thumbnail and read the words.
+        return StartReading(signature);
+    }
+
+    /// <summary>Opens a reading stretch. One place, so its state cannot be half-initialised.</summary>
+    private FrameVerdict StartReading(FrameSignature signature)
+    {
         _reading = signature;
         _lastRead = null;
         _reads = 0;
+        _smallGrowthDeferred = false;
+        _stretchStartedAt = _clock.GetUtcNow();
         return FrameVerdict.Read;
     }
 
@@ -506,11 +558,14 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
     /// </summary>
     public ReadVerdict Confirm(string? body, bool wordsSeenButIllegible)
     {
+        lock (_sync) return ConfirmCore(body, wordsSeenButIllegible);
+    }
+
+    private ReadVerdict ConfirmCore(string? body, bool wordsSeenButIllegible)
+    {
         // Not a frame this gate asked about. A manual press, a snip, a retry - all of them reach
         // the pipeline without a reading stretch open, and none of them is the gate's business.
         if (_reading is null) return ReadVerdict.Nothing;
-
-        _reads++;
 
         var reading = string.IsNullOrWhiteSpace(body)
             ? (wordsSeenButIllegible ? Illegible : "")
@@ -522,23 +577,55 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
 
         if (_lastRead is null)
         {
+            _reads = 1;
             _lastRead = reading;
             return ReadVerdict.KeepReading;
         }
 
-        if (Agrees(reading, _lastRead)) return Release();
+        switch (Compare(reading, _lastRead))
+        {
+            case Reading.Same:
+                return Release();
 
-        _lastRead = reading;
+            case Reading.StillArriving:
+                // <b>Deliberately does NOT move _reads.</b> The give-up bound exists for readings
+                // that never AGREE - scenery, whose every reading is a fresh garble - and a reveal
+                // always eventually agrees with itself. Counting a growing line as a failure is
+                // what made a long line exhaust the budget, give up, and restart the whole
+                // three-second cap: the multi-second inconsistency, arriving as a penalty for the
+                // line being long.
+                _lastRead = reading;
+                break;
 
-        // Bounded, and it gives UP rather than giving in. A stretch that keeps producing readings
-        // which never match stops reading and lets the cap start again, so the duty cycle falls
-        // back to one Tesseract pass per cap instead of one per poll. What it must never do is
-        // translate the thing it could not read twice: that is the frame the old cap released, and
-        // a confident Arabic sentence about pixels that were never a sentence is the single worst
-        // answer this app can give the person it is built for.
-        return _reads >= _options.ReadsBeforeGivingUp
-            ? Discard(theRegionIsEmpty: false)
-            : ReadVerdict.KeepReading;
+            default:
+                _reads++;
+                _lastRead = reading;
+                break;
+        }
+
+        // Two ceilings, bounding two different things. _reads is untouched above and still bounds a
+        // region whose words never agree. The CLOCK bounds a stretch that keeps growing, which the
+        // rule above now refuses to end - so a scrolling chat log or a karaoke caption cannot hold
+        // the gate open indefinitely. A stretch is blind to the rest of the region for its whole
+        // length, and that is what stops either ceiling being generous.
+        if (_reads >= _options.ReadsBeforeGivingUp
+            || _clock.GetUtcNow() - _stretchStartedAt >= _options.LongestArrival)
+            return Discard(theRegionIsEmpty: false);
+
+        return ReadVerdict.KeepReading;
+    }
+
+    /// <summary>What one reading says about the one before it.</summary>
+    private enum Reading
+    {
+        /// <summary>The same words. This is the line.</summary>
+        Same,
+
+        /// <summary>The same words plus more on the end. The line has not finished appearing.</summary>
+        StillArriving,
+
+        /// <summary>Neither. Two readings of something that could not be read the same way twice.</summary>
+        Different,
     }
 
     /// <summary>
@@ -586,32 +673,69 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
     /// jittering caption scores 0.88 because its noise is scattered through the middle.
     /// </para>
     /// </summary>
-    private static bool Agrees(string current, string previous)
-    {
-        // Cheapest first, and it is exact-ish by design - the common case is a line that has simply
-        // stopped changing.
-        if (Text.TextSimilarity.LooksLikeARepeat(current, previous)) return true;
-
-        if (StillAppearing(current, previous)) return false;
-
-        return Ocr.ReadingJudge.Agreement(current, previous) >= SameText;
-    }
-
-    /// <summary>One reading is the other with more on the end: the line is still arriving.</summary>
-    private static bool StillAppearing(string current, string previous)
+    private Reading Compare(string current, string previous)
     {
         var (shorter, longer) = current.Length <= previous.Length
             ? (current, previous)
             : (previous, current);
 
-        if (shorter.Length == 0) return false;
-        if (longer.Length - shorter.Length < MeaningfulGrowth) return false;
+        // <b>THE PREFIX TEST RUNS FIRST, and that ordering is the entire fix.</b>
+        //
+        // It used to run second, behind LooksLikeARepeat, whose budget is min(3, shorter/4)
+        // ABSOLUTE edits. So the last partial reading of a reveal and the finished line - which
+        // differ by one to three characters whenever the reveal happens to end near a reading -
+        // scored as THE SAME WORDS. The half-written sentence was released, translated, and written
+        // to the cache permanently; the finished sentence then arrived and was thrown away by the
+        // pipeline's own repeat guard as a repeat of the fragment. Measured on four real FFXIV
+        // lines: every one released one character short, at a prefix agreement of exactly 1.00.
+        //
+        // That is a fluent, confident, WRONG Arabic line shown to somebody who cannot check it
+        // against the English - the single answer this file is most emphatic about never giving -
+        // and it is also why the app looked inconsistent rather than uniformly slow: whether it
+        // bit depended on where the reveal happened to be when two readings landed.
+        //
+        // Shape sees what degree cannot, so shape is asked first.
+        if (longer.Length > shorter.Length
+            && shorter.Length > 0
+            && Ocr.ReadingJudge.Agreement(shorter, longer[..shorter.Length]) >= PrefixIsExact)
+        {
+            // DIRECTION decides which fact this is. The newer reading being the longer one is a
+            // line still appearing. The newer one being SHORTER is the tail having gone missing,
+            // which is a disagreement and nothing else - a reveal never runs backwards.
+            var growing = current.Length > previous.Length;
+            var growth = longer.Length - shorter.Length;
 
-        return Ocr.ReadingJudge.Agreement(shorter, longer[..shorter.Length]) >= PrefixIsExact;
+            if (growing && growth >= MeaningfulGrowth)
+            {
+                _smallGrowthDeferred = false;
+                return Reading.StillArriving;
+            }
+
+            // One to three characters is genuinely ambiguous: it is the end of a reveal, and it is
+            // equally the reader finding a full stop it missed last time. No threshold separates
+            // those, so a THIRD reading does - defer once, and if the next pair says the same thing,
+            // believe it. Costs one poll on the last reading of a reveal and buys the finished
+            // sentence instead of the sentence minus its last word. It cannot loop: a pair already
+            // deferred falls through, and the shrinking direction always falls through.
+            if (growing && !_smallGrowthDeferred)
+            {
+                _smallGrowthDeferred = true;
+                return Reading.StillArriving;
+            }
+
+            if (!growing && growth >= MeaningfulGrowth) return Reading.Different;
+        }
+
+        if (Text.TextSimilarity.LooksLikeARepeat(current, previous)) return Reading.Same;
+
+        return Ocr.ReadingJudge.Agreement(current, previous) >= SameText
+            ? Reading.Same
+            : Reading.Different;
     }
 
     private ReadVerdict Release()
     {
+        _smallGrowthDeferred = false;
         _translated = _reading;
         _reading = null;
         _lastRead = null;
@@ -651,6 +775,8 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
         if (theRegionIsEmpty) _translated = null;
         else GaveUp++;
 
+        _smallGrowthDeferred = false;
+
         _reading = null;
         _lastRead = null;
         _reads = 0;
@@ -669,6 +795,11 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
     /// Unchanged until the player advanced the dialogue.
     /// </summary>
     public void Reset()
+    {
+        lock (_sync) ResetCore();
+    }
+
+    private void ResetCore()
     {
         _translated = null;
         _pending = null;
@@ -700,6 +831,6 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        _options = options;
+        lock (_sync) _options = options;
     }
 }

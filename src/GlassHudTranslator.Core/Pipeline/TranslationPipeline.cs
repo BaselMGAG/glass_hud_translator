@@ -258,6 +258,15 @@ public sealed class TranslationPipeline(
     {
         lock (_context) _context.Clear();
         ResetRepeatGuard();
+
+        // The second reader's memo of what it has already been asked about, which has had a Clear
+        // method and no caller since it shipped. This is the right and only place for it: switching
+        // profile or game means the unreadable lines it remembers are about a screen that is gone.
+        //
+        // Deliberately NOT from ResetRepeatGuard, which fires on every empty poll - forgetting there
+        // would buy a fresh multimodal request for the same unreadable line once per caption gap,
+        // which is the "paying four times over for one sentence" defect wearing the memo's clothes.
+        _memo.Clear();
     }
 
     /// <summary>
@@ -295,6 +304,14 @@ public sealed class TranslationPipeline(
         // regionKey is already a parameter for the same reason; this closes the other half.
         var game = GameName;
         var styleHint = StyleHint;
+
+        // Read ONCE and carried, beside the two above and for a sharper version of their reason.
+        // Register is read at the cache-key site and again at the request site, and a snip
+        // deliberately ignores _busy - so a snip and a poll interleaving can hash a body under one
+        // register and translate it for the other. The cache key is a frozen wire format: a row
+        // filed under the wrong key is unreachable forever, silently, because a miss looks exactly
+        // like a line never seen before.
+        var register = Register;
 
         var recognised = await ocr.RecognizeAsync(frame, ct).ConfigureAwait(false);
 
@@ -410,7 +427,7 @@ public sealed class TranslationPipeline(
                 regionKey, source, recognised.RejectedWordCount, Repeat: true);
         }
 
-        var key = CacheKey.For(body, Register);
+        var key = CacheKey.For(body, register);
         var cached = await cache.TryGetAsync(key, ct).ConfigureAwait(false);
         if (cached is not null)
         {
@@ -429,7 +446,7 @@ public sealed class TranslationPipeline(
         var hits = _glossary.Match(body);
         var result = await router.TranslateAsync(
             new TranslationRequest(body, speaker, hits,
-                how.UseContext ? SnapshotContext() : [], Register, requestedAt,
+                how.UseContext ? SnapshotContext() : [], register, requestedAt,
                 game, styleHint, Diacritics), ct)
             .ConfigureAwait(false);
 
@@ -519,8 +536,12 @@ public sealed class TranslationPipeline(
         var game = GameName;
         var styleHint = StyleHint;
 
+        // Once, for the reason ProcessAsync snapshots it: the key and the request must agree about
+        // which register they are for, or the row lands under a key nothing will ever look up.
+        var register = Register;
+
         body = body.Trim();
-        var key = CacheKey.For(body, Register);
+        var key = CacheKey.For(body, register);
 
         if (!fresh)
         {
@@ -541,7 +562,7 @@ public sealed class TranslationPipeline(
         var hits = _glossary.Match(body);
         var result = await router.TranslateAsync(
             new TranslationRequest(body, speaker, hits,
-                how.UseContext ? SnapshotContext() : [], Register, requestedAt,
+                how.UseContext ? SnapshotContext() : [], register, requestedAt,
                 game, styleHint, Diacritics), ct)
             .ConfigureAwait(false);
 

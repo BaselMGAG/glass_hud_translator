@@ -541,8 +541,12 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
     /// </summary>
     public void Stop(string message, bool onOverlay = false)
     {
+        // Cancelled and DROPPED, never disposed. Stop is reached from the UI thread while the poll
+        // thread may be inside a provider call holding a registration on this very token, and
+        // disposing it there throws ObjectDisposedException out of ProviderRouter - the one class
+        // in this codebase whose entire contract is that it never throws. A CancellationTokenSource
+        // with no timer registered costs nothing to leave to the collector.
         _cancel?.Cancel();
-        _cancel?.Dispose();
         _cancel = null;
         _watch = null;
         _overlay.Notice = null;
@@ -557,8 +561,8 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
     /// </summary>
     public void Dispose()
     {
+        // Not disposed, for the reason given in Stop.
         _cancel?.Cancel();
-        _cancel?.Dispose();
         _cancel = null;
     }
 }

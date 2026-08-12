@@ -231,6 +231,60 @@ foliage is doing, and reuses instruments that were already here and already cali
 asymmetry moves up one notch and still holds: **polls to avoid readings, readings to avoid
 requests, never the reverse.**
 
+**The prefix test runs BEFORE the repeat test, and getting that order wrong translated half-written
+sentences for two releases.** `LooksLikeARepeat`'s budget is `min(3, shorter/4)` *absolute* edits, so
+the last partial reading of a reveal and the finished line — one to three characters apart, which is
+what a reveal looks like whenever it ends near a reading — scored as **the same words**. The fragment
+was released, translated and written to the cache permanently; the finished sentence then arrived and
+was thrown away by the pipeline's own repeat guard as a repeat of the fragment. Measured on four real
+FFXIV lines: every one released one character short, at a prefix agreement of exactly **1.00**. That
+is a fluent, confident, wrong Arabic line shown to somebody who cannot check it against the English —
+the answer this file is most emphatic about never giving — and it is why automatic mode read as
+erratic rather than merely slow. **Shape sees what degree cannot, so shape is asked first.**
+
+**A reveal is one-directional, and the direction is the meaning.** The newer reading being *longer*
+is a line still appearing. The newer one being *shorter* with the same prefix is the tail having gone
+missing, which is a disagreement and nothing else — a reveal never runs backwards. Folding both into
+"it is a prefix, so wait" lets a region flickering between a long and a short reading hold a stretch
+open forever.
+
+**One to three characters of growth is genuinely ambiguous, so a third reading decides.** It is the
+end of a reveal, and it is equally the reader finding a full stop it missed last time; no threshold
+separates those. The gate defers *once* and believes the next pair. It cannot loop — a pair already
+deferred falls through, and the shrinking direction always falls through.
+
+**A growing prefix must not count toward giving up.** `ReadsBeforeGivingUp` bounds readings that
+never *agree* — scenery, whose every reading is a fresh garble. A reveal always eventually agrees
+with itself, so counting its growth as failure made a long line exhaust the budget, give up, and
+restart the whole three-second cap: the line being long was itself the reason it was dropped, which
+is the multi-second inconsistency. `WatchPacing.LongestArrival` bounds a stretch that keeps growing
+instead, because a stretch is blind to the rest of the region for its whole length.
+
+**Sample the scene during a reading stretch too.** The movement sample sat below the mid-stretch
+early return, so the estimate stopped being taken for the whole of one. Invisible while a stretch was
+four polls; not invisible once a growing line can hold one open for seconds. The samples taken during
+a stretch are the good ones anyway — the text is not changing, so what they measure is exactly the
+scene's own restlessness — and `SceneMovement` is a `Min`, so more samples can only tighten it.
+
+**`FrameSettleGate` and `WatchSession` are reached from two threads, and now say so.** The poll
+thread sits in `Offer`/`Confirm` for minutes while the UI thread arrives at `Reset` and `Retune`
+through a mode change, `NowShowing` through a key press, `ForgetWhatIsOnScreen` through a snip, and
+`Cadence`/`Requests` through the Diagnostics tab. That last one was a live crash, not a torn read:
+`Cadence` enumerates a `Queue<T>` the poll thread is enqueuing into, which throws — on the UI thread,
+from the tab somebody opened to find out why the app was misbehaving. One lock each, taken by every
+public member, never held across I/O.
+
+**Cancel the token source; never dispose it.** `Stop` is reached from the UI thread while the poll
+thread may be inside a provider call holding a registration on that very token, and disposing it
+there throws `ObjectDisposedException` out of `ProviderRouter` — the one class whose entire contract
+is that it never throws.
+
+**Read `Register` once per call and carry it.** It was read at the cache-key site and again at the
+request site, and a snip deliberately ignores `_busy` — so a snip and a poll interleaving can hash a
+body under one register and translate it for the other. The cache key is a frozen wire format: a row
+filed under the wrong key is unreachable forever, silently, because a miss looks exactly like a line
+never seen before.
+
 **The agreement threshold is `FrameSettleGate.SameText` = 0.65, and every digit of it is measured.**
 Off real support traces: three consecutive readings of one video caption scored **0.79 and 0.88**
 against each other; four consecutive garbles off a region with no readable text scored **0.29, 0.35
@@ -1463,6 +1517,31 @@ was believed, and the root cause had been sitting in a synthetic corpus the whol
 - **`ContentRhythm` could not be diagnosed from outside at all.** "Auto does not switch" has four
   possible causes — too few samples, too few reads, a signal short of threshold, or the dwell — and
   the trace showed none of them. `Explain()` now prints all four every poll.
+
+**Found by a design pass that was asked to redesign the loop and instead found the bug (v0.8.3):**
+
+The brief was "make auto-translate almost live", and the honest answer turned out not to be an
+architecture change at all.
+
+- **The gate was translating half-written sentences and then suppressing the finished ones.** The
+  ordering defect above. It had shipped in two releases, every test passed, and it presented as
+  "inconsistent" because whether it bit depended on where the reveal happened to be when two
+  readings landed. Verified before it was fixed and mutation-checked after: on the old ordering,
+  three real FFXIV lines all release one character short.
+- **A long line was dropped for being long.** Growth counted toward the give-up budget, so a reveal
+  that took more than four readings exhausted it, gave up, and restarted the entire three-second
+  cap. Worst case measured at about nine seconds, and the penalty scaled with sentence length.
+- **The pipelining rewrite was designed, reviewed and then NOT shipped.** Three adversarial passes
+  found four fatal and twelve serious defects in it — a `_busy` flag written by three parties
+  admitting two concurrent translations of one line, two different clocks producing out-of-order
+  display, a suppressed dispatch enqueuing a double-length cadence gap — against a measured payoff
+  of **200 ms**. The blind window costs lines only above about one a second, which is faster than
+  anyone reads dialogue; the two gate defects cost lines at every reveal length and were a thirty-
+  line fix. **The expensive change was not the one that mattered, and the only way to know that was
+  to cost them both.**
+- **Two locks that should have existed all along.** `Cadence` enumerates a queue the poll thread
+  mutates, and the Diagnostics tab reads it — a live crash on the UI thread, in the one screen
+  somebody opens when the app is already misbehaving.
 
 **Latent, found by inspection and not yet hit in the wild:** the bundled `NotoSansArabic-Regular.ttf`
 contains **no Latin at all** — not `A`, not `%`, and none of `✓ ✗ ⚠ → · ⏎`. Every Latin word in the

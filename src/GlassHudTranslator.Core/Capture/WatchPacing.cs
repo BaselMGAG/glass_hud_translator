@@ -89,6 +89,19 @@ public sealed record WatchPacing
     public required int ReadsBeforeGivingUp { get; init; }
 
     /// <summary>
+    /// The whole life of one reading stretch, however well its readings are going.
+    ///
+    /// <para>
+    /// <see cref="ReadsBeforeGivingUp"/> bounds a stretch whose readings never AGREE. This bounds
+    /// one whose readings keep GROWING, which the gate refuses to count as a failure because a
+    /// typewriter reveal is a growing prefix and giving up on one is giving up on the line. Longer
+    /// than a line takes to type itself out, and shorter than the give-up-and-restart-the-cap cycle
+    /// it replaces, so the worst case gets better rather than worse.
+    /// </para>
+    /// </summary>
+    public required TimeSpan LongestArrival { get; init; }
+
+    /// <summary>
     /// The shortest gap allowed between two translations. A READABILITY bound before it is a
     /// spending one: Arabic arriving faster than about a second and a half apart cannot be read,
     /// so paying for it is paying for something nobody consumes.
@@ -147,6 +160,10 @@ public sealed record WatchPacing
             // a bound any looser stops being a bound within the life of the thing it is bounding.
             ReadsBeforeGivingUp = 3,
 
+            // A caption may legally live 833 ms, so a stretch outlasting two of them is bounding
+            // nothing at all.
+            LongestArrival = TimeSpan.FromMilliseconds(1500),
+
             // Was 1500, which is longer than a subtitle is allowed to be short: Netflix's floor is
             // 20 frames, five sixths of a second, so a conformant track can legally change faster
             // than we were willing to look. Every caption arriving inside the floor was not delayed,
@@ -194,6 +211,10 @@ public sealed record WatchPacing
             // its line until the player advances it, so reaching this at all means the region is
             // looking at scenery.
             ReadsBeforeGivingUp = 4,
+
+            // Longer than an FFXIV line takes to type itself out, which is what this has to sit
+            // through without concluding anything.
+            LongestArrival = TimeSpan.FromSeconds(4),
 
             // The two numbers this was asked for. The request ceilings sit well above anything a
             // cutscene produces, so in ordinary play it is the clock that speaks - they are there
@@ -250,6 +271,20 @@ public sealed class WatchSession(WatchPacing pacing, TimeProvider? clock = null)
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly Queue<TimeSpan> _gaps = new();
 
+    /// <summary>
+    /// One lock, because two threads reach this object and one of the reads enumerates a queue.
+    ///
+    /// <para>
+    /// <c>Cadence</c> does <c>_gaps.Order()</c> and the Diagnostics tab reads it from the UI thread
+    /// while the poll thread is inside <c>Translated()</c> enqueuing — enumerating a
+    /// <c>Queue&lt;T&gt;</c> during mutation throws, on the UI thread, during a run. And
+    /// <c>Requests++</c> is written from both threads, because a snip and a retry reach
+    /// <c>CountedOutsideTheRhythm</c> from the UI: a lost increment under-reports spend against the
+    /// cap, which is the one number the cap's own message exists to deliver.
+    /// </para>
+    /// </summary>
+    private readonly Lock _sync = new();
+
     private DateTimeOffset _startedAt;
     private DateTimeOffset? _lastTranslation;
     private bool _warned;
@@ -272,13 +307,15 @@ public sealed class WatchSession(WatchPacing pacing, TimeProvider? clock = null)
     public void Adapt(WatchPacing pacing)
     {
         ArgumentNullException.ThrowIfNull(pacing);
-        Pacing = pacing;
+        lock (_sync) Pacing = pacing;
     }
 
     /// <summary>The Advanced-mode escape hatch: warn, but never switch off.</summary>
     public bool Unbounded { get; init; }
 
-    public int Requests { get; private set; }
+    public int Requests { get { lock (_sync) return _requests; } }
+
+    private int _requests;
 
     public TimeSpan Elapsed => _clock.GetUtcNow() - _startedAt;
 
@@ -291,10 +328,13 @@ public sealed class WatchSession(WatchPacing pacing, TimeProvider? clock = null)
     {
         get
         {
-            if (_gaps.Count < 3) return null;
+            lock (_sync)
+            {
+                if (_gaps.Count < 3) return null;
 
-            var sorted = _gaps.Order().ToArray();
-            return sorted[sorted.Length / 2];
+                var sorted = _gaps.Order().ToArray();
+                return sorted[sorted.Length / 2];
+            }
         }
     }
 
@@ -308,10 +348,15 @@ public sealed class WatchSession(WatchPacing pacing, TimeProvider? clock = null)
 
     public void Start()
     {
+        lock (_sync) StartCore();
+    }
+
+    private void StartCore()
+    {
         _startedAt = _clock.GetUtcNow();
         _lastTranslation = null;
         _gaps.Clear();
-        Requests = 0;
+        _requests = 0;
         _warned = false;
         _stopped = false;
     }
@@ -323,25 +368,31 @@ public sealed class WatchSession(WatchPacing pacing, TimeProvider? clock = null)
     /// </summary>
     public bool MayTranslate()
     {
-        if (Pacing.MinimumInterval <= TimeSpan.Zero) return true;
-        if (_lastTranslation is not { } last) return true;
+        lock (_sync)
+        {
+            if (Pacing.MinimumInterval <= TimeSpan.Zero) return true;
+            if (_lastTranslation is not { } last) return true;
 
-        return _clock.GetUtcNow() - last >= Pacing.MinimumInterval;
+            return _clock.GetUtcNow() - last >= Pacing.MinimumInterval;
+        }
     }
 
     /// <summary>Records one translation actually shown, and folds its gap into the cadence.</summary>
     public void Translated()
     {
-        var now = _clock.GetUtcNow();
-        Requests++;
-
-        if (_lastTranslation is { } last)
+        lock (_sync)
         {
-            _gaps.Enqueue(now - last);
-            while (_gaps.Count > CadenceWindow) _gaps.Dequeue();
-        }
+            var now = _clock.GetUtcNow();
+            _requests++;
 
-        _lastTranslation = now;
+            if (_lastTranslation is { } last)
+            {
+                _gaps.Enqueue(now - last);
+                while (_gaps.Count > CadenceWindow) _gaps.Dequeue();
+            }
+
+            _lastTranslation = now;
+        }
     }
 
     /// <summary>
@@ -357,7 +408,10 @@ public sealed class WatchSession(WatchPacing pacing, TimeProvider? clock = null)
     /// lines.
     /// </para>
     /// </summary>
-    public void CountedOutsideTheRhythm() => Requests++;
+    public void CountedOutsideTheRhythm()
+    {
+        lock (_sync) _requests++;
+    }
 
     /// <summary>
     /// Asked once per poll. Measured from when auto-watch was switched ON, never from the last
@@ -366,6 +420,11 @@ public sealed class WatchSession(WatchPacing pacing, TimeProvider? clock = null)
     /// disables is not a cap.
     /// </summary>
     public WatchVerdict Check()
+    {
+        lock (_sync) return CheckCore();
+    }
+
+    private WatchVerdict CheckCore()
     {
         // Stop is TERMINAL. Without this, changing mode after a run has hit its cap revives it,
         // because the check is against the CURRENT mode's ceiling and video's is ten times
@@ -376,14 +435,14 @@ public sealed class WatchSession(WatchPacing pacing, TimeProvider? clock = null)
 
         var elapsed = Elapsed;
 
-        if (!Unbounded && (elapsed >= Pacing.StopAfter || Requests >= Pacing.StopAfterRequests))
+        if (!Unbounded && (elapsed >= Pacing.StopAfter || _requests >= Pacing.StopAfterRequests))
         {
             _stopped = true;
             return WatchVerdict.Stop;
         }
 
         if (_warned) return WatchVerdict.Run;
-        if (elapsed < Pacing.WarnAfter && Requests < Pacing.WarnAfterRequests) return WatchVerdict.Run;
+        if (elapsed < Pacing.WarnAfter && _requests < Pacing.WarnAfterRequests) return WatchVerdict.Run;
 
         _warned = true;
         return WatchVerdict.Warn;
@@ -401,6 +460,11 @@ public sealed class WatchSession(WatchPacing pacing, TimeProvider? clock = null)
     /// </para>
     /// </summary>
     public SettleOptions Settle()
+    {
+        lock (_sync) return SettleCore();
+    }
+
+    private SettleOptions SettleCore()
     {
         var cap = Pacing.SettleCap;
 
@@ -421,6 +485,7 @@ public sealed class WatchSession(WatchPacing pacing, TimeProvider? clock = null)
             RequiredStillTicks = Pacing.RequiredStillTicks,
             Cap = cap,
             ReadsBeforeGivingUp = Pacing.ReadsBeforeGivingUp,
+            LongestArrival = Pacing.LongestArrival,
 
             // So the gate can turn its sample queue back into an amount of time. Everything it
             // measures about the scene is a window over seconds, and a queue of polls only knows

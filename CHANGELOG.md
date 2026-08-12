@@ -3,6 +3,50 @@
 Notable changes. Started once the app was working end to end, so everything before the first entry
 is "the thing being described in the README".
 
+## v0.8.3 — 12 August 2026
+
+The one that explains "automatic mode is inconsistent". It was not slow and it was not a threshold —
+it was translating the sentence one word short and then refusing to translate the finished one.
+
+### Fixed
+
+- **A line that was still appearing could be translated before it finished, and the finished version
+  was then thrown away as a repeat of it.** The app compares two readings to decide a line has
+  stopped changing. It asked "are these the same words?" *before* "is this the same line with more
+  on the end?" — and the first test allows up to three characters of difference, which is exactly
+  what a sentence one character short of finished looks like. So the fragment was translated, saved
+  permanently, and the complete sentence that arrived a moment later was dropped as a duplicate of
+  it. Measured on four real lines from the game: every one released one character early.
+
+  This is the worst answer this app can give — a fluent, confident, wrong Arabic sentence, shown to
+  someone who cannot check it against the English — and it is why automatic mode felt erratic rather
+  than merely slow. Whether it happened depended on where the line's typing-out happened to be when
+  two readings landed.
+- **A long line was dropped for being long.** While a sentence was still appearing, each reading was
+  counted as a failure to agree, so a line that took more than four readings used up its budget,
+  gave up, and started its whole three-second wait again from the beginning. The longer the
+  sentence, the likelier it was to be abandoned. Waiting for a line to arrive is no longer counted
+  as failing to read it, and a separate time limit stops a screen that grows forever from holding
+  things up.
+- **The Diagnostics tab could crash the app during a run**, because it reads a number the watching
+  loop is writing at the same moment. Fixed properly, along with a second one like it — the request
+  count the session limit is measured against could lose increments, so the app under-reported what
+  it had spent.
+- **Switching auto-watch off during a translation could throw**, from the one part of the app whose
+  job is never to throw.
+- **Taking a snip in the middle of a translation could file that translation under the wrong Arabic
+  style**, making the saved copy unreachable forever after.
+- Switching game or profile now also clears what the second reader remembers, which it never did.
+
+### A note on what was deliberately not done
+
+A rewrite that keeps watching the screen while a line is being translated was designed and reviewed,
+and then not shipped. Reviewed hard, it introduced more ways to lose or duplicate a line than it
+removed, and it was worth about a fifth of a second. The blind spot it closes only costs lines when
+text changes faster than about one line a second — faster than dialogue is read — while the two
+defects above cost lines at every length of sentence. It stays on the list, with the problems found
+in review written down against it.
+
 ## v0.8.2 — 12 August 2026
 
 Three defects behind "automatic mode stops after one line", found from one very good observation:
