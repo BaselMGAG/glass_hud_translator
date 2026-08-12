@@ -71,6 +71,15 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
     /// </summary>
     private int _consecutiveFailures;
 
+    /// <summary>
+    /// Polls in a row where the screen grab came back with nothing. Distinct from a poll that
+    /// threw: this one is silent, which is what makes it worth counting.
+    /// </summary>
+    private int _consecutiveEmptyCaptures;
+
+    /// <summary>Ten polls is about five seconds - long enough not to fire on a transient.</summary>
+    private const int CaptureFailuresBeforeSayingSo = 10;
+
     private const int FailuresBeforeGivingUp = 5;
 
     public bool IsRunning => _cancel is not null;
@@ -123,6 +132,7 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
         _session.ResetRepeatGuard();
         _rhythm.Reset();
         _consecutiveFailures = 0;
+        _consecutiveEmptyCaptures = 0;
         _session.ResetEmptyRun();
         PollTrace.Clear();
         PollTrace.Write($"START mode={_settings.WatchMode} fps={_settings.AutoWatchFps}");
@@ -134,9 +144,7 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
         // Auto resolves to Dialogue until the detector has seen enough, which is the cheap mistake
         // to make while deciding: patience on a film costs a few late lines, impatience on a
         // typewriter reveal costs a request per half-written sentence.
-        var pacing = WatchPacing.For(_settings.WatchMode);
-        if (_settings.SecondsBetweenTranslations > 0)
-            pacing = pacing with { MinimumInterval = TimeSpan.FromSeconds(_settings.SecondsBetweenTranslations) };
+        var pacing = PacingFor(_settings.WatchMode);
 
         _watch = new WatchSession(pacing) { Unbounded = _settings.WatchWithoutLimit };
         _watch.Start();
@@ -230,8 +238,21 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
                 if (frame is null)
                 {
                     PollTrace.Write($"no frame   capture of {region.Value} returned nothing");
+
+                    // Said OUT LOUD after a run of them, on the overlay, because a capture that
+                    // returns nothing produces no error, no exception and no log line - the app
+                    // simply goes quiet, which from the outside is indistinguishable from it having
+                    // decided there was nothing to translate. That is the exact shape of failure
+                    // this project has now shipped twice, and the fix is the same both times: if
+                    // the app knows something is wrong, it has to say so somewhere the player is
+                    // actually looking.
+                    if (++_consecutiveEmptyCaptures == CaptureFailuresBeforeSayingSo)
+                        _overlay.Notice = Text.CaptureFailing;
+
                     continue;
                 }
+
+                _consecutiveEmptyCaptures = 0;
 
                 // BEFORE the gate is offered anything, not after. Deciding a frame is Ready is not
                 // a question - it commits that frame as the one now on the overlay - so offering a
@@ -326,6 +347,46 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
     /// has worked out is shown in Diagnostics either way and an estimate nobody can see is
     /// indistinguishable from a bug.
     /// </summary>
+    /// <summary>The mode's timings, with the user's floor applied if they have set one.</summary>
+    private WatchPacing PacingFor(WatchMode mode)
+    {
+        var pacing = WatchPacing.For(mode);
+
+        return _settings.SecondsBetweenTranslations > 0
+            ? pacing with { MinimumInterval = TimeSpan.FromSeconds(_settings.SecondsBetweenTranslations) }
+            : pacing;
+    }
+
+    /// <summary>
+    /// Applies a mode chosen while a run is in progress.
+    ///
+    /// <para>
+    /// <b>Adapts rather than restarts, and that distinction is the whole method.</b> The obvious
+    /// implementation — stop and start — would reset the clock and the request count the session
+    /// caps are measured against, so a user flipping between modes would hold the app open past
+    /// every limit it has, which is the one thing a cap must not allow. <c>WatchSession.Adapt</c>
+    /// exists precisely because Auto needs to swap timings without touching that accounting, and a
+    /// mode chosen by hand is the same operation chosen by a person.
+    /// </para>
+    ///
+    /// <para>
+    /// Without this the change silently did nothing until auto-watch was toggled off and on, since
+    /// the pacing is read once at the start of a run — which is indistinguishable, from outside,
+    /// from the mode switch being broken.
+    /// </para>
+    /// </summary>
+    public void ModeChanged()
+    {
+        if (_watch is null) return;
+
+        _running = _settings.WatchMode == WatchMode.Auto ? _rhythm.Resolved : _settings.WatchMode;
+
+        _watch.Adapt(PacingFor(_running));
+        _settle.Retune(_watch.Settle());
+
+        PollTrace.Write($"mode       changed to {_settings.WatchMode} mid-run, now running {_running}");
+    }
+
     private void Adapt(WatchSession watch, RhythmSample sample)
     {
         _rhythm.Observe(sample);
@@ -336,11 +397,7 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
 
         _running = wanted;
 
-        var pacing = WatchPacing.For(wanted);
-        if (_settings.SecondsBetweenTranslations > 0)
-            pacing = pacing with { MinimumInterval = TimeSpan.FromSeconds(_settings.SecondsBetweenTranslations) };
-
-        watch.Adapt(pacing);
+        watch.Adapt(PacingFor(wanted));
 
         // Said out loud, once per change. An automatic mode that switches silently is one nobody
         // can trust or debug: the first question when the pacing feels wrong is which of the two

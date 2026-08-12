@@ -459,6 +459,29 @@ does not have throws `FormatException` at runtime, and only ever for the users t
 for. Platform error text (Win32 messages, "Global hotkeys are Windows-only") is deliberately left
 untranslated; it comes from the OS.
 
+**There is exactly ONE `IFrameSource`, and a second one is a total outage.** `GetDC(NULL)` does not
+return a private handle — the screen device context comes from a system cache, so two instances get
+the *same* one, and the first to be disposed calls `ReleaseDC` on the handle the other is still
+using. Every capture afterwards returns nothing: auto-watch stops, the translate hotkey stops, and
+**nothing logs an error**, because BitBlt on a released DC simply fails. This shipped: a second,
+short-lived source created inside the diagnostic report killed capture for the whole session, so the
+diagnostic broke the thing it was diagnosing — and it did it invisibly, because the report's own
+capture worked (it held the fresh DC) while every poll failed. The screen DC is refcounted now so a
+second instance is survivable, but the rule stands: `TranslationSession` owns the only one, and
+anything else that needs a frame asks it.
+
+**A capture that returns nothing has to be said out loud.** It throws no exception and writes no log
+line, so the app just goes quiet — which from outside is identical to it deciding there was nothing
+to translate. That is the same failure shape as "nothing opens after Run anyway" and the fix is the
+same: after a run of them, put it on the overlay, where the player is actually looking.
+
+**A mode chosen mid-run must ADAPT the session, never restart it.** Restarting resets the clock and
+the request count the session caps are measured against, so flipping modes would hold the app open
+past every limit it has. `WatchSession.Adapt` exists for exactly this and is what `Auto` already
+uses; a mode chosen by hand is the same operation chosen by a person. Doing neither — which is what
+shipped — meant the change silently did nothing until auto-watch was toggled off and on, and that is
+indistinguishable from the switch being broken.
+
 **The primary monitor is not the screen.** Every "whole screen" call used to be
 `GetSystemMetrics(SM_CXSCREEN)`, which is the primary display alone — so a game on a second monitor
 was outside every captured frame. Worse, a monitor left of or above the primary starts at a

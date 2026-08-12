@@ -2015,7 +2015,7 @@ public sealed class SettingsWindow : Window
                 Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
                 $"GlassHud-selftest-{DateTime.Now:yyyyMMdd-HHmmss}");
 
-            var written = await SelfTest.RunAsync(_services, _settings, folder);
+            var written = await SelfTest.RunAsync(_services, _settings, _session, folder);
             _status.Text = string.Format(_text.SelfTestDone, Path.GetDirectoryName(written));
         }
         catch (Exception e)

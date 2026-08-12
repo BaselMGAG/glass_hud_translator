@@ -89,6 +89,9 @@ public sealed class TranslationSession : IDisposable
     /// <summary>Switches the poll loop on or off. The loop itself lives in <see cref="AutoWatch"/>.</summary>
     public void ToggleAutoWatch() => _auto.Toggle();
 
+    /// <summary>The watch mode was changed while a run may be in progress.</summary>
+    public void WatchModeChanged() => _auto.ModeChanged();
+
     /// <summary>
     /// What the current run has measured, for the Diagnostics tab. Null when auto-watch is off.
     ///

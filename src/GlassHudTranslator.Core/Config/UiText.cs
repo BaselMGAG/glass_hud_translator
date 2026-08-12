@@ -523,6 +523,7 @@ public sealed class UiText
     public required string LineIgnored { get; init; }
     public required string ToolbarRetry { get; init; }
     public required string ToolbarReadAgain { get; init; }
+    public required string CaptureFailing { get; init; }
     public required string SelfTestButton { get; init; }
     public required string SelfTestNote { get; init; }
     public required string SelfTestDone { get; init; }
@@ -1088,6 +1089,9 @@ public sealed class UiText
         LineIgnored = "That line is on your never-translate list.",
         ToolbarRetry = "Translate again",
         ToolbarReadAgain = "Read hard lines with AI",
+        CaptureFailing =
+            "Cannot read the screen just now. If this does not clear, restart the app — and if it\n"
+            + "keeps happening, send a self-test from Settings → Diagnostics.",
         SelfTestButton = "Run full self-test",
         SelfTestNote =
             "Writes a file to your Desktop describing exactly what the app can see right now: every "
@@ -1636,6 +1640,9 @@ public sealed class UiText
         LineIgnored = "هذا السطر في قائمة «لا تترجم» عندك.",
         ToolbarRetry = "ترجم من جديد",
         ToolbarReadAgain = "اقرأ السطور الصعبة بالذكاء الاصطناعي",
+        CaptureFailing =
+            "تعذّرت قراءة الشاشة الآن. إن لم تُحلّ من نفسها فأعد تشغيل البرنامج — وإن تكرّرت\n"
+            + "فأرسل فحصاً ذاتياً من الإعدادات ← التشخيص.",
         SelfTestButton = "شغّل الفحص الذاتي الكامل",
         SelfTestNote =
             "يكتب ملفاً على سطح المكتب يصف بالضبط ما يراه البرنامج الآن: كل نافذة وجدها، وأيّها "

@@ -129,6 +129,8 @@ public sealed class Win32FrameSource : IFrameSource
             _screenDc = NativeMethods.GetDC(IntPtr.Zero);
             if (_screenDc == IntPtr.Zero) return false;
 
+            lock (ScreenDcGate) _screenDcHolders++;
+
             _memoryDc = NativeMethods.CreateCompatibleDC(_screenDc);
             if (_memoryDc == IntPtr.Zero)
             {
@@ -158,12 +160,47 @@ public sealed class Win32FrameSource : IFrameSource
         return true;
     }
 
+    /// <summary>
+    /// How many live instances hold the screen DC.
+    ///
+    /// <para>
+    /// <b>This counter exists because of a measured, total outage.</b> <c>GetDC(NULL)</c> does not
+    /// hand out a private handle — the screen DC comes from a system CACHE, so two instances get
+    /// the same one. When a second, short-lived frame source was created for the diagnostic report
+    /// and then disposed, its <c>ReleaseDC</c> invalidated the handle the LIVE session was still
+    /// holding, and every capture from that moment returned nothing: auto-watch stopped, and so did
+    /// the translate hotkey. Nothing logged an error, because BitBlt on a released DC simply fails.
+    /// </para>
+    ///
+    /// <para>
+    /// Releasing only when the last holder goes makes a second instance harmless rather than
+    /// catastrophic. The app should still have exactly one — the counter is the guard, not the
+    /// design.
+    /// </para>
+    /// </summary>
+    private static int _screenDcHolders;
+
+    private static readonly Lock ScreenDcGate = new();
+
     private void ReleaseDeviceContexts()
     {
-        // The bitmap is compatible with the DC it was created from, so it goes too.
+        // The bitmap and the memory DC are genuinely ours: CreateCompatibleBitmap and
+        // CreateCompatibleDC return private handles, so they are freed unconditionally.
         if (_bitmap != IntPtr.Zero) NativeMethods.DeleteObject(_bitmap);
         if (_memoryDc != IntPtr.Zero) NativeMethods.DeleteDC(_memoryDc);
-        if (_screenDc != IntPtr.Zero) NativeMethods.ReleaseDC(IntPtr.Zero, _screenDc);
+
+        // The screen DC is shared, so it is released only by the last holder.
+        if (_screenDc != IntPtr.Zero)
+        {
+            lock (ScreenDcGate)
+            {
+                if (--_screenDcHolders <= 0)
+                {
+                    NativeMethods.ReleaseDC(IntPtr.Zero, _screenDc);
+                    _screenDcHolders = 0;
+                }
+            }
+        }
 
         _bitmap = _memoryDc = _screenDc = IntPtr.Zero;
         _bitmapWidth = _bitmapHeight = 0;

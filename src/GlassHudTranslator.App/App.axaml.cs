@@ -337,6 +337,10 @@ public partial class App : Application
                     // two surfaces cannot drift apart again.
                     settings.WatchMode = WatchModes.After(settings.WatchMode);
                     settings.Save();
+
+                    // Both surfaces do the same three things, because a mode chosen from the
+                    // toolbar mid-game is exactly when applying it immediately matters most.
+                    _session?.WatchModeChanged();
                     settingsWindow.ReportStatus(string.Format(UiText.For(settings.Language).WatchModeSetTo,
                         UiText.For(settings.Language).WatchModeName(settings.WatchMode)));
                     RefreshToolbar(settings);
@@ -386,7 +390,14 @@ public partial class App : Application
 
         // The mode has two controls now - the Translating tab and the toolbar - and either has to
         // repaint the other, or the toolbar shows dialogue while the app is watching a film.
-        settingsWindow.WatchModeChanged += () => RefreshToolbar(settings);
+        settingsWindow.WatchModeChanged += () =>
+        {
+            // The running loop as well as the button. Pacing is read once when a run starts, so
+            // without this a mode chosen mid-run did nothing at all until auto-watch was toggled
+            // off and on - which reads as the switch being broken.
+            _session?.WatchModeChanged();
+            RefreshToolbar(settings);
+        };
 
         // The Settings copy of the same button. One owner, two surfaces - neither can drift.
         settingsWindow.MoveModeToggled += () => _ = ToggleMoveModeAsync(settings, settingsWindow);

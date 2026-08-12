@@ -27,7 +27,8 @@ namespace GlassHudTranslator.App;
 /// </summary>
 public static class SelfTest
 {
-    public static async Task<string> RunAsync(AppServices services, AppSettings settings, string directory)
+    public static async Task<string> RunAsync(
+        AppServices services, AppSettings settings, TranslationSession session, string directory)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(settings);
@@ -149,8 +150,12 @@ public static class SelfTest
             }
             else
             {
-                using var frames = PlatformServices.CreateFrameSource(RepoPaths.TestFrames);
-                var frame = await frames.GetFrameAsync(region.Value, CancellationToken.None);
+                // The LIVE session's frame source, never a second one. Creating another and
+                // disposing it released the shared screen device context out from under this one,
+                // and every capture afterwards - auto-watch and the translate hotkey alike -
+                // silently returned nothing. A diagnostic that breaks what it is diagnosing is
+                // worse than no diagnostic at all.
+                var frame = await session.CaptureAsync(region.Value, CancellationToken.None);
 
                 if (frame is null)
                 {
