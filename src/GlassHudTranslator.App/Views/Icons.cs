@@ -106,8 +106,35 @@ public static class Icons
     /// here would be one more glyph resolved by whatever the OS happens to substitute.
     /// </summary>
     public static readonly IconGeometry WatchAuto = new(
-        "M 3.5,17 A 8.5,8.5 0 0 1 20.5,17 M 12,17 L 16.5,10.5",
-        "M 12,15.4 A 1.6,1.6 0 1 0 12,18.6 A 1.6,1.6 0 1 0 12,15.4 Z");
+        Dial + " M 12,17 L 12,8.2",
+        Pivot);
+
+    /// <summary>
+    /// The same dial with the needle over to the patient end, and to the impatient end.
+    ///
+    /// <para>
+    /// <b>Auto has to stay visibly Auto, and it also has to say what it decided.</b> Drawing the
+    /// plain Dialogue or Video icon while in Auto answered the second question by destroying the
+    /// first — the button became indistinguishable from having picked that mode by hand, which is
+    /// how it was reported: "the auto mode now displays the same video mode icon". A gauge already
+    /// means "being measured", so the reading goes where a gauge puts a reading. Left is the
+    /// patient end and right the fast one, which is the direction every speedometer already reads
+    /// in, so it needs no explaining and no letters — and letters are not available here anyway,
+    /// since the bundled Arabic font has no Latin at all.
+    /// </para>
+    /// </summary>
+    public static readonly IconGeometry WatchAutoDialogue = new(
+        Dial + " M 12,17 L 6.2,11.6",
+        Pivot);
+
+    public static readonly IconGeometry WatchAutoVideo = new(
+        Dial + " M 12,17 L 17.8,11.6",
+        Pivot);
+
+    /// <summary>The half-circle both auto icons are built on, so the three cannot drift apart.</summary>
+    private const string Dial = "M 3.5,17 A 8.5,8.5 0 0 1 20.5,17";
+
+    private const string Pivot = "M 12,15.4 A 1.6,1.6 0 1 0 12,18.6 A 1.6,1.6 0 1 0 12,15.4 Z";
 
     /// <summary>
     /// An open hand. Grab mode: the capture outline and the translation panel both become things

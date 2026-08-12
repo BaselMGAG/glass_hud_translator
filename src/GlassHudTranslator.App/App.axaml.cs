@@ -345,8 +345,18 @@ public partial class App : Application
                     // Both surfaces do the same three things, because a mode chosen from the
                     // toolbar mid-game is exactly when applying it immediately matters most.
                     _session?.WatchModeChanged();
-                    settingsWindow.ReportStatus(string.Format(UiText.For(settings.Language).WatchModeSetTo,
-                        UiText.For(settings.Language).WatchModeName(settings.WatchMode)));
+
+                    // <b>On the overlay, not only in Settings.</b> This button exists so that
+                    // somebody inside a fullscreen game can change mode without alt-tabbing, and it
+                    // was answering them on the one screen they cannot see - so pressing it gave no
+                    // feedback at all beyond a shape changing, and three shapes cycling silently do
+                    // not tell you which one you have landed on. Reported as "switching between
+                    // modes on the toolbar still does not tell you which mode is detected".
+                    var text = UiText.For(settings.Language);
+                    var chosen = string.Format(text.WatchModeSetTo, text.WatchModeName(settings.WatchMode));
+
+                    settingsWindow.ReportStatus(chosen);
+                    _overlay?.ShowMessage(chosen);
                     RefreshToolbar(settings);
                 },
                 ToggleDiacritics: () =>
@@ -647,7 +657,7 @@ public partial class App : Application
             ? "-ar"
             : "";
 
-        var slugs = new[] { "providers", "translating", "overlay", "hotkeys", "diagnostics" };
+        var slugs = new[] { "providers", "translating", "overlay", "hotkeys", "history", "diagnostics" };
 
         window.Opened += async (_, _) =>
         {
@@ -882,15 +892,21 @@ public partial class App : Application
             // button. Rendering only the default meant Icons.WatchAuto had never once been drawn by
             // the rehearsal whose entire job is proving a path string parses, and it is reached by
             // the least-used branch of the least-visited control.
+            // Five geometries on one button now, because Auto draws the same dial with the needle
+            // in three positions - undecided, and settled on each of the two. Every one of them has
+            // to be drawn here or it is a path string that no compiler, no unit test and no
+            // developer ever sees fail, on the least-visited control in the app.
             var shots = new[]
             {
-                ("toolbar-simple.png", false, WatchMode.Dialogue),
-                ("toolbar-advanced.png", true, WatchMode.Dialogue),
-                ("toolbar-mode-video.png", true, WatchMode.Video),
-                ("toolbar-mode-auto.png", true, WatchMode.Auto),
+                ("toolbar-simple.png", false, WatchMode.Dialogue, (WatchMode?)null),
+                ("toolbar-advanced.png", true, WatchMode.Dialogue, null),
+                ("toolbar-mode-video.png", true, WatchMode.Video, null),
+                ("toolbar-mode-auto.png", true, WatchMode.Auto, null),
+                ("toolbar-mode-auto-dialogue.png", true, WatchMode.Auto, WatchMode.Dialogue),
+                ("toolbar-mode-auto-video.png", true, WatchMode.Auto, WatchMode.Video),
             };
 
-            foreach (var (file, expanded, mode) in shots)
+            foreach (var (file, expanded, mode, running) in shots)
             {
                 // Set through the window rather than through the expander button, because that
                 // writes to the settings file and this run must not touch it. Then a delay, so the
@@ -900,7 +916,7 @@ public partial class App : Application
                 {
                     toolbar.ShowAdvanced(expanded);
                     toolbar.ShowState(autoWatch: expanded, overlayHidden: false,
-                        captureFrame: expanded, diacritics: false, mode: mode);
+                        captureFrame: expanded, diacritics: false, mode: mode, running: running);
                 });
 
                 await Task.Delay(250);

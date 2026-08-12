@@ -281,17 +281,15 @@ public sealed class ToolbarWindow : FloatingWindow
         // Three states on one button, so the ICON has to carry which one - a lit/unlit pair cannot
         // express three. Dialogue box, film strip, gauge; lit whenever it is not the default.
         //
-        // <b>Except in Auto, where the useful fact is which of the two it has DECIDED on.</b> The
-        // gauge says the app is choosing for you and then never says what it chose - reported as
-        // "the auto mode does not tell you which mode is on", and true: the announcement on the
-        // overlay is one line at the instant of the switch, and thirty seconds later there was
-        // nothing on screen that answered the question. So a running Auto shows the mode it is
-        // actually running, and stays lit, which is what separates it from having picked that mode
-        // by hand. Undecided Auto keeps the gauge.
+        // <b>In Auto it is the same gauge with the needle moved</b>, never the plain Dialogue or
+        // Video shape. Both facts have to survive at once: that the app is choosing, and what it
+        // chose. Borrowing the fixed modes' icons answered the second by destroying the first, and
+        // the button became indistinguishable from having picked that mode by hand - reported
+        // immediately, as "the auto mode now displays the same video mode icon".
         _modeIcon = (mode, running) switch
         {
-            (WatchMode.Auto, WatchMode.Video) => Icons.WatchMode,
-            (WatchMode.Auto, WatchMode.Dialogue) => Icons.WatchDialogue,
+            (WatchMode.Auto, WatchMode.Video) => Icons.WatchAutoVideo,
+            (WatchMode.Auto, WatchMode.Dialogue) => Icons.WatchAutoDialogue,
             (WatchMode.Auto, _) => Icons.WatchAuto,
             (WatchMode.Video, _) => Icons.WatchMode,
             _ => Icons.WatchDialogue,
