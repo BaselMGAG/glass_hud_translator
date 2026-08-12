@@ -288,7 +288,7 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
                 var signature = FrameSignature.Compute(frame);
                 var verdict = _settle.Offer(signature);
 
-                PollTrace.Write($"gate       {verdict} region={region.Value}");
+                PollTrace.Write($"gate       {verdict} scene-moves={_settle.SceneMovement} region={region.Value}");
 
                 if (verdict == FrameVerdict.Unchanged)
                 {

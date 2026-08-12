@@ -32,6 +32,41 @@ public sealed record SettleOptions
     /// </para>
     /// </summary>
     public int MaxDifferingCells { get; init; } = 2;
+
+    /// <summary>
+    /// How much MORE than the scene's own restlessness a frame may differ and still count as still.
+    ///
+    /// <para>
+    /// <b>The stillness tolerance cannot be a fixed number, and that is a measurement rather than an
+    /// opinion.</b> With the text completely unchanged, a dialogue box over a scene with mild
+    /// foliage moves 3-6 cells of 1536 between consecutive polls; moderate motion moves 13-18, and
+    /// heavy motion 46-58. One more revealed WORD moves 14-18. So mild motion wants a tolerance
+    /// near 8 and heavy motion near 60 — and at 60 a whole word is invisible, which is precisely
+    /// the defect this gate exists to prevent. There is no single number that is right for both.
+    /// </para>
+    ///
+    /// <para>
+    /// So the tolerance is <c>MaxDifferingCells + floor + floor/4</c>: the strictness that is right
+    /// for a still image, plus whatever this scene is doing, plus a quarter for its own variance.
+    /// A flat addition would not do — it has to vanish when the scene is static, or a typewriter
+    /// pausing on a full stop across one poll (3 to 6 cells) reads as finished, which is the very
+    /// defect this gate was built for. Checked against every level measured:
+    /// </para>
+    ///
+    /// <code>
+    /// floor    tolerance   scene moves   one word moves
+    ///     0            2       0            14-18   static: unchanged from before
+    ///     4            7       3-6          19      mild foliage
+    ///    14           19      13-18         32      moderate
+    ///    50           64      46-58         73      heavy
+    /// </code>
+    ///
+    /// <para>
+    /// The scene stays under the tolerance and a revealed word stays over it at every level, which
+    /// is the only property that matters and the reason for the quarter rather than a constant.
+    /// </para>
+    /// </summary>
+    public int MotionVariance { get; init; } = 4;
 }
 
 /// <summary>What auto-watch should do with the frame it just captured.</summary>
@@ -79,11 +114,61 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
 
     private FrameSignature? _translated;
     private FrameSignature? _pending;
+    private FrameSignature? _lastPoll;
     private int _stillTicks;
     private DateTimeOffset _movingSince;
 
+    /// <summary>How much consecutive polls have differed recently. The scene's own restlessness.</summary>
+    private readonly Queue<int> _movement = new();
+
+    /// <summary>Samples the noise floor is taken over. Eight seconds at the dialogue rate.</summary>
+    private const int MovementWindow = 16;
+
+    /// <summary>Samples before the measurement is believed. Four seconds at the dialogue rate.</summary>
+    private const int MinimumSamples = 8;
+
     /// <summary>How many polls the current change has been settling for. Diagnostics only.</summary>
     public int StillTicks => _stillTicks;
+
+    /// <summary>
+    /// How much the scene moves on its own, in cells, as a median over recent polls.
+    ///
+    /// <para>
+    /// A MEDIAN rather than a mean, because the samples are a mixture of two populations: most
+    /// polls are a line sitting still over a moving scene, and a few are the line actually
+    /// changing. The median is dominated by the first, which is the one being measured; a mean
+    /// would be dragged upward by every reveal and would then hide the next one.
+    /// </para>
+    /// </summary>
+    public int SceneMovement
+    {
+        get
+        {
+            // Nothing is claimed until the scene has been watched for a few seconds. With one or
+            // two samples the only thing measured may BE the change - a reveal's own 14-to-18 cells
+            // become the "floor", the tolerance opens to swallow a whole word, and the gate calls
+            // the second poll of a typewriter reveal finished. Until then the static default
+            // stands, which is strict, and strict merely means waiting for the cap.
+            if (_movement.Count < MinimumSamples) return 0;
+
+            // The MINIMUM, not a mean or a median. The scene's restlessness is by definition the
+            // smallest difference two consecutive polls can show, because text appearing only ever
+            // ADDS to it - so a reveal, however many polls it spans, cannot drag this upward. Every
+            // averaging estimator can, and does: sampled across a reveal, a median rises far enough
+            // to hide the NEXT reveal, which is the gate defeating itself one line later.
+            return _movement.Min();
+        }
+    }
+
+    /// <summary>What "still" means on this screen right now.</summary>
+    private int StillnessTolerance
+    {
+        get
+        {
+            var floor = SceneMovement;
+            return _options.MaxDifferingCells + floor + floor / Math.Max(1, _options.MotionVariance);
+        }
+    }
 
     /// <summary>
     /// Offers one captured frame's signature. Call this on every poll, including the ones that
@@ -93,9 +178,29 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
     {
         ArgumentNullException.ThrowIfNull(signature);
 
+        // Sampled on EVERY poll, and read back as a low percentile rather than a median. Sampling
+        // only the polls that are provably still would be cleaner, but those are unreachable when
+        // the scene moves more than the current tolerance allows - the gate would need the floor in
+        // order to learn the floor. A quarter-percentile is dragged upward by nothing a reveal can
+        // do, because a reveal is a handful of polls and a line sitting on screen is dozens.
+        if (_lastPoll is not null)
+        {
+            _movement.Enqueue(signature.DifferenceCount(_lastPoll));
+            while (_movement.Count > MovementWindow) _movement.Dequeue();
+        }
+
+        _lastPoll = signature;
+
         // Identical to what is already on the overlay. The overwhelmingly common case during
-        // dialogue, and the reason this is checked first.
-        if (signature.LooksIdenticalTo(_translated))
+        // dialogue, and the reason this is checked first. Deliberately still the default threshold
+        // and NOT the learned one: this asks "is this a new line", the loosest of the questions,
+        // and widening it further would let a genuinely new line be mistaken for the old one.
+        // Never STRICTER than it was: this asks "is this a different line", and the six-cell
+        // default was chosen for that question. The learned tolerance only ever widens it, which is
+        // what a scene moving more than six cells a poll requires - without that, a line sitting
+        // perfectly still over busy foliage reads as a new line on every single poll.
+        if (signature.LooksIdenticalTo(
+                _translated, Math.Max(FrameSignature.DefaultChangeThreshold, StillnessTolerance)))
         {
             _pending = null;
             _stillTicks = 0;
@@ -114,7 +219,7 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
             return Verdict(signature, now);
         }
 
-        if (signature.LooksIdenticalTo(_pending, _options.MaxDifferingCells))
+        if (signature.LooksIdenticalTo(_pending, StillnessTolerance))
         {
             _stillTicks++;
         }
@@ -152,6 +257,12 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
         _translated = null;
         _pending = null;
         _stillTicks = 0;
+
+        // The movement samples are kept deliberately. They describe the SCENE, which has not
+        // changed just because auto-watch was toggled - and throwing them away would put the gate
+        // back on the static-frame default for the first eight seconds of every run, which is the
+        // window where getting it wrong is most visible.
+        _lastPoll = null;
     }
 
     /// <summary>

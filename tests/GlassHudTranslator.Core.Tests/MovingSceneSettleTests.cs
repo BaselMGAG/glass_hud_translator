@@ -79,20 +79,54 @@ public class MovingSceneSettleTests
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
         var gate = new FrameSettleGate(clock: clock);
 
-        // A line appearing, then holding.
-        var verdicts = new List<FrameVerdict>();
-        foreach (var (words, tick) in new[] { (3, 1), (6, 2), (8, 3), (8, 4), (8, 5), (8, 6) })
+        // A line already on screen, sitting there. This is what production looks like and what the
+        // real trace showed - long runs of the same line while the player reads it - and it is how
+        // the gate gets to measure the scene. A test that starts cold measures the four seconds
+        // before any measurement exists, which is a different thing and is asserted separately
+        // below.
+        var tick = 0;
+        for (var i = 0; i < 12; i++)
         {
-            verdicts.Add(gate.Offer(Scene(words, tick, patches)));
+            gate.Offer(Scene(4, ++tick, patches));
             clock.Advance(TimeSpan.FromMilliseconds(500));
         }
 
-        // Reached Ready at all...
+        // Now the player advances it: a new line appears and then holds still.
+        var verdicts = new List<FrameVerdict>();
+        var since = clock.GetUtcNow();
+
+        foreach (var words in new[] { 6, 8, 8, 8, 8, 8 })
+        {
+            verdicts.Add(gate.Offer(Scene(words, ++tick, patches)));
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+        }
+
         Assert.Contains(FrameVerdict.Ready, verdicts);
 
-        // ...and reached it BEFORE the three-second cap could have fired. Six polls at 500 ms is
-        // 3 seconds exactly, so a Ready in the first five is stillness rather than the deadline.
+        // And from STILLNESS rather than from running out of patience. The cap is three seconds and
+        // these polls are half a second apart, so a Ready among the first five is the gate deciding
+        // the text has stopped - which is the whole point, because a cap-forced release lands mid
+        // animation and reads as fragments.
         Assert.Contains(FrameVerdict.Ready, verdicts.Take(5));
+        Assert.True(gate.SceneMovement > 0 || patches == 0,
+            "the gate never measured the scene, so it cannot have adapted to it");
+    }
+
+    [Fact]
+    public void BeforeTheSceneHasBeenMeasuredTheGateStaysStrict()
+    {
+        // The cold start, stated rather than discovered. For the first few seconds of a run there
+        // is no measurement, so the gate uses the tolerance that is right for a still image - which
+        // over a moving scene means it will not settle and the cap releases the frame instead. That
+        // costs at most the first line of a session, and the alternative is worse: trusting one or
+        // two samples means trusting a number that may BE the change, which opens the tolerance
+        // wide enough to swallow a whole word.
+        var gate = new FrameSettleGate();
+
+        gate.Offer(Scene(8, 1, patches: 12));
+        gate.Offer(Scene(8, 2, patches: 12));
+
+        Assert.Equal(0, gate.SceneMovement);
     }
 
     [Fact]

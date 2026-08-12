@@ -624,6 +624,27 @@ OCR text, which is what keeps deciding-to-wait free. `tools/Replay` deliberately
 it: its corpus is a set of distinct frames rather than a time series off one screen, so a settle
 gate there would skip most of the frames the harness exists to push through.
 
+**The stillness tolerance is LEARNED from the scene, because no fixed number can work.** Measured
+with the text completely unchanged: a dialogue box over mild foliage moves 3-6 cells of 1536 between
+consecutive polls, moderate motion moves 13-18, heavy motion 46-58. One more revealed WORD moves
+14-18. So mild motion wants a tolerance near 8 and heavy motion near 60 — and at 60 a whole word is
+invisible, which is the defect the gate exists to prevent. `MaxDifferingCells = 2` sat below the
+noise floor of *any* real scene, so a finished line could never be declared finished; every release
+came from the cap, which fires mid-animation, and the OCR read fragments. Reported as "auto
+translate does not switch to the next sentence".
+
+The floor is the **minimum** difference over a rolling window, never a mean or a median: text
+appearing only ever ADDS to the scene's own movement, so a minimum cannot be dragged upward by a
+reveal, while an average sampled across one rises far enough to hide the NEXT reveal. It is not
+believed at all until `MinimumSamples` polls have been seen — with one or two samples the only
+thing measured may BE the change, and trusting that opens the tolerance wide enough to swallow a
+word. That costs at most the first line of a session, which is the right trade.
+
+**And the reason it survived: every frame in `test-frames/` has a STATIC background, which measures
+exactly zero.** The gate settles instantly there, so every test passed. This file already warned
+that the synthetic corpus says nothing about a real game's moving 3D scene; this is that warning
+coming true, and the new tests model motion explicitly for that reason.
+
 **Auto-watch pacing is per mode, and the two modes disagree about every number.** `WatchPacing.For`
 is the only place they are written down. Dialogue waits for text to finish appearing because it
 types itself out and then stays; video cannot afford to, because a subtitle lives three seconds and
