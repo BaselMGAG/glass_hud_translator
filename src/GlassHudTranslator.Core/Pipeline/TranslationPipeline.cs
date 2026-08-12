@@ -366,6 +366,23 @@ public sealed class TranslationPipeline(
                 game, styleHint, Diacritics), ct)
             .ConfigureAwait(false);
 
+        // The model saying it could not read the line. Treated exactly like the too-short guard
+        // above - nothing was translated, so nothing is shown, cached, or pushed into context -
+        // and reported as its own reason so a run of them is visible rather than looking like a
+        // provider problem.
+        //
+        // It must NOT be cached, and that is the whole point: a garbled frame produces a DIFFERENT
+        // garble every time, so each one is a new key, and caching them would fill the store with
+        // rows that can never be hit while the line they came from stays untranslated.
+        if (result.Text.Trim().StartsWith(PromptBuilder.Unreadable, StringComparison.OrdinalIgnoreCase))
+        {
+            PollTrace.Write($"  unread   model could not read '{Short(body)}' - left for the next poll");
+
+            return new PipelineOutcome(recognised.RawText, normalized, speaker, body, [], null,
+                recognised.Confidence, Stopwatch.GetElapsedTime(started),
+                regionKey, source, recognised.RejectedWordCount);
+        }
+
         // Only cache a genuine translation. Caching the English fallback would poison the entry
         // permanently - the next lookup would hit and never retry the provider.
         if (result.Outcome == TranslationLogOutcomes.Ok)
@@ -383,8 +400,9 @@ public sealed class TranslationPipeline(
             Remember(body, how);
         }
 
-        PollTrace.Write($"  SENT     '{Short(body)}' -> {result.Provider}/{result.Model} "
-            + $"'{Short(result.Text)}'");
+        PollTrace.Write($"  SENT     conf={recognised.Confidence:F0} kept={recognised.WordCount} "
+            + $"dropped={recognised.RejectedWordCount} '{Short(body)}' "
+            + $"-> {result.Provider}/{result.Model} '{Short(result.Text)}'");
 
         await LogAsync(recognised.RawText, normalized, speaker, result, game, regionKey, ct).ConfigureAwait(false);
 

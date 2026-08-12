@@ -8,6 +8,22 @@ namespace GlassHudTranslator.Core.Translation;
 /// </summary>
 public static class PromptBuilder
 {
+    /// <summary>
+    /// What the model says instead of guessing, when the line it was given is not readable text.
+    ///
+    /// <para>
+    /// This exists because of a measured failure, not a hypothetical one. A frame captured while
+    /// the dialogue box was still animating produced the reading
+    /// <c>'an gp - ESS BF OE Ri, SI iat ee SES mia kyo ee 1'</c> — and the model returned a
+    /// perfectly fluent Arabic sentence, because it had three coherent previous lines sitting in
+    /// the prompt as context and reached for one of those instead. The user saw every translation
+    /// arrive one sentence late, which is a far worse failure than seeing nothing: nothing is
+    /// obviously nothing, while a confident translation of the wrong line is indistinguishable
+    /// from a correct one to somebody who cannot read the English.
+    /// </para>
+    /// </summary>
+    public const string Unreadable = "<UNREADABLE>";
+
     public static (string System, string User) Build(TranslationRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -52,7 +68,16 @@ public static class PromptBuilder
               the requested dialect, not into a more formal one.
             - Proper nouns: use the glossary spellings exactly. For a name that is not in the
               glossary, transliterate it into Arabic and keep that spelling consistent.
-            - Translate only the line given. Do not continue the scene, explain, or add notes.
+            - Translate ONLY the text after "Line:". Anything under "Previous lines" is there so you
+              can resolve pronouns, gender and names - it is background, it has already been
+              translated, and translating it again is always wrong. If the Line and the previous
+              lines disagree, the Line is what is on screen and the previous lines are the past.
+            - The Line is read off the screen by text recognition, so it is sometimes captured
+              mid-change and arrives as nonsense - stray letters, fragments, no sentence. When that
+              happens, reply with exactly {Unreadable} and nothing else. Do NOT reach for a previous
+              line, and do NOT invent a plausible sentence: the app can try again a moment later,
+              but it cannot un-show a confident translation of something that was never on screen.
+            - Do not continue the scene, explain, or add notes.
             - Preserve the speaker's tone, including interruptions and trailing dashes.
             - Output ONLY the Arabic translation. No romanisation, no quotes around the whole
               line, no commentary, no alternatives.

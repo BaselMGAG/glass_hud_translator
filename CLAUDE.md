@@ -146,6 +146,22 @@ case-preserved text for the prompt; `CacheKey` lowercases on its way into SHA-25
 signal to the model — "limsa lominsa" translates worse than "Limsa Lominsa". And the realistic way
 to exhaust a daily API quota isn't long sessions, it's one line hashing two different ways.
 
+**Context is reference, and the prompt has to say so — or the model translates it instead.** The
+worst bug this app has shipped: a frame captured while FFXIV's dialogue box was still animating
+read as `an gp - ESS BF OE Ri, SI iat ee SES mia kyo ee 1`, and the model returned a *fluent,
+correct-looking* Arabic sentence — because three coherent previous lines were sitting in the same
+prompt as context and it reached for one of those. Every translation on screen was one sentence
+behind. That is far worse than showing nothing: nothing is obviously nothing, while a confident
+translation of the wrong line is indistinguishable from a working app to the person this is built
+for, who cannot check it against the English. The prompt now says the Line is the only thing to
+translate and the previous lines are the past, and gives the model `<UNREADABLE>` to say instead of
+guessing. That answer is never shown, never cached and never enters context — the same three
+refusals the too-short guard already makes, for the same reason.
+
+**Never cache an unreadable frame.** A garbled capture produces a DIFFERENT garble every time, so
+every one is a fresh key; caching them fills the store with rows that can never be hit while the
+line they came from stays untranslated.
+
 **Context reaches the prompt and never the cache key, and that is a decision, not an oversight.**
 The prompt already carries the game, the style hint, the glossary, the speaker and now three
 previous lines; the key hashes the body alone. So the same English line in two games returns one

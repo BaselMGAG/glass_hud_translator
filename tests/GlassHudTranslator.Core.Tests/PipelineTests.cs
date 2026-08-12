@@ -500,3 +500,111 @@ public class PipelineRecourseTests
         Assert.Empty(cache.Rows);
     }
 }
+
+/// <summary>
+/// The frame caught mid-change, and the reason it was the worst bug this app has had.
+///
+/// <para>
+/// Measured on a real machine: FFXIV's dialogue box was still animating when the settle cap forced
+/// a read, so the text recognition returned
+/// <c>"an gp - ESS BF OE Ri, SI iat ee SES mia kyo ee 1"</c> — and the model answered with a
+/// fluent, correct-looking Arabic sentence, because the prompt also carried three coherent previous
+/// lines as context and it reached for one of those. Every translation on screen was one sentence
+/// behind, and to a reader who cannot check the English that is indistinguishable from the app
+/// working.
+/// </para>
+/// </summary>
+public class UnreadableLineTests
+{
+    private static readonly Frame AnyFrame = new FrameBuilder(8, 8, new Rgb(0, 0, 0)).Build();
+
+    private const string Garble = "an gp - ESS BF OE Ri, SI iat ee SES mia kyo ee 1";
+
+    private static TranslationPipeline Build(ScriptedOcr ocr, MemoryCache cache, FakeProvider provider) =>
+        new(ocr, cache, new GlossaryMatcher(GlossaryStore.Empty), new ProviderRouter([(provider, 600)]));
+
+    [Fact]
+    public async Task TheModelSayingItCannotReadTheLineShowsNothing()
+    {
+        var ocr = new ScriptedOcr();
+        var cache = new MemoryCache();
+        var pipeline = Build(ocr, cache, new FakeProvider("fake").Returns(PromptBuilder.Unreadable));
+
+        ocr.Reads(Garble, confidence: 42);
+        var outcome = await pipeline.ProcessAsync(AnyFrame);
+
+        // Nothing shown beats the previous sentence shown, which is what happened instead.
+        Assert.Null(outcome.Result);
+    }
+
+    [Fact]
+    public async Task AnUnreadableLineIsNeverCached()
+    {
+        // A garbled frame produces a DIFFERENT garble every time, so each is a new key. Caching
+        // them fills the store with rows that can never be hit, while the line they came from
+        // stays untranslated.
+        var ocr = new ScriptedOcr();
+        var cache = new MemoryCache();
+        var pipeline = Build(ocr, cache, new FakeProvider("fake").Returns(PromptBuilder.Unreadable));
+
+        ocr.Reads(Garble, confidence: 42);
+        await pipeline.ProcessAsync(AnyFrame);
+
+        Assert.Empty(cache.Rows);
+    }
+
+    [Fact]
+    public async Task AnUnreadableLineDoesNotBecomeContextForTheNextOne()
+    {
+        // It was never on screen as far as the conversation goes. Quoting it back would put the
+        // noise into every following prompt, which is how one bad frame poisons a whole scene.
+        var ocr = new ScriptedOcr();
+        var provider = new FakeProvider("fake");
+        provider.Returns("ترجمة");
+        provider.Returns(PromptBuilder.Unreadable);
+        provider.Returns("ترجمة");
+
+        var pipeline = Build(ocr, new MemoryCache(), provider);
+
+        ocr.Reads("The Scions stand ready.");
+        await pipeline.ProcessAsync(AnyFrame);
+
+        ocr.Reads(Garble, confidence: 42);
+        await pipeline.ProcessAsync(AnyFrame);
+
+        ocr.Reads("We must reach Limsa before nightfall.");
+        await pipeline.ProcessAsync(AnyFrame);
+
+        Assert.Equal(["The Scions stand ready."], provider.Requests[^1].ContextLines);
+    }
+
+    [Fact]
+    public async Task TheSentinelIsMatchedEvenWhenTheModelDressesItUp()
+    {
+        // Models add a trailing full stop, a newline, or a stray space to anything they are told to
+        // say verbatim. Failing to recognise it would put the literal token on the overlay.
+        foreach (var dressed in new[] { "<UNREADABLE>", "<UNREADABLE>.", " <unreadable> ", "<UNREADABLE>\n" })
+        {
+            var ocr = new ScriptedOcr();
+            var pipeline = Build(ocr, new MemoryCache(), new FakeProvider("fake").Returns(dressed));
+
+            ocr.Reads(Garble, confidence: 42);
+
+            Assert.Null((await pipeline.ProcessAsync(AnyFrame)).Result);
+        }
+    }
+
+    [Fact]
+    public async Task ARealTranslationIsUnaffected()
+    {
+        var ocr = new ScriptedOcr();
+        var cache = new MemoryCache();
+        var pipeline = Build(ocr, cache, new FakeProvider("fake").Returns("الفصائل جاهزة."));
+
+        ocr.Reads("The Scions stand ready.");
+        var outcome = await pipeline.ProcessAsync(AnyFrame);
+
+        Assert.Equal("الفصائل جاهزة.", outcome.Result!.Text);
+        Assert.Single(cache.Rows);
+    }
+}
