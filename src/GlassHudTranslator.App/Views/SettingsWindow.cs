@@ -1809,7 +1809,7 @@ public sealed class SettingsWindow : Window
         // The frozen still now covers every monitor, so its top-left is the virtual desktop's
         // origin rather than (0,0) - negative when a screen sits left of or above the primary.
         var desktop = PlatformServices.VirtualDesktop();
-        var screenshot = PlatformServices.CaptureFullScreen();
+        var screenshot = _session.CaptureWholeDesktop();
 
         var picker = new RegionPickerWindow(profileName, screenshot, TestRegionAsync, _text);
 
@@ -1919,7 +1919,7 @@ public sealed class SettingsWindow : Window
         await Task.Delay(120);
 
         var desktop = PlatformServices.VirtualDesktop();
-        var screenshot = PlatformServices.CaptureFullScreen();
+        var screenshot = _session.CaptureWholeDesktop();
 
         var picker = new RegionPickerWindow(
             _settings.LastRegionProfile, screenshot, TestRegionAsync, _text, snip: true);

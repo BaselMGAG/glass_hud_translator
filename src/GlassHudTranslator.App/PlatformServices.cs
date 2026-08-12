@@ -87,17 +87,33 @@ public static class PlatformServices
     /// A still of the whole screen, so the region picker can be drawn on a frozen image rather than
     /// over a live game. Picking on a still is far easier: the dialogue stays put while you drag.
     /// </summary>
-    public static Frame? CaptureFullScreen()
+    /// <summary>
+    /// A still of every monitor, for the region picker and the snip.
+    ///
+    /// <para>
+    /// <b>Takes the frame source rather than building one</b>, and that signature is the whole point.
+    /// It used to construct a <c>Win32FrameSource</c> and dispose it, which is the pattern
+    /// <c>CLAUDE.md</c> names as a total outage: the screen device context comes from a system cache,
+    /// so the short-lived instance's <c>ReleaseDC</c> killed the handle the live session was holding
+    /// and every capture afterwards returned nothing until the app was restarted. Picking a region
+    /// or taking a snip therefore broke translation for the rest of the session, silently.
+    /// </para>
+    ///
+    /// <para>
+    /// <c>Win32FrameSource</c> no longer holds that handle across calls, so this is survivable now
+    /// either way. It still takes the session's source, because the rule is worth keeping whether or
+    /// not the current implementation happens to tolerate breaking it — and a parameter is the only
+    /// version of that rule a future caller cannot fail to notice.
+    /// </para>
+    /// </summary>
+    public static Frame? CaptureFullScreen(IFrameSource source)
     {
-#if WINDOWS
+        ArgumentNullException.ThrowIfNull(source);
+
         var desktop = VirtualDesktop();
         if (desktop.IsEmpty) return null;
 
-        using var source = new Windows.Win32FrameSource();
         return source.GetFrameAsync(desktop, CancellationToken.None).GetAwaiter().GetResult();
-#else
-        return null;
-#endif
     }
 
     /// <summary>

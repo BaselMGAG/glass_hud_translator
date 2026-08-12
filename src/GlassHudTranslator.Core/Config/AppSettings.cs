@@ -101,6 +101,41 @@ public sealed record AppSettings
     [JsonPropertyName("autoWatchFps")] public double AutoWatchFps { get; set; }
 
     /// <summary>
+    /// The value this field used to ship with, which is not the same thing as a value somebody
+    /// chose. See <see cref="PollIntervalFor"/>.
+    /// </summary>
+    public const double LegacyDefaultFps = 2;
+
+    /// <summary>
+    /// How long to wait between polls, given the mode's own pacing.
+    ///
+    /// <para>
+    /// <b>The stored 2 is ignored, and that is a correction rather than a preference.</b> This field
+    /// shipped with a default of <c>2</c> and every installation that has ever saved its settings
+    /// has that number written into its file — so the override was always active, and
+    /// <see cref="Capture.WatchPacing"/>'s Video rate of four polls a second, chosen deliberately because
+    /// there is no game render thread to compete with while watching a film, has never once taken
+    /// effect for a real user. A hidden knob that nobody can see silently defeating a visible
+    /// feature is the defect; the knob is the part that was wrong.
+    /// </para>
+    ///
+    /// <para>
+    /// There has never been a control for this anywhere in the interface, so a stored 2 cannot be a
+    /// decision — it can only be the old default written back out by <c>Save</c>. Someone who
+    /// hand-edited the file to 2 loses nothing they can observe either, because 2 is already the
+    /// Dialogue rate, so the only mode it changes is the one where 4 is the intended answer.
+    /// </para>
+    /// </summary>
+    public TimeSpan PollIntervalFor(Capture.WatchPacing pacing)
+    {
+        ArgumentNullException.ThrowIfNull(pacing);
+
+        return AutoWatchFps > 0 && AutoWatchFps != LegacyDefaultFps
+            ? TimeSpan.FromSeconds(1.0 / AutoWatchFps)
+            : pacing.PollInterval;
+    }
+
+    /// <summary>
     /// Auto-watch turns itself off after this long with no change on screen. A toggle left on
     /// during an AFK is the main way to leak API quota, so this is not optional.
     /// </summary>

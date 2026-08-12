@@ -36,15 +36,6 @@ public sealed class TranslationSession : IDisposable
     private UiText Text => UiText.For(_settings.Language);
 
     /// <summary>
-    /// Consecutive polls that threw. One bad frame used to end the whole run: the try/catch was
-    /// around the entire loop, so a single OCR failure on an unfamiliar font stopped auto-watch
-    /// permanently — and said so only on the Settings status line, which nobody playing a game is
-    /// looking at. Reported from Wuthering Waves as «كلام مش عارف يترجمه فا يقف خالص»: text it
-    /// cannot translate, and it stops dead.
-    /// </summary>
-    private int _consecutiveFailures;
-
-    /// <summary>
     /// Consecutive polls that read nothing at all. A region that has stopped matching the game —
     /// the window resized, the HUD layout changed, the wrong rectangle was saved — looks exactly
     /// like a quiet moment, and the app used to say "no text in the capture region" once per poll
@@ -54,9 +45,6 @@ public sealed class TranslationSession : IDisposable
 
     /// <summary>How many empty reads in a row before the region itself becomes the suspect.</summary>
     private const int EmptyReadsBeforeBlamingTheRegion = 12;
-
-    /// <summary>How many polls in a row may throw before the run is genuinely abandoned.</summary>
-    private const int FailuresBeforeGivingUp = 5;
 
     private string? _lastSourceText;
     private string? _lastArabic;
@@ -136,7 +124,7 @@ public sealed class TranslationSession : IDisposable
             var frame = await _frames.GetFrameAsync(region.Value, ct).ConfigureAwait(false);
             if (frame is null)
             {
-                Fail(Text.NothingCaptured);
+                FailedToCapture();
                 return;
             }
 
@@ -231,6 +219,38 @@ public sealed class TranslationSession : IDisposable
         Report(advice);
         _overlay.ShowMessage(advice);
     }
+
+    /// <summary>
+    /// A still of every monitor, for the region picker and the snip, taken with the session's own
+    /// frame source — because there is exactly one, and the two callers that used to build their
+    /// own broke translation for the rest of the session every time they ran.
+    /// </summary>
+    internal Frame? CaptureWholeDesktop() => PlatformServices.CaptureFullScreen(_frames);
+
+    /// <summary>Why the last capture came back empty, for anything that has to explain itself.</summary>
+    internal string? LastCaptureFailure => _frames.LastFailure;
+
+    /// <summary>
+    /// The capture came back with nothing, and this says which nothing.
+    ///
+    /// <para>
+    /// «لم يُلتقط شيء. هل اللعبة شغّالة بوضع النافذة بلا إطار؟» on its own is a GUESS, and it was the
+    /// wrong guess in the report that produced this method: the diagnostic on the same screen had
+    /// already confirmed the game window was found, borderless and capturable, so the one message
+    /// the app could produce was contradicting its own evidence and sending the user to change a
+    /// setting that was already correct. Borderless is still the commonest cause and still leads,
+    /// but the Win32 reason follows it whenever there is one.
+    /// </para>
+    ///
+    /// <para>
+    /// The reason is left in English on purpose, for the same reason every other platform message
+    /// is: it names Win32 calls, and translating "GetDIBits read no scan lines" helps nobody.
+    /// </para>
+    /// </summary>
+    private void FailedToCapture() =>
+        Fail(_frames.LastFailure is { Length: > 0 } why
+            ? $"{Text.NothingCaptured}\n{why}"
+            : Text.NothingCaptured);
 
     internal Task<Frame?> CaptureAsync(CaptureRegion region, CancellationToken ct) =>
         _frames.GetFrameAsync(region, ct);
@@ -519,7 +539,7 @@ public sealed class TranslationSession : IDisposable
             var frame = await _frames.GetFrameAsync(region, ct).ConfigureAwait(false);
             if (frame is null)
             {
-                Fail(Text.NothingCaptured);
+                FailedToCapture();
                 return;
             }
 

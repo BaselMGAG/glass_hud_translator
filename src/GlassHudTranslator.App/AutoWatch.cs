@@ -135,7 +135,6 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
         _consecutiveEmptyCaptures = 0;
         _session.ResetEmptyRun();
         PollTrace.Clear();
-        PollTrace.Write($"START mode={_settings.WatchMode} fps={_settings.AutoWatchFps}");
         _overlay.Notice = null;
 
         // The mode is read here rather than per tick, so one run has one set of caps and one
@@ -145,6 +144,15 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
         // to make while deciding: patience on a film costs a few late lines, impatience on a
         // typewriter reveal costs a request per half-written sentence.
         var pacing = PacingFor(_settings.WatchMode);
+
+        // Every number the run will use, said once. The pacing is what the two reported symptoms
+        // were really about - a mode that "does nothing" and a mode that is "too slow" are both
+        // claims about these four values, and until now the trace showed only two of them.
+        PollTrace.Write($"START mode={_settings.WatchMode} "
+            + $"poll={_settings.PollIntervalFor(pacing).TotalMilliseconds:F0}ms "
+            + $"settle={pacing.SettleCap.TotalMilliseconds:F0}ms "
+            + $"floor={pacing.MinimumInterval.TotalMilliseconds:F0}ms "
+            + $"reads={pacing.ReadsBeforeGivingUp}");
 
         _watch = new WatchSession(pacing) { Unbounded = _settings.WatchWithoutLimit };
         _watch.Start();
@@ -183,9 +191,7 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
             {
                 // Re-read per tick rather than once, because Auto can swap the pacing underneath
                 // this loop. Two property reads and a divide; the poll it precedes costs a BitBlt.
-                Thread.Sleep(_settings.AutoWatchFps > 0
-                    ? TimeSpan.FromSeconds(1.0 / _settings.AutoWatchFps)
-                    : watch.Pacing.PollInterval);
+                Thread.Sleep(_settings.PollIntervalFor(watch.Pacing));
 
                 if (ct.IsCancellationRequested) break;
 
@@ -237,7 +243,8 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
                 var frame = _session.CaptureAsync(region.Value, ct).GetAwaiter().GetResult();
                 if (frame is null)
                 {
-                    PollTrace.Write($"no frame   capture of {region.Value} returned nothing");
+                    PollTrace.Write($"no frame   capture of {region.Value} returned nothing"
+                        + (_session.LastCaptureFailure is { } why ? $" - {why}" : ""));
 
                     // Said OUT LOUD after a run of them, on the overlay, because a capture that
                     // returns nothing produces no error, no exception and no log line - the app
@@ -407,7 +414,11 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
         _watch.Adapt(PacingFor(_running));
         _settle.Retune(_watch.Settle());
 
-        PollTrace.Write($"mode       changed to {_settings.WatchMode} mid-run, now running {_running}");
+        var now = PacingFor(_running);
+        PollTrace.Write($"mode       changed to {_settings.WatchMode} mid-run, now running {_running} - "
+            + $"poll={_settings.PollIntervalFor(now).TotalMilliseconds:F0}ms "
+            + $"settle={_watch.Settle().Cap.TotalMilliseconds:F0}ms "
+            + $"floor={now.MinimumInterval.TotalMilliseconds:F0}ms");
     }
 
     /// <summary>Enough of a line to recognise it in a trace, and never enough to fill one.</summary>

@@ -27,6 +27,7 @@ public class PlatformSeamTests
     private const string AppProject = "src/GlassHudTranslator.App";
     private const string CoreProject = "src/GlassHudTranslator.Core";
     private const string SeamFile = "PlatformServices.cs";
+    private const string WindowsProject = "src/GlassHudTranslator.Windows";
 
     /// <summary>Matches any preprocessor directive mentioning WINDOWS, however it is spelled.</summary>
     private static readonly Regex WindowsDirective = new(
@@ -102,6 +103,41 @@ public class PlatformSeamTests
             TestPaths.RepoRoot, AppProject, "GlassHudTranslator.App.csproj"));
 
         Assert.Contains("net10.0;net10.0-windows", csproj, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Matches anything constructing a Win32FrameSource, however it is spelled or qualified.
+    /// </summary>
+    private static readonly Regex BuildsAFrameSource = new(
+        @"new\s+(?:[A-Za-z_.]*\.)?Win32FrameSource\s*\(", RegexOptions.Compiled);
+
+    [Fact]
+    public void OnlyPlatformServicesMayBuildAFrameSource()
+    {
+        // <b>Two total outages, same cause, and it is not a Win32 subtlety anyone should have to
+        // remember.</b> GetDC(NULL) hands out a context from a small system CACHE rather than a
+        // private handle, so a second, short-lived frame source disposing itself called ReleaseDC on
+        // the handle the live session was still holding. Every capture afterwards returned nothing -
+        // auto-watch, the translate hotkey, all of it - silently, until the app was restarted,
+        // because BitBlt on a released DC fails without throwing or logging anything.
+        //
+        // It shipped first inside the diagnostic report, so the report broke the thing it was
+        // diagnosing. It shipped again in CaptureFullScreen, so PICKING A CAPTURE REGION or taking a
+        // snip killed translation for the rest of the session. Both times the rule was written down
+        // and both times it was a comment, which is to say it was nothing.
+        var offenders = SourceFiles(AppProject)
+            .Concat(SourceFiles(WindowsProject))
+            .Where(f => Path.GetFileName(f) is not (SeamFile or "Win32FrameSource.cs"))
+            .Where(f => BuildsAFrameSource.IsMatch(File.ReadAllText(f)))
+            .Select(Relative)
+            .ToList();
+
+        Assert.True(offenders.Count == 0,
+            "Something other than the platform seam is building its own frame source. There is one "
+            + "screen device context in this process and it is shared; a second source that disposes "
+            + "itself takes screen capture down for the whole session, silently. Ask the session for "
+            + "a frame instead. Offending files:\n  "
+            + string.Join("\n  ", offenders));
     }
 
     private static IEnumerable<string> SourceFiles(string project) =>

@@ -515,6 +515,27 @@ does not have throws `FormatException` at runtime, and only ever for the users t
 for. Platform error text (Win32 messages, "Global hotkeys are Windows-only") is deliberately left
 untranslated; it comes from the OS.
 
+**The screen device context is acquired per capture and never held.** `GetDC(NULL)` draws from a
+small system *cache*; it is not a private handle and is not even guaranteed to be the same handle
+twice. Holding it across captures is what made a second frame source catastrophic, and refcounting
+the holders — the first attempt — is unsound for the same reason: it assumes every holder got the
+same handle, so when they get different ones the counter says "someone else still needs it" and the
+handle leaks instead, exhausting the same small cache from the other end. `GetDC` → `BitBlt` →
+`ReleaseDC` inside one process-wide lock removes the question: nothing is shared across calls, so
+nothing can be released out from under anything. `PlatformSeamTests` now enforces the rule
+mechanically, which is what it needed all along — it was written down twice and violated twice.
+
+**`GetDIBits` requires the bitmap NOT to be selected into a DC, and it was.** Documented, ignored,
+tolerated by most drivers and not by all — and when it is not tolerated it returns zero scan lines,
+which this code reported as "nothing was captured". Deselect first, then read.
+
+**A capture that returns nothing has to say WHICH nothing.** Three unrelated Win32 failures —
+no device context, `BitBlt` refused, `GetDIBits` read nothing — arrived as one silent null, and two
+support rounds were spent guessing between them while the user was told to check whether their game
+was borderless. It already was. `IFrameSource.LastFailure` carries the reason to the poll trace, the
+self-test and the on-screen message; the borderless guess still leads, because it is still the
+commonest cause, but it no longer stands alone contradicting the diagnostic on the same screen.
+
 **There is exactly ONE `IFrameSource`, and a second one is a total outage.** `GetDC(NULL)` does not
 return a private handle — the screen device context comes from a system cache, so two instances get
 the *same* one, and the first to be disposed calls `ReleaseDC` on the handle the other is still
@@ -1309,6 +1330,29 @@ was believed, and the root cause had been sitting in a synthetic corpus the whol
   the instrument failed. `TextSimilarity` and `ReadingJudge` were both already in the codebase,
   both already calibrated for exactly this kind of question. **When a component keeps needing a
   better threshold, check first whether it is measuring the wrong thing.**
+
+**Found by the trace that was added to catch the previous bug, which is the point of traces:**
+
+- **Picking a capture region, or taking a snip, killed screen capture for the rest of the session.**
+  `CaptureFullScreen` did `using var source = new Win32FrameSource()` — the exact pattern this file
+  already called "a total outage", already diagnosed once inside the diagnostic report, and already
+  written down as a rule. Writing a rule down is not enforcing it. It is a `PlatformSeamTests` case
+  now, and that case is mutation-checked.
+- **The refcount that was supposed to make a second source survivable could not.** It counted
+  holders and released on the last one, which is only correct if all holders share one handle;
+  `GetDC(NULL)` promises no such thing. The fix was to stop holding the handle at all rather than to
+  count better. **When a guard needs an assumption the API explicitly refuses to make, the guard is
+  the wrong shape.**
+- **The user was told to check a setting the app had already verified.** «لم يُلتقط شيء. هل اللعبة
+  شغّالة بوضع النافذة بلا إطار؟» was the only thing capture could say, while section 2 of the same
+  self-test reported the game window found, borderless, capturable. An app contradicting its own
+  diagnostic on one screen is worse than saying nothing.
+- **Video mode's poll rate had never once run.** `autoWatchFps` shipped with a default of `2` and
+  `Save` writes every field, so every installation in existence has that number persisted and the
+  override was permanently active — `START mode=Video fps=2` in the trace, against a mode that asks
+  for 4. There has never been a control for it anywhere in the interface, so a stored 2 was never a
+  decision, only the old default written back out. **A hidden knob that silently defeats a visible
+  feature is the knob's bug, and a default that gets persisted stops being a default.**
 
 **Latent, found by inspection and not yet hit in the wild:** the bundled `NotoSansArabic-Regular.ttf`
 contains **no Latin at all** — not `A`, not `%`, and none of `✓ ✗ ⚠ → · ⏎`. Every Latin word in the

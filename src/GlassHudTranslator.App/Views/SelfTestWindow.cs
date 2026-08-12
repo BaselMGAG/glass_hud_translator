@@ -160,6 +160,11 @@ public static class SelfTest
                 if (frame is null)
                 {
                     Say("Capture returned nothing.");
+                    Say($"   because     {session.LastCaptureFailure ?? "(the source did not say)"}");
+                    Say("   ^^ THAT is the answer. Three unrelated Win32 failures used to arrive here");
+                    Say("      as one silent null, and two support rounds were spent guessing between");
+                    Say("      them. A device-context failure is a resource leak in this app; a BitBlt");
+                    Say("      refusal is usually exclusive fullscreen or a rectangle off every screen.");
                 }
                 else
                 {
