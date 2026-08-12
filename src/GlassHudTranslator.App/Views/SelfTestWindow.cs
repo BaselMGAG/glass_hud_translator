@@ -219,8 +219,18 @@ public static class SelfTest
             Say($"FAILED: {e}");
         }
 
-        // ── 6. the router's own log ──────────────────────────────────────────────────────────
-        Heading("6. Recent provider log");
+        // ── 6. what the poll loop has been deciding ─────────────────────────────────────────
+        Heading("6. The last two minutes of auto-watch, one line per poll");
+        Say("Switch auto-watch ON, let it run through two or three lines of dialogue, then run this");
+        Say("again. Every poll says what it decided. A healthy run alternates gate/read/SENT; a run");
+        Say("that shows the same word over and over is the fault, and the word names it.");
+        Say("");
+
+        var trace = Core.Diagnostics.PollTrace.Recent();
+        if (trace.Count == 0) Say("(auto-watch has not run since the app started)");
+        foreach (var line in trace) Say("   " + line);
+
+        Heading("7. Recent provider log");
         var lines = services.RouterLog.TakeLast(30).ToList();
         if (lines.Count == 0) Say("(nothing yet)");
         foreach (var line in lines) Say("   " + line);

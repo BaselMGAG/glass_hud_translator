@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using GlassHudTranslator.Core.Capture;
+using GlassHudTranslator.Core.Diagnostics;
 using GlassHudTranslator.Core.Glossary;
 using GlassHudTranslator.Core.Ocr;
 using GlassHudTranslator.Core.Storage;
@@ -306,6 +307,9 @@ public sealed class TranslationPipeline(
         // body must not bump the lookup counters, must not be cached, and must not enter context.
         if (string.IsNullOrWhiteSpace(body) || body.Trim().Length < MinimumBodyCharacters)
         {
+            PollTrace.Write($"  nothing  body='{body}' conf={recognised.Confidence:F0} "
+                + $"kept={recognised.WordCount} dropped={recognised.RejectedWordCount}");
+
             return new PipelineOutcome(recognised.RawText, normalized, speaker, body, [], null,
                 recognised.Confidence, Stopwatch.GetElapsedTime(started),
                 regionKey, source, recognised.RejectedWordCount);
@@ -316,6 +320,8 @@ public sealed class TranslationPipeline(
         // the overlay when the user pressed a key expecting an answer.
         if (Ignored.ShouldSkip(body))
         {
+            PollTrace.Write($"  ignored  on your never-translate list: '{Short(body)}'");
+
             return new PipelineOutcome(recognised.RawText, normalized, speaker, body, [], null,
                 recognised.Confidence, Stopwatch.GetElapsedTime(started),
                 regionKey, source, recognised.RejectedWordCount, Ignored: true);
@@ -327,6 +333,11 @@ public sealed class TranslationPipeline(
         // by the time anything downstream could notice, the request has been sent and paid for.
         if (how.SuppressRepeats && IsRepeatOfLastBody(body))
         {
+            // THE one to watch. A repeat is correct while the same line is on screen, and a fault
+            // the moment the line has changed - and from outside the two look identical, because
+            // both leave the previous Arabic where it was.
+            PollTrace.Write($"  repeat   '{Short(body)}' ~= last shown '{Short(_lastBody ?? "")}'");
+
             return new PipelineOutcome(recognised.RawText, normalized, speaker, body, [], null,
                 recognised.Confidence, Stopwatch.GetElapsedTime(started),
                 regionKey, source, recognised.RejectedWordCount, Repeat: true);
@@ -336,6 +347,8 @@ public sealed class TranslationPipeline(
         var cached = await cache.TryGetAsync(key, ct).ConfigureAwait(false);
         if (cached is not null)
         {
+            PollTrace.Write($"  CACHED   '{Short(body)}' -> '{Short(cached.Arabic)}'");
+
             var hit = new TranslationResult(cached.Arabic, ProviderNames.Cache, cached.Model, true,
                 Stopwatch.GetElapsedTime(started), TranslationLogOutcomes.Cached);
             Remember(body, how);
@@ -369,6 +382,9 @@ public sealed class TranslationPipeline(
 
             Remember(body, how);
         }
+
+        PollTrace.Write($"  SENT     '{Short(body)}' -> {result.Provider}/{result.Model} "
+            + $"'{Short(result.Text)}'");
 
         await LogAsync(recognised.RawText, normalized, speaker, result, game, regionKey, ct).ConfigureAwait(false);
 
@@ -524,6 +540,10 @@ public sealed class TranslationPipeline(
     /// change through three characters at a time and never translate any of it.
     /// </para>
     /// </summary>
+    /// <summary>Enough of a line to recognise it in a trace, without wrapping every line.</summary>
+    private static string Short(string text) =>
+        text.Length <= 48 ? text.ReplaceLineEndings(" / ") : text[..48].ReplaceLineEndings(" / ") + "…";
+
     private bool IsRepeatOfLastBody(string body)
     {
         lock (_context) return TextSimilarity.LooksLikeARepeat(body, _lastBody);

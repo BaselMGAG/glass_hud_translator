@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using GlassHudTranslator.Core.Diagnostics;
 using GlassHudTranslator.App.Views;
 using GlassHudTranslator.Core.Capture;
 using GlassHudTranslator.Core.Config;
@@ -123,6 +124,8 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
         _rhythm.Reset();
         _consecutiveFailures = 0;
         _session.ResetEmptyRun();
+        PollTrace.Clear();
+        PollTrace.Write($"START mode={_settings.WatchMode} fps={_settings.AutoWatchFps}");
         _overlay.Notice = null;
 
         // The mode is read here rather than per tick, so one run has one set of caps and one
@@ -210,13 +213,25 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
                 // The floor, asked before the frame reaches the gate for the same reason the busy
                 // check is: calling a frame Ready commits it, so a frame refused afterwards would
                 // be remembered as handled and the screen would sit unchanged for good.
-                if (!watch.MayTranslate()) continue;
+                if (!watch.MayTranslate())
+                {
+                    PollTrace.Write("floor      too soon since the last translation");
+                    continue;
+                }
 
                 var region = _session.ResolveRegionAsync(ct).GetAwaiter().GetResult();
-                if (region is null) continue;
+                if (region is null)
+                {
+                    PollTrace.Write("no region  resolve returned nothing - see the status line");
+                    continue;
+                }
 
                 var frame = _session.CaptureAsync(region.Value, ct).GetAwaiter().GetResult();
-                if (frame is null) continue;
+                if (frame is null)
+                {
+                    PollTrace.Write($"no frame   capture of {region.Value} returned nothing");
+                    continue;
+                }
 
                 // BEFORE the gate is offered anything, not after. Deciding a frame is Ready is not
                 // a question - it commits that frame as the one now on the overlay - so offering a
@@ -233,6 +248,7 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
                 // a rare one. It counts as activity either way: something is being translated.
                 if (_session.Busy)
                 {
+                    PollTrace.Write("busy       something else is mid-translation, poll dropped");
                     lastChange = Stopwatch.GetTimestamp();
                     continue;
                 }
@@ -250,6 +266,8 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
 
                 var signature = FrameSignature.Compute(frame);
                 var verdict = _settle.Offer(signature);
+
+                PollTrace.Write($"gate       {verdict} region={region.Value}");
 
                 if (verdict == FrameVerdict.Unchanged)
                 {
@@ -274,6 +292,8 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
                 TranslationSession.Read read;
                 read = _session.PollAsync(frame, ct).GetAwaiter().GetResult();
 
+                PollTrace.Write($"read       text={read.HasText} changed={read.TextChanged}");
+
                 Adapt(watch, new RhythmSample(Changed: true, read.HasText, read.TextChanged));
                 _consecutiveFailures = 0;
             }
@@ -286,6 +306,8 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
                 // Per POLL, not per run. One frame that OCR chokes on, one transient database
                 // hiccup, one provider throwing something unexpected - none of those is a reason to
                 // end a session the user is in the middle of. Only a run of them is.
+                PollTrace.Write($"THREW      {e.GetType().Name}: {e.Message}");
+
                 if (++_consecutiveFailures < FailuresBeforeGivingUp)
                 {
                     _session.Report(string.Format(Text.AutoWatchSkippedFrame, e.Message));
