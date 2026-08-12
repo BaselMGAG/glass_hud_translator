@@ -274,14 +274,22 @@ public static class DisplayModeGuard
 
         if (coversScreen && !hasClientArea)
         {
+            // Names the window. Without that this reads as "your game is not borderless" to somebody
+            // whose game IS borderless - because when the profile matches nothing, the app falls
+            // back to whatever is in front, and the complaint is then about a window the user never
+            // pointed us at. Saying which one turns an argument into a diagnosis.
             return new DisplayModeVerdict(false,
-                "The game appears to be in exclusive fullscreen. Screen capture and always-on-top " +
-                "overlays do not work in that mode. Switch the game to Borderless Windowed and try again.");
+                $"'{window.Title}' appears to be in exclusive fullscreen. Screen capture and " +
+                "always-on-top overlays do not work in that mode. Switch it to Borderless Windowed " +
+                "and try again - or, if that is not your game, set the game's window or process " +
+                "name in Settings so the app stops guessing.");
         }
 
         return hasClientArea
             ? new DisplayModeVerdict(true, $"{window.Title} — {window.ClientArea.Width}x{window.ClientArea.Height} " +
                                            $"at {window.Scaling:P0} scaling")
-            : new DisplayModeVerdict(false, "The game window has no client area to capture.");
+            : new DisplayModeVerdict(false,
+                $"'{window.Title}' has no client area to capture. If that is not your game, set the " +
+                "game's window or process name in Settings.");
     }
 }

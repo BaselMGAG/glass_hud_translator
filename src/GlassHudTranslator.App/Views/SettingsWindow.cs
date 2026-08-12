@@ -1229,7 +1229,14 @@ public sealed class SettingsWindow : Window
         {
             Height = 260,
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            ItemTemplate = new FuncDataTemplate<HistoryRow>((row, _) => new StackPanel
+            // The row is NULLABLE here, and that is not defensive programming - it is how
+            // Avalonia's virtualising list works. When a container scrolls out of view it is
+            // RECYCLED, and recycling rebuilds the template with null data before handing the
+            // container to the next row. A template that dereferences its argument therefore
+            // crashes the whole app the moment the list is long enough to scroll, which is to say
+            // on the machine of whoever has used the app most. It took eleven lines of stack to
+            // say so and it should never have needed to.
+            ItemTemplate = new FuncDataTemplate<HistoryRow?>((row, _) => new StackPanel
             {
                 Spacing = 2,
                 Margin = new Thickness(0, 4),
@@ -1237,14 +1244,14 @@ public sealed class SettingsWindow : Window
                 {
                     new TextBlock
                     {
-                        Text = row.Source,
+                        Text = row?.Source ?? "",
                         TextWrapping = TextWrapping.Wrap,
                         FlowDirection = FlowDirection.LeftToRight,
                         Foreground = new SolidColorBrush(Color.Parse("#c8ccd0")),
                     },
                     new TextBlock
                     {
-                        Text = row.Arabic ?? _text.HistoryNotTranslated,
+                        Text = row?.Arabic ?? _text.HistoryNotTranslated,
                         TextWrapping = TextWrapping.Wrap,
                         FontFamily = Fonts.Arabic,
                         LineSpacing = 4,
@@ -1401,6 +1408,7 @@ public sealed class SettingsWindow : Window
         // support here happens in Facebook comments, not issue trackers - and saved to the
         // Desktop as well so "send the file" also works.
         healthButtons.Children.Add(Button(_text.ReportButton, () => _ = CopyReportAsync()));
+        healthButtons.Children.Add(Button(_text.SelfTestButton, () => _ = RunSelfTestAsync()));
         stack.Children.Add(healthButtons);
         stack.Children.Add(healthResults);
 
@@ -1993,6 +2001,30 @@ public sealed class SettingsWindow : Window
     /// settings that matter, every finding, quota, cache, and the tails of both logs. One click,
     /// clipboard plus a Desktop file, so "what should I send you?" stops being a question.
     /// </summary>
+    /// <summary>
+    /// Writes the self-test beside the diagnostic report. Deliberately a FOLDER rather than one
+    /// file: it contains a picture of what was captured, and that picture answers more questions
+    /// than the text does — "the region is on the wrong window" is instant to see and laborious to
+    /// describe.
+    /// </summary>
+    private async Task RunSelfTestAsync()
+    {
+        try
+        {
+            var folder = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+                $"GlassHud-selftest-{DateTime.Now:yyyyMMdd-HHmmss}");
+
+            var written = await SelfTest.RunAsync(_services, _settings, folder);
+            _status.Text = string.Format(_text.SelfTestDone, Path.GetDirectoryName(written));
+        }
+        catch (Exception e)
+        {
+            // The one report that must never itself be the failure being reported.
+            _status.Text = e.Message;
+        }
+    }
+
     private async Task CopyReportAsync()
     {
         _status.Text = _text.ReportBuilding;

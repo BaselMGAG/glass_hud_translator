@@ -523,6 +523,9 @@ public sealed class UiText
     public required string LineIgnored { get; init; }
     public required string ToolbarRetry { get; init; }
     public required string ToolbarReadAgain { get; init; }
+    public required string SelfTestButton { get; init; }
+    public required string SelfTestNote { get; init; }
+    public required string SelfTestDone { get; init; }
     public required string ReadAgain { get; init; }
     public required string ReadAgainNote { get; init; }
     public required string ReadAgainOn { get; init; }
@@ -1085,6 +1088,14 @@ public sealed class UiText
         LineIgnored = "That line is on your never-translate list.",
         ToolbarRetry = "Translate again",
         ToolbarReadAgain = "Read hard lines with AI",
+        SelfTestButton = "Run full self-test",
+        SelfTestNote =
+            "Writes a file to your Desktop describing exactly what the app can see right now: every "
+            + "window it found, which one it picked as the game and why, where the capture region "
+            + "landed, a picture of what it captured, and what the text recognition made of it. "
+            + "Run it while the game is on screen, then send the folder. It answers the questions "
+            + "that otherwise have to be guessed at.",
+        SelfTestDone = "Self-test written to {0} — send the whole folder.",
         ReadAgain = "Let AI read lines the text recognition cannot",
         ReadAgainNote =
             "Off by default. When the text recognition sees writing it cannot make out, this sends "
@@ -1625,6 +1636,13 @@ public sealed class UiText
         LineIgnored = "هذا السطر في قائمة «لا تترجم» عندك.",
         ToolbarRetry = "ترجم من جديد",
         ToolbarReadAgain = "اقرأ السطور الصعبة بالذكاء الاصطناعي",
+        SelfTestButton = "شغّل الفحص الذاتي الكامل",
+        SelfTestNote =
+            "يكتب ملفاً على سطح المكتب يصف بالضبط ما يراه البرنامج الآن: كل نافذة وجدها، وأيّها "
+            + "اختار على أنه اللعبة ولماذا، وأين وقعت منطقة الالتقاط، وصورة لما التقطه، وما فهمته "
+            + "القراءة الضوئية منه. شغّله واللعبة على الشاشة ثم أرسل المجلد كاملاً. وهو يجيب عن "
+            + "الأسئلة التي لولاه لبقيت تخميناً.",
+        SelfTestDone = "كُتب الفحص الذاتي في {0} — أرسل المجلد كاملاً.",
         ReadAgain = "دع الذكاء الاصطناعي يقرأ ما تعجز عنه القراءة الضوئية",
         ReadAgainNote =
             "مُطفأ بشكل افتراضي. حين ترى القراءة الضوئية كتابةً لا تستطيع تمييزها، يُرسَل ذلك الجزء "

@@ -669,6 +669,19 @@ empty boxes. Relying on OS fallback works on macOS and hides the problem — the
 were tofu the first time the interface was switched, and that was on a Mac that *does* have Arabic
 fonts.
 
+**A list template must survive being handed null, because Avalonia hands it null.** A virtualising
+`ListBox` RECYCLES containers when they scroll out of view, and recycling rebuilds the template with
+null data before the container is reused. `FuncDataTemplate<T>` does not stop that, so a template
+that dereferences its row crashes the whole application the moment the list is long enough to
+scroll — which is to say on the machine of whoever has used the app most, and never on the machine
+it was written on. The History tab shipped that way and took the app down on first open.
+
+**A guard that blames "the game" has to name the window it is blaming.** «Switch the game to
+Borderless Windowed» reads as nonsense to somebody whose game IS borderless — and the commonest
+reason to see it is that the profile matched nothing, the app fell back to whatever was in front,
+and the complaint is about a window the user never pointed at. The message carries the title now,
+which turns an argument into a diagnosis.
+
 **Icons are geometry, never glyphs.** `Icons` holds SVG path data compiled into the assembly. The
 bundled Arabic font has no Latin and no symbols, so any character-based icon already depends on OS
 fallback — the exact dependency the font was bundled to remove — and one unresolvable codepoint has

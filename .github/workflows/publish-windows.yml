@@ -52,6 +52,12 @@ jobs:
         run: |
           Copy-Item -Recurse data out/data
           Copy-Item -Recurse profiles out/profiles
+
+          # Shipped so the self-test can prove the translation pipeline works WITHOUT depending on
+          # the user's screen, their game or their capture region. When a support report says "it
+          # stopped translating", the single most useful thing is knowing which half broke, and
+          # these are pictures whose correct answer is already known.
+          Copy-Item -Recurse test-frames out/test-frames
           if (-not (Test-Path out/tessdata)) { Copy-Item -Recurse tessdata out/tessdata }
           Copy-Item scripts/windows/*.bat out/
           Copy-Item README.md out/README.md
