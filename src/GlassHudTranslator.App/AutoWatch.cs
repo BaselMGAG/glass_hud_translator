@@ -207,15 +207,45 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
         var expiry = TimeSpan.FromSeconds(_settings.AutoWatchExpirySeconds);
         var lastChange = Stopwatch.GetTimestamp();
 
+        // When the last poll STARTED, not when the last sleep ended. The loop is paced on a
+        // schedule now rather than by resting a fixed amount after work of wildly varying cost.
+        var lastPollAt = Stopwatch.GetTimestamp();
+
         while (!ct.IsCancellationRequested)
         {
             try
             {
                 // Re-read per tick rather than once, because Auto can swap the pacing underneath
                 // this loop. Two property reads and a divide; the poll it precedes costs a BitBlt.
-                Thread.Sleep(_settings.PollIntervalFor(watch.Pacing));
+                var interval = _settings.PollIntervalFor(watch.Pacing);
+
+                // <b>Sleep the REMAINDER, and usually that is nothing.</b> This was a flat rest
+                // taken after each iteration, which is fine while an iteration is a BitBlt and a
+                // thumbnail and quietly wrong the moment one is not: a translation blocks this
+                // thread for about a second, and then the loop went to sleep for another quarter of
+                // one before looking at a screen it had not seen for the whole of that second.
+                //
+                // It is the case reported as "if I nudge the dialogue window it is caught at once,
+                // but when the text changes quickly it can be missed" — and the difference between
+                // those two is not the pixels, it is that nudging the window happens while the app
+                // is idle and reading the next line happens while it is busy with the last one.
+                // Every millisecond spent resting after work is a millisecond of not noticing.
+                var since = Stopwatch.GetElapsedTime(lastPollAt);
+                if (since < interval) Thread.Sleep(interval - since);
 
                 if (ct.IsCancellationRequested) break;
+
+                // Said out loud when it is large, because a gap in the polling is the one thing that
+                // can lose a line outright and it leaves no other trace: the frames that appeared
+                // during it were never captured, so nothing downstream can report on them. Anything
+                // past two intervals means the previous iteration did real work - a reading, a
+                // translation, a provider taking its time - and that is exactly the window in which
+                // a fast reader gets ahead of the app.
+                if (since > interval * 2)
+                    PollTrace.Write($"blind      {since.TotalMilliseconds:F0}ms since the last look "
+                        + $"({interval.TotalMilliseconds:F0}ms is the poll) - the loop was working");
+
+                lastPollAt = Stopwatch.GetTimestamp();
 
                 // The session cap, measured from switch-on. The idle expiry below cannot do this
                 // job: it resets on any movement, so over a playing video - or a game with

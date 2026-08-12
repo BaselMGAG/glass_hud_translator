@@ -6,6 +6,11 @@ screen, OCRs it, translates it, draws the result back over the game in a separat
 Start here, then read [`docs/BRIEF.md`](docs/BRIEF.md) for why the project is shaped this way and
 [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for the type contracts and schemas.
 
+The later multilingual product discussion is recorded in
+[`docs/MULTILINGUAL_VISION_REPORT.md`](docs/MULTILINGUAL_VISION_REPORT.md). It explains the proposed
+direction and the research behind it; it is context for discussion, not the current implementation
+contract or an instruction to replace the design documents above.
+
 ## The constraint behind most of the design
 
 I develop on macOS. Live testing happens on a borrowed Windows laptop that is rarely available. So
@@ -769,6 +774,23 @@ are. Dialogue is 4 fps now, with `RequiredStillTicks` raised from 2 to 3 so the 
 and a half-written sentence being translated, paid for, and paid for again when it finishes. The
 budget is asserted directly in `AutomaticModeCostsHalfASecondOfStillnessAndNoMoreWaitingThanThat`,
 because both halves are tunable and only their sum is observable.
+
+**The poll loop is paced on a SCHEDULE, not by resting a fixed amount after the work.** It slept a
+full interval after every iteration, which is harmless while an iteration is a BitBlt and a
+thumbnail and quietly wrong the moment one is not: a translation blocks that thread for about a
+second, and the loop then rested another quarter of one before looking at a screen it had not seen
+for the whole of it. It sleeps the remainder now, which is usually nothing. This is the case
+reported as "nudging the dialogue window is caught at once, but text changing quickly can be
+missed" — and the difference between those two is not the pixels, it is that nudging happens while
+the app is idle and the next line arrives while it is busy with the last one.
+
+**The remaining limit is arithmetic and worth stating so nobody tunes at it.** A line costs the
+settle (750 ms worst case) plus the provider round trip (~1 s), and the loop does not look at the
+screen during the second one. So auto-watch keeps up with a player advancing every ~1.5 s and will
+drop lines faster than that, whatever the thresholds say. Closing that means overlapping the next
+settle with the current translation — the gate would have to commit a frame and hold it for a
+translator that is still busy, which is precisely the ordering `_busy` exists to forbid, so it is a
+real change and not a tuning one. `blind` lines in the poll trace measure the gap directly.
 
 **`ContentRhythm.Window` is counted in POLLS, so it shortens whenever the poll rate rises.** Raising
 dialogue to 4 fps halved the evidence window without anybody opening that file, and the read budget

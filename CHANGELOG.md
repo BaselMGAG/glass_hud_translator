@@ -3,6 +3,37 @@
 Notable changes. Started once the app was working end to end, so everything before the first entry
 is "the thing being described in the README".
 
+## v0.8.2 — 12 August 2026
+
+Three defects behind "automatic mode stops after one line", found from one very good observation:
+nudging the dialogue window with the mouse is caught instantly, while text changing on a stationary
+window can be missed. The pixels are identical in both cases; what differs is whether the app was
+busy at the time.
+
+### Fixed
+
+- **The loop rested a quarter of a second after every cycle, including after a translation that had
+  already blocked it for a second.** So the moment it was most behind was the moment it waited
+  longest before looking again. It is paced on a schedule now — it sleeps whatever is left of the
+  interval, which after real work is nothing.
+- **The one verdict that could silently swallow every remaining line now gets checked.** "Nothing
+  has changed" is the decision that skips reading the text, so it is the only mistake here that
+  cannot correct itself on the next frame — if it is ever wrong, the app translates one line and
+  then reports nothing changed for as long as it is left running. After fifteen seconds of that
+  answer it reads the words anyway and checks. Costs one local pass and no quota: if the words
+  really are unchanged, they are dropped before anything is sent.
+- **The scene-motion measurement was counted in polls rather than seconds**, so raising the poll
+  rate in v0.8.1 silently halved it. Same defect as the one fixed in that release, in the file next
+  door, missed in the same commit. It is measured in seconds now at any poll rate.
+- The poll trace records how long the app went without looking at the screen, so a dropped line can
+  be told from a slow one.
+
+**A limit worth knowing rather than chasing:** a line costs the wait for the text to hold still plus
+the round trip to the translator, and the app is not watching the screen during the second of those.
+It keeps up with a player advancing every second and a half. Faster than that and lines will be
+missed — not by a threshold being wrong, but because the answer for the previous line has not come
+back yet.
+
 ## v0.8.1 — 12 August 2026
 
 Automatic mode, closer to what pressing the key yourself costs.

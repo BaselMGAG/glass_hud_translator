@@ -32,3 +32,6 @@ scratch/
 test-frames/*.png
 test-frames/expected.json
 startup.log
+
+# A working note, not a project document.
+docs/MULTILINGUAL_VISION_REPORT.md

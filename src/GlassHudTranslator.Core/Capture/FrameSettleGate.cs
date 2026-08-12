@@ -90,6 +90,42 @@ public sealed record SettleOptions
     /// </para>
     /// </summary>
     public int ReadsBeforeGivingUp { get; init; } = 4;
+
+    /// <summary>
+    /// How often the gate is being offered frames. Not used to pace anything — the loop owns that —
+    /// but the scene-motion measurement is a window over TIME, and a queue of samples can only work
+    /// out how much time it holds if it knows how far apart they are.
+    ///
+    /// <para>
+    /// Defaults to the rate every mode now runs at. Two is the historic value and is what the unit
+    /// tests that advance a fake clock by 500 ms are describing, so both are meaningful.
+    /// </para>
+    /// </summary>
+    public double PollsPerSecond { get; init; } = 4;
+
+    /// <summary>
+    /// After this long of the pixels insisting nothing has changed, read the words anyway and check.
+    ///
+    /// <para>
+    /// <b>A watchdog on the one decision that can silently swallow every remaining line.</b>
+    /// <see cref="FrameVerdict.Unchanged"/> is an optimisation — it says "this is the frame already
+    /// on the overlay" and skips everything, including the reading that would have caught it being
+    /// wrong. Every other mistake this gate can make is self-correcting within a few seconds;
+    /// this one is not. If the comparison is ever wrong in that direction, for any reason — a
+    /// tolerance widened by a busy scene, a new line that happens to lay out like the old one, a
+    /// frame committed that was never really shown — the app translates once and then reports
+    /// nothing changed for as long as it is left running, which is precisely what "it stops
+    /// translating after one line" looks like from the chair.
+    /// </para>
+    ///
+    /// <para>
+    /// The check costs one local reading and no tokens: if the words really are the same, the
+    /// pipeline's repeat guard drops them before the cache is even consulted. So the worst this can
+    /// be wrong by is bounded at fifteen seconds instead of forever, for a couple of Tesseract
+    /// passes a minute while somebody is sitting still reading a line.
+    /// </para>
+    /// </summary>
+    public TimeSpan VerifyUnchangedAfter { get; init; } = TimeSpan.FromSeconds(15);
 }
 
 /// <summary>What auto-watch should do with the frame it just captured.</summary>
@@ -204,6 +240,9 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
     /// <summary>Readings taken in this stretch. Bounds it, so a never-agreeing screen still ends.</summary>
     private int _reads;
 
+    /// <summary>When the pixels first started insisting nothing had changed. Null while something is.</summary>
+    private DateTimeOffset? _unchangedSince;
+
     /// <summary>
     /// What a reading with words on it but none of them legible is called, so that "illegible
     /// twice running" can agree with itself the way a sentence does.
@@ -221,11 +260,39 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
     /// <summary>How much consecutive polls have differed recently. The scene's own restlessness.</summary>
     private readonly Queue<int> _movement = new();
 
-    /// <summary>Samples the noise floor is taken over. Eight seconds at the dialogue rate.</summary>
-    private const int MovementWindow = 16;
+    /// <summary>
+    /// How long a stretch of screen the noise floor is measured over, and how much of it must be
+    /// seen before the measurement is believed at all.
+    ///
+    /// <para>
+    /// <b>In SECONDS, and the two constants these replaced were in polls.</b> They were 16 and 8,
+    /// which was eight seconds and four while the poll rate was two a second. Raising the dialogue
+    /// rate to 4 fps to cut the delay halved both of them without anybody opening this file, and
+    /// that is not a harmless loss of precision — the floor is a MINIMUM, so a shorter window has
+    /// fewer chances to contain a still moment and the measured floor comes out systematically
+    /// HIGHER. A high floor widens the stillness tolerance, and the stillness tolerance also widens
+    /// the "is this the line already on screen" test. Wide enough, and a genuinely new line reads as
+    /// the old one: the app translates once and then reports nothing changed for as long as it is
+    /// left running.
+    /// </para>
+    ///
+    /// <para>
+    /// It is the third time this exact defect has been found in this codebase and the second time in
+    /// one commit — <see cref="ContentRhythm.Window"/> was fixed in the same change and these were
+    /// missed. <b>A quantity counted in polls is a quantity that silently changes meaning whenever
+    /// the poll rate does.</b> Anything measuring the world belongs in units of the world.
+    /// </para>
+    /// </summary>
+    private static readonly TimeSpan SceneMemory = TimeSpan.FromSeconds(8);
 
-    /// <summary>Samples before the measurement is believed. Four seconds at the dialogue rate.</summary>
-    private const int MinimumSamples = 8;
+    private static readonly TimeSpan SceneWarmUp = TimeSpan.FromSeconds(4);
+
+    private int MovementWindow => SamplesIn(SceneMemory);
+
+    private int MinimumSamples => SamplesIn(SceneWarmUp);
+
+    private int SamplesIn(TimeSpan span) =>
+        Math.Max(2, (int)Math.Round(span.TotalSeconds * _options.PollsPerSecond));
 
     /// <summary>How many polls the current change has been settling for. Diagnostics only.</summary>
     public int StillTicks => _stillTicks;
@@ -351,8 +418,26 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
         {
             _pending = null;
             _stillTicks = 0;
+
+            var settledAt = _clock.GetUtcNow();
+            _unchangedSince ??= settledAt;
+
+            // The watchdog. Long enough on one answer and the answer gets checked against the words
+            // rather than believed indefinitely - see SettleOptions.VerifyUnchangedAfter for why
+            // this one decision is worth a periodic reading and none of the others are.
+            if (settledAt - _unchangedSince >= _options.VerifyUnchangedAfter)
+            {
+                _unchangedSince = settledAt;
+                _reading = signature;
+                _lastRead = null;
+                _reads = 0;
+                return FrameVerdict.Read;
+            }
+
             return FrameVerdict.Unchanged;
         }
+
+        _unchangedSince = null;
 
         var now = _clock.GetUtcNow();
 
@@ -591,6 +676,7 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
         _reading = null;
         _lastRead = null;
         _reads = 0;
+        _unchangedSince = null;
 
         // The movement samples are kept deliberately. They describe the SCENE, which has not
         // changed just because auto-watch was toggled - and throwing them away would put the gate

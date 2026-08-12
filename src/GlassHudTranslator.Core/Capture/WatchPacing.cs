@@ -421,6 +421,11 @@ public sealed class WatchSession(WatchPacing pacing, TimeProvider? clock = null)
             RequiredStillTicks = Pacing.RequiredStillTicks,
             Cap = cap,
             ReadsBeforeGivingUp = Pacing.ReadsBeforeGivingUp,
+
+            // So the gate can turn its sample queue back into an amount of time. Everything it
+            // measures about the scene is a window over seconds, and a queue of polls only knows
+            // how many seconds it holds if it is told how far apart they are.
+            PollsPerSecond = Pacing.PollsPerSecond,
         };
     }
 

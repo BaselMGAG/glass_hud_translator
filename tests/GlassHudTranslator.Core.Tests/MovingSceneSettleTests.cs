@@ -28,6 +28,15 @@ public class MovingSceneSettleTests
     private const int W = 800, H = 300;
 
     /// <summary>
+    /// Every test in here advances the clock by 500 ms per poll, so it is describing two polls a
+    /// second and the gate has to be told that. The scene-motion window is an amount of TIME now,
+    /// and a queue of samples can only work out how much time it holds from how far apart they are —
+    /// which is the whole point, and would be untested if these silently used the product's rate
+    /// while ticking at half of it.
+    /// </summary>
+    private static readonly SettleOptions TwoPolls = new() { PollsPerSecond = 2 };
+
+    /// <summary>
     /// A dialogue box over a scene, with <paramref name="patches"/> of foliage drifting per tick.
     /// The box covers the middle band only — a hand-drawn capture region always catches some scene,
     /// which is exactly what the user's own OCR showed when it read junk beside the dialogue.
@@ -83,7 +92,7 @@ public class MovingSceneSettleTests
         // few more moving leaves cost the same handful of cells. It is asked to stop guessing and
         // read, and to release when the words agree with themselves.
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
-        var gate = new FrameSettleGate(clock: clock);
+        var gate = new FrameSettleGate(TwoPolls, clock);
 
         // A line already on screen, sitting there while the player reads it. This is what the real
         // trace showed, and it is how the gate gets to measure the scene at all.
@@ -120,6 +129,100 @@ public class MovingSceneSettleTests
             "the gate never measured the scene, so nothing here proves it adapted to one");
     }
 
+    [Theory]
+    [InlineData(2)]
+    [InlineData(4)]
+    public void TheSceneIsMeasuredOverTheSameAmOUNTOfTimeAtAnyPollRate(double pollsPerSecond)
+    {
+        // <b>The defect this pins has now been found three times, twice in one commit.</b> The
+        // scene-motion window was counted in POLLS, so raising the dialogue rate from two a second
+        // to four silently halved it - and that is not a harmless loss of precision, because the
+        // floor is a MINIMUM. A shorter window has fewer chances to contain a still moment, so the
+        // measured floor comes out HIGHER, the stillness tolerance widens, and the "is this the line
+        // already on screen" test widens with it. Wide enough and a genuinely new line reads as the
+        // old one: translate once, then report nothing changed for as long as it is left running.
+        //
+        // Asserted as an equivalence between two rates rather than against a number, because a
+        // number is the thing that went stale.
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        // A cap long enough that the gate never reaches for the reading path, because movement is
+        // deliberately not sampled during a reading stretch - the pixels have already been asked
+        // and are not being consulted again. That is correct and it is not what is under test here.
+        var gate = new FrameSettleGate(
+            new SettleOptions { PollsPerSecond = pollsPerSecond, Cap = TimeSpan.FromMinutes(1) },
+            clock);
+
+        var step = TimeSpan.FromSeconds(1 / pollsPerSecond);
+
+        // Six seconds of a still line over moving scenery, whatever the rate.
+        var tick = 0;
+        for (var elapsed = TimeSpan.Zero; elapsed < TimeSpan.FromSeconds(6); elapsed += step)
+        {
+            gate.Offer(Scene(8, ++tick, patches: 12));
+            clock.Advance(step);
+        }
+
+        // Six seconds is past the warm-up at either rate, so the scene has been measured...
+        Assert.True(gate.SceneMovement > 0,
+            $"at {pollsPerSecond} polls a second the gate had still not measured the scene after "
+            + "six seconds of watching it");
+
+        // ...and it measured the SAME scene, so it must have arrived at a comparable answer. A
+        // window that shortens with the poll rate fails this by reading high.
+        Assert.InRange(gate.SceneMovement, 8, 22);
+    }
+
+    [Fact]
+    public void ALineTheGateWronglyThinksIsUnchangedIsCaughtWithinFifteenSeconds()
+    {
+        // <b>The watchdog, and the failure it exists for is the only one this gate cannot recover
+        // from on its own.</b> Every other mistake here self-corrects within a few seconds because
+        // the next frame gets another opinion. Unchanged does not: it is the verdict that skips the
+        // reading, so if it is ever wrong in that direction the app translates one line and then
+        // reports nothing changed for as long as it is left running. Reported exactly that way.
+        //
+        // Modelled by handing the gate the SAME frame forever after it has committed one - which is
+        // what a wrongly-wide comparison looks like from inside - and requiring that it stops
+        // believing itself and goes to the words.
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var gate = new FrameSettleGate(TwoPolls, clock);
+
+        var frame = Scene(8, 1, patches: 0);
+        gate.Offer(frame);
+        clock.Advance(TimeSpan.FromMilliseconds(500));
+        Assert.Equal(FrameVerdict.Ready, gate.Offer(frame));
+
+        // The poll loop, faithfully: a Read is always answered with what the frame said. Leaving
+        // that out is what a first version of this test did, and it stuck the gate in a reading
+        // stretch and then blamed the watchdog for the readings.
+        var reads = 0;
+        var verdicts = new List<FrameVerdict>();
+
+        for (var i = 0; i < 40; i++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+
+            var verdict = gate.Offer(frame);
+            verdicts.Add(verdict);
+
+            if (verdict != FrameVerdict.Read) continue;
+
+            reads++;
+            gate.Confirm("The line that has been on screen this whole time", wordsSeenButIllegible: false);
+        }
+
+        Assert.Contains(FrameVerdict.Read, verdicts);
+
+        // Within fifteen seconds, which is thirty polls at this rate.
+        Assert.Contains(FrameVerdict.Read, verdicts.Take(31));
+
+        // And it is a check rather than a new habit. Twenty seconds is one window and a bit, and a
+        // window costs the two readings it takes for the words to agree with themselves - so four
+        // is the ceiling, not one per poll. A player sitting still reading a long line must not be
+        // paying Tesseract twice a second.
+        Assert.InRange(reads, 1, 4);
+    }
+
     [Fact]
     public void BeforeTheSceneHasBeenMeasuredTheGateStaysStrict()
     {
@@ -129,7 +232,7 @@ public class MovingSceneSettleTests
         // costs at most the first line of a session, and the alternative is worse: trusting one or
         // two samples means trusting a number that may BE the change, which opens the tolerance
         // wide enough to swallow a whole word.
-        var gate = new FrameSettleGate();
+        var gate = new FrameSettleGate(TwoPolls);
 
         gate.Offer(Scene(8, 1, patches: 12));
         gate.Offer(Scene(8, 2, patches: 12));
@@ -152,7 +255,7 @@ public class MovingSceneSettleTests
         // is a GROWING PREFIX, so no two consecutive readings of one are ever the same string,
         // however still or restless the leaves behind it are.
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
-        var gate = new FrameSettleGate(clock: clock);
+        var gate = new FrameSettleGate(TwoPolls, clock);
 
         var translations = 0;
         var translatedAt = 0;
@@ -194,7 +297,7 @@ public class MovingSceneSettleTests
         // a request spent, a cache row written that can never be hit, and a confident Arabic
         // sentence about pixels that were never a sentence.
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
-        var gate = new FrameSettleGate(clock: clock);
+        var gate = new FrameSettleGate(TwoPolls, clock);
 
         var garbles = new[]
         {
@@ -232,7 +335,7 @@ public class MovingSceneSettleTests
         // it is also what a frame captured mid-fade looks like for a moment, and only one of those
         // is worth paying a multimodal request for. Stably illegible is the difference.
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
-        var gate = new FrameSettleGate(clock: clock);
+        var gate = new FrameSettleGate(TwoPolls, clock);
 
         var answers = new List<ReadVerdict>();
         var tick = 0;
@@ -258,7 +361,7 @@ public class MovingSceneSettleTests
         // countdown to translating nothing. Free to establish, and it restarts the deadline rather
         // than retrying immediately, so a blank screen does not OCR itself twice a second forever.
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
-        var gate = new FrameSettleGate(clock: clock);
+        var gate = new FrameSettleGate(TwoPolls, clock);
 
         var tick = 0;
         var reads = 0;
