@@ -139,6 +139,10 @@ public partial class App : Application
         var settingsWindow = new SettingsWindow(_services, overlay, settings, _session);
         _session.Status += message => Dispatcher.UIThread.Post(() => settingsWindow.ReportStatus(message));
 
+        // Auto changing its mind is a state change the toolbar has to show, and it happens on the
+        // poll thread, so it hops like everything else that arrives from there.
+        _session.ContentModeResolved += _ => Dispatcher.UIThread.Post(() => RefreshToolbar(settings));
+
         BindHotkeys(settings, settingsWindow);
         BuildFloatingWindows(settings, settingsWindow);
         BuildTray(settings, settingsWindow);
@@ -559,7 +563,11 @@ public partial class App : Application
             moveMode: _moveMode,
             egyptian: settings.Register == Core.Translation.ArabicRegister.Egyptian,
             recordable: !settings.HideOverlayFromCapture,
-            readAgain: settings.ReadUnreadableLinesAgain);
+            readAgain: settings.ReadUnreadableLinesAgain,
+
+            // What Auto has settled on, so the button answers the question instead of only saying
+            // that a question is being asked on the user's behalf.
+            running: _session.ContentVerdict?.Running);
     }
 
     private static CaptureRegion WholeScreenFallback(Avalonia.Controls.Window window) =>

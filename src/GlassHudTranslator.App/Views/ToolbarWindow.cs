@@ -261,9 +261,13 @@ public sealed class ToolbarWindow : FloatingWindow
     /// Repaints the toggles so the strip reflects what is actually on. A toolbar whose auto-watch
     /// button looks the same whether auto-watch is running is a row of shapes rather than a status.
     /// </summary>
+    /// <param name="running">
+    /// Which fixed mode <see cref="WatchMode.Auto"/> has settled on, when it has and when it is
+    /// running at all. Null in the two fixed modes, where the question does not arise.
+    /// </param>
     public void ShowState(bool autoWatch, bool overlayHidden, bool captureFrame, bool diacritics,
         WatchMode mode, bool moveMode = false, bool egyptian = false, bool recordable = false,
-        bool readAgain = false)
+        bool readAgain = false, WatchMode? running = null)
     {
         Highlight("watch", autoWatch);
         Highlight("hide", overlayHidden);
@@ -276,10 +280,20 @@ public sealed class ToolbarWindow : FloatingWindow
 
         // Three states on one button, so the ICON has to carry which one - a lit/unlit pair cannot
         // express three. Dialogue box, film strip, gauge; lit whenever it is not the default.
-        _modeIcon = mode switch
+        //
+        // <b>Except in Auto, where the useful fact is which of the two it has DECIDED on.</b> The
+        // gauge says the app is choosing for you and then never says what it chose - reported as
+        // "the auto mode does not tell you which mode is on", and true: the announcement on the
+        // overlay is one line at the instant of the switch, and thirty seconds later there was
+        // nothing on screen that answered the question. So a running Auto shows the mode it is
+        // actually running, and stays lit, which is what separates it from having picked that mode
+        // by hand. Undecided Auto keeps the gauge.
+        _modeIcon = (mode, running) switch
         {
-            WatchMode.Video => Icons.WatchMode,
-            WatchMode.Auto => Icons.WatchAuto,
+            (WatchMode.Auto, WatchMode.Video) => Icons.WatchMode,
+            (WatchMode.Auto, WatchMode.Dialogue) => Icons.WatchDialogue,
+            (WatchMode.Auto, _) => Icons.WatchAuto,
+            (WatchMode.Video, _) => Icons.WatchMode,
             _ => Icons.WatchDialogue,
         };
 

@@ -396,7 +396,7 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
 
         // Nothing on screen. The commonest frame there is, free to establish, and it must not start
         // a countdown to translating nothing.
-        if (reading.Length == 0) return Discard();
+        if (reading.Length == 0) return Discard(theRegionIsEmpty: true);
 
         if (_lastRead is null)
         {
@@ -414,34 +414,79 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
         // translate the thing it could not read twice: that is the frame the old cap released, and
         // a confident Arabic sentence about pixels that were never a sentence is the single worst
         // answer this app can give the person it is built for.
-        return _reads >= _options.ReadsBeforeGivingUp ? Discard() : ReadVerdict.KeepReading;
+        return _reads >= _options.ReadsBeforeGivingUp
+            ? Discard(theRegionIsEmpty: false)
+            : ReadVerdict.KeepReading;
     }
 
     /// <summary>
-    /// Whether two readings are the same words. Two tests, because one budget cannot serve both
-    /// ends of the length range.
+    /// How alike two readings of one screen must be before they count as the same words.
     ///
     /// <para>
-    /// <see cref="Text.TextSimilarity.LooksLikeARepeat"/> is an ABSOLUTE budget of three edits,
-    /// which is right for a short line and far too tight for a long one — a sixty-character
-    /// sentence whose OCR wobbles by five characters is plainly the same sentence and fails it. So
-    /// a proportional test sits beside it, at <see cref="Ocr.ReadingJudge.SameThing"/>, which was
-    /// calibrated for this exact question one layer up: how much a second reading has to look like
-    /// the first before it counts as the same thing rather than a different one.
+    /// <b>Measured against real readings off a real screen, not chosen.</b> Three consecutive
+    /// captures of one video caption, from a support trace, scored 0.79 and 0.88 against each other;
+    /// four consecutive garbles off a region with no readable text scored 0.29, 0.35 and 0.34. Those
+    /// are the two populations this has to sit between, and it sits in the middle of the gap rather
+    /// than at the edge of either.
     /// </para>
     ///
     /// <para>
-    /// Both are needed and neither alone suffices. Deliberately NOT
-    /// <see cref="Ocr.ReadingJudge.Unrelated"/>: consecutive garbles off one region share an
-    /// alphabet — the same spaces, the same <c>ee</c>, the same stray punctuation — and measure
-    /// 0.25 to 0.38 against each other, which straddles that floor. A jittery reading of one real
-    /// sentence measures above 0.9. The gap between those two populations is wide, and this sits
-    /// in the middle of it rather than at the edge of the noisier one.
+    /// It was <see cref="Ocr.ReadingJudge.SameThing"/> (0.90), which is the right number for the
+    /// question it was borrowed from — is this vision model's reading the same line the local engine
+    /// saw — and the wrong one here, because that comparison is between two readers looking at the
+    /// same pixels while this one is between two readers looking at the screen a third of a second
+    /// apart, with the picture behind the words moving. At 0.90 no real caption ever agreed with
+    /// itself, so video mode translated nothing at all.
     /// </para>
     /// </summary>
-    private static bool Agrees(string current, string previous) =>
-        Text.TextSimilarity.LooksLikeARepeat(current, previous)
-        || Ocr.ReadingJudge.Agreement(current, previous) >= Ocr.ReadingJudge.SameThing;
+    public const double SameText = 0.65;
+
+    /// <summary>
+    /// How near-exact a prefix has to be before a longer reading counts as the SAME line still
+    /// appearing rather than a second look at a finished one. Near-exact on purpose: this is the
+    /// only thing standing between a typewriter reveal and being translated half-written.
+    /// </summary>
+    private const double PrefixIsExact = 0.95;
+
+    /// <summary>Characters of growth below which two readings are just two readings.</summary>
+    private const int MeaningfulGrowth = 4;
+
+    /// <summary>
+    /// Whether two readings are the same words.
+    ///
+    /// <para>
+    /// <b>The reveal is separated by SHAPE, not by degree, and that is the whole of this method.</b>
+    /// Measured on the same data: a typewriter reveal scores 0.71 and 0.87 between consecutive
+    /// readings and a jittering caption scores 0.79 and 0.88 — the two OVERLAP, so no similarity
+    /// threshold can tell them apart and the previous version's attempt to do it with one number was
+    /// always going to fail one of them. What separates them completely is that a reveal is a
+    /// GROWING PREFIX: the shorter reading scores 1.00 against the longer one's opening, where the
+    /// jittering caption scores 0.88 because its noise is scattered through the middle.
+    /// </para>
+    /// </summary>
+    private static bool Agrees(string current, string previous)
+    {
+        // Cheapest first, and it is exact-ish by design - the common case is a line that has simply
+        // stopped changing.
+        if (Text.TextSimilarity.LooksLikeARepeat(current, previous)) return true;
+
+        if (StillAppearing(current, previous)) return false;
+
+        return Ocr.ReadingJudge.Agreement(current, previous) >= SameText;
+    }
+
+    /// <summary>One reading is the other with more on the end: the line is still arriving.</summary>
+    private static bool StillAppearing(string current, string previous)
+    {
+        var (shorter, longer) = current.Length <= previous.Length
+            ? (current, previous)
+            : (previous, current);
+
+        if (shorter.Length == 0) return false;
+        if (longer.Length - shorter.Length < MeaningfulGrowth) return false;
+
+        return Ocr.ReadingJudge.Agreement(shorter, longer[..shorter.Length]) >= PrefixIsExact;
+    }
 
     private ReadVerdict Release()
     {
@@ -454,8 +499,35 @@ public sealed class FrameSettleGate(SettleOptions? options = null, TimeProvider?
         return ReadVerdict.Translate;
     }
 
-    private ReadVerdict Discard()
+    /// <summary>
+    /// Nothing worth translating in this stretch, so forget it — including what was on the overlay.
+    ///
+    /// <para>
+    /// <b>Clearing <c>_translated</c> is what fixes "it does not come back".</b> A dialogue box that
+    /// closes and reopens on the same line, and a caption that repeats after a gap, both used to be
+    /// invisible: the region went empty, the overlay was cleared, and when the words returned they
+    /// were within a few cells of the frame still recorded as displayed — so the gate answered
+    /// <see cref="FrameVerdict.Unchanged"/> and the player sat looking at nothing while the text was
+    /// plainly on screen. An empty region is proof that whatever was there has gone, which makes
+    /// the next thing to appear new whatever it says.
+    /// </para>
+    ///
+    /// <para>
+    /// It costs at most one cache hit, because a line translated once this session is already
+    /// stored — the same trade the snip rules make, for the same reason.
+    /// </para>
+    ///
+    /// <para>
+    /// Only on an EMPTY region, and the distinction is the point: running out of readings on text
+    /// that never agreed with itself proves nothing about what is on the overlay, so forgetting
+    /// there would re-translate a perfectly good line every time a burst of unreadable frames went
+    /// past behind it.
+    /// </para>
+    /// </summary>
+    private ReadVerdict Discard(bool theRegionIsEmpty)
     {
+        if (theRegionIsEmpty) _translated = null;
+
         _reading = null;
         _lastRead = null;
         _reads = 0;

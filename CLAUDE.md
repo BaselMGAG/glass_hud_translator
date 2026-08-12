@@ -226,14 +226,41 @@ foliage is doing, and reuses instruments that were already here and already cali
 asymmetry moves up one notch and still holds: **polls to avoid readings, readings to avoid
 requests, never the reverse.**
 
-**Agreement is two tests because one budget cannot serve both ends of the length range.**
-`TextSimilarity.LooksLikeARepeat` is an *absolute* three edits, right for a short line and far too
-tight for a sixty-character sentence whose OCR wobbles by five. `ReadingJudge.Agreement >= SameThing`
-(0.90) sits beside it. Deliberately **not** `Unrelated` (0.35): consecutive garbles off one region
-share an alphabet — the same spaces, the same `ee`, the same stray punctuation — and measure 0.25 to
-0.38 against each other, straddling that floor, while a jittery reading of one real sentence measures
-above 0.9. The gap between those populations is wide and the threshold belongs in the middle of it,
-not at the edge of the noisier one.
+**The agreement threshold is `FrameSettleGate.SameText` = 0.65, and every digit of it is measured.**
+Off real support traces: three consecutive readings of one video caption scored **0.79 and 0.88**
+against each other; four consecutive garbles off a region with no readable text scored **0.29, 0.35
+and 0.34**. Those are the two populations, the gap is wide, and the threshold sits in the middle of
+it. It was `ReadingJudge.SameThing` (0.90) at first — the correct number for the question it was
+borrowed *from*, where two readers look at the *same pixels*, and the wrong one here, where two
+readings are a third of a second apart with the picture moving behind the words. At 0.90 no real
+caption ever agreed with itself and **video mode translated nothing at all**. Also not `Unrelated`
+(0.35): consecutive garbles share an alphabet — the same spaces, the same `ee`, the same stray
+punctuation — and straddle that floor.
+
+**A reveal is separated from jitter by SHAPE, not by degree, and no threshold can do it.** Measured
+on the same data: a typewriter reveal scores **0.71 and 0.87** between consecutive readings and a
+jittering caption scores **0.79 and 0.88** — the two *overlap*, so any single similarity number gets
+one of them wrong. What separates them completely is that a reveal is a **growing prefix**: the
+shorter reading scores **1.00** against the longer one's opening, where the caption's noise is
+scattered through the middle and scores well under that. `StillAppearing` is that test, and it runs
+before the similarity one.
+
+**An empty region forgets what was on the overlay — both halves.** The gate clears `_translated`
+(`Discard(theRegionIsEmpty: true)`) and the session clears the pipeline's repeat reference. Without
+the pair, a dialogue box that closed and reopened on the *same* sentence came back to a cleared
+overlay and was then dropped as a repeat of itself: words plainly on screen, nothing shown. An empty
+region is proof that whatever was there has gone, which makes the next thing to appear new whatever
+it says — and re-translating a line seen this session costs a cache hit, which is free. Only on an
+*empty* region, never on the give-up bound: running out of readings on text that never agreed proves
+nothing about what is on the overlay.
+
+**A mode chosen mid-run must also forget what is on screen.** `Adapt` alone was necessary and not
+sufficient: new timings only take effect on the next *change*, and the line the player is looking at
+while they reach for the mode button is not a change — the gate still holds it as displayed, answers
+`Unchanged`, and the switch appears to do nothing. Toggling auto-watch off and on was the only way
+to say "look again", which is what "switching still forces me to turn it off and on" was describing.
+So `ModeChanged` resets the gate, the repeat guard and the empty run, and touches **nothing the
+session cap is measured against** — that is the whole reason it is not a stop and a start.
 
 **`ReadsBeforeGivingUp` gives UP, not in — and that is a deliberate retreat from a promise the cap
 used to make.** The cap once translated whatever was on screen when it expired, on the grounds that
@@ -1353,6 +1380,31 @@ was believed, and the root cause had been sitting in a synthetic corpus the whol
   for 4. There has never been a control for it anywhere in the interface, so a stored 2 was never a
   decision, only the old default written back out. **A hidden knob that silently defeats a visible
   feature is the knob's bug, and a default that gets persisted stops being a default.**
+
+**Found by the first session where dialogue worked and everything else could finally be seen:**
+
+- **Video mode translated nothing, and the cause was a number borrowed from the right place for the
+  wrong question.** `ReadingJudge.SameThing` = 0.90 is calibrated for two readers looking at the
+  *same pixels*; the settle gate compares two readings a third of a second apart with moving picture
+  behind the words. Real captions agree with themselves at 0.79–0.88, so nothing ever passed. **A
+  constant is only as portable as the question it was calibrated against**, and reusing one is a
+  claim about the question, not about the code.
+- **The fix could not be a smaller number either.** A reveal (0.71–0.87) and a jittering caption
+  (0.79–0.88) *overlap*, so no threshold separates them. Only the shape does — a reveal is a growing
+  prefix and scores 1.00 against the longer reading's opening. **When two populations overlap on the
+  measure you are using, the answer is a different measure, not a better cut point.** This is the
+  second time in three days the same lesson has arrived: the pixel gate had exactly this shape.
+- **A dialogue box that closed and reopened on the same line showed nothing.** The overlay was
+  cleared, the gate still held that frame as displayed and the pipeline still held the text as the
+  repeat reference, so the returning line was suppressed twice over by two guards that were each
+  individually right.
+- **Auto never said what it had decided.** The switch announcement went to the Settings status line
+  only — the fourth time this project has made that exact mistake, and it is written down twice.
+  Worse, an announcement is a moment and the question is continuous, so the toolbar now shows the
+  mode Auto is *running* rather than a gauge meaning "something is being decided for you".
+- **`ContentRhythm` could not be diagnosed from outside at all.** "Auto does not switch" has four
+  possible causes — too few samples, too few reads, a signal short of threshold, or the dwell — and
+  the trace showed none of them. `Explain()` now prints all four every poll.
 
 **Latent, found by inspection and not yet hit in the wild:** the bundled `NotoSansArabic-Regular.ttf`
 contains **no Latin at all** — not `A`, not `%`, and none of `✓ ✗ ⚠ → · ⏎`. Every Latin word in the

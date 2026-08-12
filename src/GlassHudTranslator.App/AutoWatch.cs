@@ -88,6 +88,12 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
     public (TimeSpan? Cadence, int Requests, TimeSpan Elapsed, bool Outrunning)? Stats =>
         _watch is null ? null : (_watch.Cadence, _watch.Requests, _watch.Elapsed, _watch.OutrunningTheFloor);
 
+    /// <summary>
+    /// Raised on the poll thread when <see cref="WatchMode.Auto"/> settles on one of the two fixed
+    /// modes. The subscriber is responsible for getting itself onto the UI thread.
+    /// </summary>
+    public event Action<WatchMode>? ModeResolved;
+
     /// <summary>What the detector has concluded, and which pacing that resolves to.</summary>
     public (ContentKind Kind, WatchMode Running)? Verdict =>
         _watch is null ? null : (_rhythm.Kind, _settings.WatchMode == WatchMode.Auto ? _running : _settings.WatchMode);
@@ -295,7 +301,8 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
                 var signature = FrameSignature.Compute(frame);
                 var verdict = _settle.Offer(signature);
 
-                PollTrace.Write($"gate       {verdict} scene-moves={_settle.SceneMovement} region={region.Value}");
+                PollTrace.Write($"gate       {verdict} scene-moves={_settle.SceneMovement} "
+                    + $"{_rhythm.Explain()}");
 
                 if (verdict == FrameVerdict.Unchanged)
                 {
@@ -414,6 +421,25 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
         _watch.Adapt(PacingFor(_running));
         _settle.Retune(_watch.Settle());
 
+        // <b>Forget what is on screen, exactly as switching auto-watch off and on again does.</b>
+        //
+        // Adapting the timings was necessary and was not sufficient, and the difference is what the
+        // report "switching still forces me to turn auto translate off and on" was actually about.
+        // The new pacing only takes effect on the next CHANGE, and the line the player is looking at
+        // while they reach for the mode button is not a change: the gate still holds it as the frame
+        // on the overlay, so it answers Unchanged, and the switch appears to do nothing until the
+        // content moves on by itself. Toggling the feature off and on was the only way to say "look
+        // again", which is the workaround being described.
+        //
+        // Everything the session CAP is measured against — elapsed time, request count — is
+        // deliberately untouched. That is the whole reason this is not simply a stop and a start:
+        // restarting resets the clock, so flipping modes would hold the app open past every limit it
+        // has, which is the one thing a cap must not allow.
+        _settle.Reset();
+        _session.ResetRepeatGuard();
+        _session.ResetEmptyRun();
+        _consecutiveEmptyCaptures = 0;
+
         var now = PacingFor(_running);
         PollTrace.Write($"mode       changed to {_settings.WatchMode} mid-run, now running {_running} - "
             + $"poll={_settings.PollIntervalFor(now).TotalMilliseconds:F0}ms "
@@ -437,10 +463,22 @@ internal sealed class AutoWatch(TranslationSession session, AppSettings settings
 
         watch.Adapt(PacingFor(wanted));
 
-        // Said out loud, once per change. An automatic mode that switches silently is one nobody
-        // can trust or debug: the first question when the pacing feels wrong is which of the two
-        // it currently thinks it is in.
-        _session.Report(string.Format(Text.WatchModeDetected, Text.WatchModeName(wanted)));
+        // Said out loud, once per change, and ON THE OVERLAY as well as in Settings.
+        //
+        // It went only to the Settings status line, which is the mistake this project has now made
+        // four separate times and written down twice: anything auto-watch decides on its own has to
+        // reach the screen the player is actually looking at, and somebody inside a fullscreen game
+        // never sees Settings. Reported as "the auto mode does not tell you which mode is on" -
+        // which was exactly true, and an automatic mode nobody can see the state of is one nobody
+        // can trust.
+        var announcement = string.Format(Text.WatchModeDetected, Text.WatchModeName(wanted));
+
+        _session.Report(announcement);
+        _overlay.ShowMessage(announcement);
+
+        // And the toolbar button, so the state is legible after the message has gone rather than
+        // only at the instant it changes.
+        ModeResolved?.Invoke(wanted);
     }
 
     /// <summary>

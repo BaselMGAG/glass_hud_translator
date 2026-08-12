@@ -81,6 +81,16 @@ public sealed class TranslationSession : IDisposable
     public void WatchModeChanged() => _auto.ModeChanged();
 
     /// <summary>
+    /// Auto has settled on one of the two fixed modes. Raised on the poll thread — subscribers hop
+    /// to the UI thread themselves, the same as <see cref="Status"/>.
+    /// </summary>
+    public event Action<WatchMode>? ContentModeResolved
+    {
+        add => _auto.ModeResolved += value;
+        remove => _auto.ModeResolved -= value;
+    }
+
+    /// <summary>
     /// What the current run has measured, for the Diagnostics tab. Null when auto-watch is off.
     ///
     /// <para>
@@ -231,6 +241,31 @@ public sealed class TranslationSession : IDisposable
     internal string? LastCaptureFailure => _frames.LastFailure;
 
     /// <summary>
+    /// The watched rectangle has no text in it at all, so nothing that was on it is on it any more.
+    ///
+    /// <para>
+    /// <b>Both halves of the forgetting, and the second one is the half that was missing.</b>
+    /// Clearing the overlay is obvious — leaving the previous Arabic up captions one line with the
+    /// one before it. But the repeat guard still held that line as the reference, so a dialogue box
+    /// that closed and reopened on the SAME sentence came back to a cleared overlay and was then
+    /// dropped as a repeat of itself: the words plainly on screen, and nothing shown. Reported as
+    /// "small problems when a dialogue disappears and comes back".
+    /// </para>
+    ///
+    /// <para>
+    /// The gate forgets its side for the same reason and in the same breath (see
+    /// <c>FrameSettleGate.Discard</c>). Re-translating a line that has already been seen this
+    /// session costs a cache hit, which is free — and being free is what makes correctness the
+    /// cheaper option here.
+    /// </para>
+    /// </summary>
+    private void TheRegionWentEmpty()
+    {
+        _overlay.Clear();
+        _services.Pipeline.ResetRepeatGuard();
+    }
+
+    /// <summary>
     /// The capture came back with nothing, and this says which nothing.
     ///
     /// <para>
@@ -328,7 +363,7 @@ public sealed class TranslationSession : IDisposable
             //
             // Clearing is the same reasoning one branch down: the region has gone blank, and
             // leaving the previous Arabic up captions one line with the one before it.
-            _overlay.Clear();
+            TheRegionWentEmpty();
             BlameTheRegionIfThisKeepsHappening();
 
             return new Read(HasText: false, TextChanged: null);
@@ -370,7 +405,8 @@ public sealed class TranslationSession : IDisposable
 
             // Clear, do not complain. Silence is the correct answer to a poll that found nothing,
             // and leaving the previous line up would caption one subtitle with the one before it.
-            _overlay.Clear();
+            if (nothingAtAll) TheRegionWentEmpty();
+            else _overlay.Clear();
 
             if (!nothingAtAll)
             {

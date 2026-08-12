@@ -188,6 +188,20 @@ public sealed class ContentRhythm(TimeProvider? clock = null)
     private int Reads => _samples.Count(s => s.HasText is not null);
 
     /// <summary>
+    /// Everything the classifier is currently working from, in one line, for the poll trace.
+    ///
+    /// <para>
+    /// "Auto does not switch" is not a diagnosis, it is a symptom with four possible causes — not
+    /// enough samples yet, not enough READS yet, a signal short of its threshold, or the dwell still
+    /// running — and until this existed there was no way to tell them apart from outside. The
+    /// classifier is the one part of the poll loop whose reasoning was invisible.
+    /// </para>
+    /// </summary>
+    public string Explain() =>
+        $"kind={Kind} samples={_samples.Count}/{Window} reads={Reads}/{MinimumReads} "
+        + $"empty={EmptyFraction:F2} motion={MotionFraction:F2}";
+
+    /// <summary>
     /// How long the line currently on screen has been there unchanged, or zero if the region has
     /// just changed, just emptied, or has never been read. Surfaced because an adaptation nobody
     /// can see is indistinguishable from a bug.
