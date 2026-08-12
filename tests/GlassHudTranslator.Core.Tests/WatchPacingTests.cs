@@ -338,7 +338,69 @@ public class WatchSessionTests
         Assert.Equal(0, session.Requests);
         Assert.Equal(WatchVerdict.Run, session.Check());
     }
+
+    // ── changing mode while a run is in progress ──────────────────────────────────────────────
+
+    [Fact]
+    public void ChangingModeMidRunSwapsTheTimingsImmediately()
+    {
+        // Reported from real use as "changing between game dialogue, video or auto breaks
+        // everything": the pacing is read once when a run starts, so a mode chosen afterwards did
+        // nothing at all until auto-watch was switched off and on - which is indistinguishable,
+        // from the outside, from the switch being broken.
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var session = new WatchSession(WatchPacing.For(WatchMode.Dialogue), clock);
+        session.Start();
+
+        Assert.Equal(WatchPacing.For(WatchMode.Dialogue).SettleCap, session.Pacing.SettleCap);
+
+        session.Adapt(WatchPacing.For(WatchMode.Video));
+
+        Assert.Equal(WatchPacing.For(WatchMode.Video).SettleCap, session.Pacing.SettleCap);
+        Assert.Equal(WatchPacing.For(WatchMode.Video).PollInterval, session.Pacing.PollInterval);
+    }
+
+    [Fact]
+    public void ChangingModeDoesNotHandBackTheSessionCaps()
+    {
+        // THE reason a mode change adapts rather than restarts. The caps are measured from when
+        // the user switched auto-watch on, so resetting them here would make flipping modes a way
+        // to hold the app open past every limit it has - and the cap exists precisely because a
+        // toggle left on is the failure it is guarding against.
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var session = new WatchSession(WatchPacing.For(WatchMode.Dialogue), clock);
+        session.Start();
+
+        for (var i = 0; i < 40; i++) session.Translated();
+        clock.Advance(TimeSpan.FromMinutes(3));
+
+        var spentBefore = session.Requests;
+        var elapsedBefore = session.Elapsed;
+
+        session.Adapt(WatchPacing.For(WatchMode.Video));
+
+        Assert.Equal(spentBefore, session.Requests);
+        Assert.Equal(elapsedBefore, session.Elapsed);
+    }
+
+    [Fact]
+    public void ChangingModeCannotReviveARunThatHasAlreadyHitItsCap()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var session = new WatchSession(WatchPacing.For(WatchMode.Dialogue), clock);
+        session.Start();
+
+        clock.Advance(WatchPacing.For(WatchMode.Dialogue).StopAfter + TimeSpan.FromMinutes(1));
+        Assert.Equal(WatchVerdict.Stop, session.Check());
+
+        // Video's clock cap is far longer than Dialogue's, so switching to it is the obvious way
+        // to try to buy more time. It must not work.
+        session.Adapt(WatchPacing.For(WatchMode.Video));
+
+        Assert.Equal(WatchVerdict.Stop, session.Check());
+    }
 }
+
 
 public class SettleGateRetuneTests
 {

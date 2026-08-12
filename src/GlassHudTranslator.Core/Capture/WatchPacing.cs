@@ -215,6 +215,7 @@ public sealed class WatchSession(WatchPacing pacing, TimeProvider? clock = null)
     private DateTimeOffset _startedAt;
     private DateTimeOffset? _lastTranslation;
     private bool _warned;
+    private bool _stopped;
 
     public WatchPacing Pacing { get; private set; } = pacing;
 
@@ -274,6 +275,7 @@ public sealed class WatchSession(WatchPacing pacing, TimeProvider? clock = null)
         _gaps.Clear();
         Requests = 0;
         _warned = false;
+        _stopped = false;
     }
 
     /// <summary>
@@ -327,10 +329,20 @@ public sealed class WatchSession(WatchPacing pacing, TimeProvider? clock = null)
     /// </summary>
     public WatchVerdict Check()
     {
+        // Stop is TERMINAL. Without this, changing mode after a run has hit its cap revives it,
+        // because the check is against the CURRENT mode's ceiling and video's is ten times
+        // dialogue's - so flipping modes would be a way to run past every limit the app has, which
+        // is precisely what the cap exists to prevent. The clock is not being reset, only the
+        // threshold moved, and that is enough.
+        if (_stopped) return WatchVerdict.Stop;
+
         var elapsed = Elapsed;
 
         if (!Unbounded && (elapsed >= Pacing.StopAfter || Requests >= Pacing.StopAfterRequests))
+        {
+            _stopped = true;
             return WatchVerdict.Stop;
+        }
 
         if (_warned) return WatchVerdict.Run;
         if (elapsed < Pacing.WarnAfter && Requests < Pacing.WarnAfterRequests) return WatchVerdict.Run;

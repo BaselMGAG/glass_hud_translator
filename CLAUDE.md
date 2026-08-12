@@ -475,6 +475,13 @@ line, so the app just goes quiet — which from outside is identical to it decid
 to translate. That is the same failure shape as "nothing opens after Run anyway" and the fix is the
 same: after a run of them, put it on the overlay, where the player is actually looking.
 
+**`WatchVerdict.Stop` is terminal, and a mode change must not undo it.** `Check` compares elapsed
+against the CURRENT mode's ceiling, and video's is ten times dialogue's — so switching mode after a
+run had hit its cap revived it, and flipping modes was a way to run past every limit the app has.
+The clock is not being reset there, only the threshold moved, and that is enough to defeat the
+guard. Found by a test written for the mode-change fix rather than by the fix itself, which is the
+argument for writing the invariant down as well as the behaviour.
+
 **A mode chosen mid-run must ADAPT the session, never restart it.** Restarting resets the clock and
 the request count the session caps are measured against, so flipping modes would hold the app open
 past every limit it has. `WatchSession.Adapt` exists for exactly this and is what `Auto` already
