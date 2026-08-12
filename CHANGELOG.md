@@ -3,11 +3,35 @@
 Notable changes. Started once the app was working end to end, so everything before the first entry
 is "the thing being described in the README".
 
-## Unreleased
+## v0.8.0 — 12 August 2026
 
-Doing something about a bad line, instead of watching it go past.
+Doing something about a bad line instead of watching it go past — and then a week of finding out
+that automatic mode had never really worked, in four different ways, none of which a test on this
+machine could see.
 
 ### Added
+
+- **A second reader, for text the first one cannot make out.** Off by default, and switching it on
+  is a deliberate choice rather than a convenience: it sends a *picture* of part of your screen to a
+  provider, where everything else this app sends is text that was already read on your own machine.
+  When it is on, a frame where words were plainly seen and none of them could be read gets a second
+  opinion from a model that can look at the image. It is asked only when the first reader threw
+  words away — never merely because it was unsure, which sounds like the same thing and is not: an
+  unusual name read *correctly* scores low, and routing exactly those to the reader that is worst at
+  invented vocabulary would be the wrong trade twice over.
+- **The second reading is checked against the first, and dropped if it disagrees too much.** The
+  danger with this kind of reader is specific and worth stating plainly: its mistake is a fluent,
+  well-formed sentence that was never on the screen, where an ordinary misreading is visible
+  nonsense. Fluent wrong Arabic is undetectable to somebody who cannot check it against the English,
+  and it would be saved forever. A genuine correction still looks like the garble it corrects; an
+  invention has no reason to.
+- **The app can now explain itself.** Settings → Diagnostics → *Write a self-test*. It writes a file
+  next to the app saying which windows are open, which one it decided is your game and why, where
+  the capture region landed, what it read there, and one line for every poll of the last two
+  minutes. It exists because the last three rounds of support were diagnosed by guessing, and every
+  question that could not be answered is now a line in it.
+
+### Added — from the "argue with a line" work
 
 - **Translate this line again.** `Ctrl+Shift+G`, the toolbar, or Settings → Translating. Asks for a
   fresh translation of the line on screen, ignoring the saved one — which is the whole point, since
@@ -33,6 +57,65 @@ Doing something about a bad line, instead of watching it go past.
 
 ### Fixed
 
+**Automatic mode, which had four separate faults and looked like one.** Reported as "auto translate
+does not switch to the next sentence", and every step of finding it was a reasonable-looking mistake.
+
+- **It could not tell a finished line from a moving background.** The test for "the text has stopped
+  changing" compared two thumbnails and allowed two cells of 1536 to differ. Measured against a real
+  scene with the sentence completely unchanged: mild foliage moves 3–6 cells, moderate motion 13–18,
+  heavy 46–58 — and one more revealed *word* moves 14–18. So over any game with weather, or an
+  idling character, or a sky, a finished line could never be *declared* finished. It could only run
+  out of time, and the deadline fires mid-animation, so what reached the reader was fragments. Every
+  frame in the project's own test images has a still background and measures exactly zero, which is
+  why every test passed.
+- **The fix could not be a bigger allowance either**, because a revealed word and a moving leaf cost
+  the same handful of cells. The pixels now decide only *when to look*; the words decide what to
+  translate, by being read twice and saying the same thing. That one test throws out a garbled
+  capture (which reads differently every time), throws out a half-typed line (which is a growing
+  prefix), and accepts a finished line whatever is moving behind it.
+- **Video mode then translated nothing at all**, because "the same thing" was set from a
+  measurement taken for a different question. Real subtitles agree with themselves 79–88% of the
+  time, not 90%. Fixed against readings taken off a real screen.
+- **Changing mode needed auto-watch switched off and on again.** New timings only took effect on the
+  next *change*, and the line on screen while you reach for the button is not a change — so the
+  switch appeared to do nothing. It now takes effect at once, without resetting the clock or the
+  request count the session limits are measured against.
+
+**Screen capture stopping for the rest of the session, twice, from the same cause.**
+
+- **Picking a capture region, or translating one thing once, killed capture until the app was
+  restarted.** Both took their own private grab of the screen and let go of it afterwards, which on
+  Windows means letting go of the one the app itself was still using. Nothing failed loudly: capture
+  simply returned nothing from then on, and the app went quiet. The same fault had already been
+  fixed once in the self-test and was written down as a rule; it is now enforced by a test, because
+  a rule in a comment is not a rule.
+- **A capture that fails now says which failure it was.** Three unrelated Windows errors used to
+  arrive as one silent nothing, and the only message the app could produce asked whether the game
+  was in borderless windowed mode — while the diagnostic on the same screen had already confirmed
+  that it was.
+
+**Everything else.**
+
+- **The History tab took the whole app down** the first time it was opened with enough rows to
+  scroll. Long lists recycle their rows, and the recycling handed the template an empty row.
+- **A garbled frame made the app translate the line before it.** Given something unreadable, the
+  model reached for one of the previous lines sitting in the same request as context and returned a
+  fluent, correct-looking Arabic sentence — so every translation on screen was one line behind. That
+  is far worse than showing nothing, because nothing is obviously nothing. The model is now told the
+  previous lines are the past and given a way to say "I cannot read this", and that answer is never
+  shown, never saved and never used as context.
+- **A dialogue box that closed and reopened on the same line showed nothing.** Two guards, each
+  individually right, suppressed it between them.
+- **Flipping between modes could run past every session limit the app has**, because the limit was
+  compared against the new mode's ceiling rather than the elapsed time. Found by a test written for
+  a different fix.
+- **Video mode's poll rate had never once run.** A hidden setting shipped with a value that was
+  written into every settings file the first time it was saved, and it silently overrode the mode.
+- **Automatic mode never said what it had decided.** It announced the switch to a status line inside
+  Settings, which nobody in a fullscreen game can see, and then nothing on screen answered the
+  question afterwards. It announces on the overlay now, and the toolbar button shows the reading —
+  the same dial, needle to the patient end or the fast end, so it stays visibly *automatic* rather
+  than pretending you chose.
 - A test-suite fault, not a user-facing one, but worth recording: safe mode's switch is a global,
   and the tests that read settings could run at the same moment as the test that turns it on — so a
   settings file written by one test came back empty to another. It had been possible since safe mode

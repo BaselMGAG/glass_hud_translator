@@ -410,6 +410,12 @@ Früh, aber es funktioniert.
 | Die schwebende Werkzeugleiste | geschrieben, unter Windows noch nicht gelaufen |
 | Der sichtbare Aufnahmerahmen | geschrieben, unter Windows noch nicht gelaufen |
 | Eine Sache einmal übersetzen | geschrieben, unter Windows noch nicht gelaufen |
+| Eine Zeile neu übersetzen lassen, wenn sie schlecht klingt | **funktioniert** |
+| Korrigieren, was gelesen wurde, und das übersetzen | **funktioniert** |
+| Liste von Zeilen, die nie übersetzt werden | **funktioniert** |
+| Verlauf aller übersetzten Zeilen, durchsuchbar und korrigierbar | **funktioniert** |
+| Zweiter Leser für Text, den der erste nicht entziffert | **funktioniert** — standardmäßig aus, siehe Einstellungen → Anbieter |
+| Selbsttest schreiben, den du verschicken kannst | **funktioniert** |
 | Klicks durch das Overlay hindurch | noch nicht geprüft |
 
 Getestet gegen **Final Fantasy XIV** und mehrere andere Spiele unter Windows über eine lange

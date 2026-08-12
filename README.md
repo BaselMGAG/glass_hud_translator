@@ -268,6 +268,31 @@ than it can be translated, it says so rather than quietly skipping lines.
 it. That correction is pinned and beats the model for that line from then on. For a name that
 appears constantly, add it to your game's `glossary.json` instead.
 
+**Argue with a line instead of watching it go past.** If a translation reads badly, `Ctrl+Shift+G`
+asks again and ignores the saved answer — which is the point, since the saved answer is the one you
+want replaced. If the problem is further back and the app misread the *English*, correct it in
+Settings → **Translating** and translate that instead; pressing the button on an empty box fills it
+with what was actually read, so you fix a word rather than retype a sentence.
+
+**Lines you never want translated.** One per row in Settings → **Translating**. Anything matching is
+skipped before anything is sent, so it costs nothing at all. It is aimed at what saving cannot help
+with: a button prompt or a HUD label drifting into the capture region reads slightly differently
+every time, so every appearance was otherwise a fresh request.
+
+**Everything it has ever translated.** Settings → **History**, newest first, searchable by the
+English, the Arabic or the speaker. Correct the Arabic and save it and that line is fixed everywhere
+it appears from then on — not just in the list. You can also translate it again from here, or add it
+to the never-translate list, which is where that list gets the exact text from.
+
+**A second reader, when the first one cannot make the words out.** Settings → **Providers**, off by
+default. Turning it on is a real choice rather than a convenience: it sends a *picture* of part of
+your screen to a provider, where everything else this app sends is text that was already read on
+your own machine. When it is on, a frame where words were plainly there and none could be read gets
+a second opinion from a model that can look at the image — and that reading is compared against the
+first and thrown away if it disagrees too much. That check is the important half. This kind of
+reader fails by producing a fluent, believable sentence that was never on the screen, and fluent
+wrong Arabic is undetectable to the person this app is built for.
+
 **Nothing happening?** Settings → **Diagnostics** shows the quota used today, the cache hit rate,
 which OCR engine loaded, and a router log naming any provider or model that failed. Settings →
 **Providers** lists the lanes in the order they'll be tried and flags any with no key.
@@ -393,7 +418,8 @@ Early, but working.
 | More than one key per provider | **working** |
 | Diacritics on or off | **working** |
 | A limit on automatic mode | **working** |
-| Video subtitle mode | **working** — about half a second quicker per line since v0.7.0 |
+| Video subtitle mode | **working** — quicker per line since v0.7.0, and it stopped translating
+  nothing at all in v0.8.0 |
 | Recording the overlay | **working** — off by default, see Settings → Overlay |
 | Not paying twice for the same line misread | **working** |
 | The floating toolbar | **working** |
@@ -401,6 +427,12 @@ Early, but working.
 | Translate one thing once | **working** |
 | Moving the outline and panel by hand | **working** |
 | Working out dialogue from video by itself | **working**, not yet measured over a long film |
+| Asking again for a line that reads badly | **working** |
+| Correcting what was read, and re-translating it | **working** |
+| A never-translate list | **working** |
+| History of every line, searchable and correctable | **working** |
+| A second reader for text the first cannot make out | **working** — off by default, see Settings → Providers |
+| Writing a self-test you can send | **working** |
 | Click-through | not yet verified |
 
 Tested against **Final Fantasy XIV** and several other games on Windows across a long session:
