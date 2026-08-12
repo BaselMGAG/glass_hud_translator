@@ -3,9 +3,9 @@
 *Prepared as background material. Everything here is accurate as of 6 August 2026; the "What not
 to claim" section near the end matters as much as the rest.*
 
-**Download:** https://github.com/basel2000de/glass_hud_translator/releases
+**Download:** https://github.com/BaselMGAG/glass_hud_translator/releases
 
-**Repository:** https://github.com/basel2000de/glass_hud_translator
+**Repository:** https://github.com/BaselMGAG/glass_hud_translator
 **Licence:** GNU AGPL 3.0 from v0.6.0 (open source; anything built on it stays open the same way).
 Releases up to v0.5.3 were Apache 2.0 and remain so.
 **Creator:** Basel — Frankfurt, Germany

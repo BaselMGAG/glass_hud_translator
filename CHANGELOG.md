@@ -577,7 +577,7 @@ you your key works before you are in a cutscene finding out that it does not.
 
 ### Changed
 
-- The repository moved to `github.com/basel2000de/glass_hud_translator`.
+- The repository moved to `github.com/BaselMGAG/glass_hud_translator`.
 
 ## v0.2.1 — 6 August 2026
 

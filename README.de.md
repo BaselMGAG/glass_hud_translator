@@ -8,7 +8,7 @@
 
 [English](README.md) · [العربية](README.ar.md) · [مصري](README.masri.md) · [Deutsch](README.de.md)
 
-[![build](https://github.com/basel2000de/glass_hud_translator/actions/workflows/build.yml/badge.svg)](https://github.com/basel2000de/glass_hud_translator/actions/workflows/build.yml)
+[![build](https://github.com/BaselMGAG/glass_hud_translator/actions/workflows/build.yml/badge.svg)](https://github.com/BaselMGAG/glass_hud_translator/actions/workflows/build.yml)
 [![licence](https://img.shields.io/badge/licence-AGPL--3.0-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4.svg)](https://dotnet.microsoft.com/)
 
@@ -67,7 +67,7 @@ ohnehin für [OpenAI](https://platform.openai.com/api-keys) oder
 Schlüssel verwenden.
 
 **1. Herunterladen und entpacken.** Nimm die ZIP-Datei aus den
-[Releases](https://github.com/basel2000de/glass_hud_translator/releases) und entpacke sie an einen
+[Releases](https://github.com/BaselMGAG/glass_hud_translator/releases) und entpacke sie an einen
 unauffälligen Ort wie `C:\glasshud`. Lass den Ordner zusammen — die EXE braucht `tessdata/`,
 `profiles/` und `data/` neben sich.
 
@@ -591,7 +591,7 @@ Minutenkontingents an Tokens für sich reservierte.
 ## Ohne Spiel ausprobieren
 
 ```bash
-git clone https://github.com/basel2000de/glass_hud_translator.git
+git clone https://github.com/BaselMGAG/glass_hud_translator.git
 cd glass_hud_translator
 dotnet run --project tools/Replay -- --no-cache
 ```
@@ -677,7 +677,7 @@ Kontext zwischen den Zeilen, und sie planieren die Stimme eines Spiels zu generi
 
 ## Dank
 
-Gebaut und geleitet von **[Basel](https://github.com/basel2000de)** — Architektur,
+Gebaut und geleitet von **[Basel](https://github.com/BaselMGAG)** — Architektur,
 Designentscheidungen, Anbieter- und Kontingentstrategie, Fehlersuche, und die Entscheidungen darüber,
 was behoben wird und wie.
 

@@ -62,7 +62,7 @@ public sealed record UpdateCheckResult(UpdateOutcome Outcome, AvailableUpdate? U
 /// </summary>
 public static class UpdateCheck
 {
-    public const string Owner = "basel2000de";
+    public const string Owner = "BaselMGAG";
     public const string Repository = "glass_hud_translator";
 
     public static readonly Uri LatestReleaseApi =

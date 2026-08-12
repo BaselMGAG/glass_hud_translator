@@ -74,7 +74,7 @@ public class UpdateCheckTests
     private const string RealisticPayload = """
         {
           "tag_name": "v0.3.0",
-          "html_url": "https://github.com/basel2000de/glass_hud_translator/releases/tag/v0.3.0",
+          "html_url": "https://github.com/BaselMGAG/glass_hud_translator/releases/tag/v0.3.0",
           "draft": false,
           "prerelease": false,
           "assets": [

@@ -8,7 +8,7 @@
 
 [English](README.md) · [العربية](README.ar.md) · [مصري](README.masri.md) · [Deutsch](README.de.md)
 
-[![build](https://github.com/basel2000de/glass_hud_translator/actions/workflows/build.yml/badge.svg)](https://github.com/basel2000de/glass_hud_translator/actions/workflows/build.yml)
+[![build](https://github.com/BaselMGAG/glass_hud_translator/actions/workflows/build.yml/badge.svg)](https://github.com/BaselMGAG/glass_hud_translator/actions/workflows/build.yml)
 [![licence](https://img.shields.io/badge/licence-AGPL--3.0-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4.svg)](https://dotnet.microsoft.com/)
 
@@ -73,7 +73,7 @@
 [Anthropic](https://console.anthropic.com/settings/keys) فيمكنك استخدام مفتاحك عندهما بدل ذلك.
 
 **١. نزّل وفُكّ الضغط.** خذ الملف المضغوط من
-[Releases](https://github.com/basel2000de/glass_hud_translator/releases)
+[Releases](https://github.com/BaselMGAG/glass_hud_translator/releases)
 وفُكّ ضغطه في مجلد عادي مثل `C:\glasshud`. أبقِ المجلد كاملاً كما هو، فالبرنامج يحتاج `tessdata/`
 و `profiles/` و `data/` بجواره.
 
@@ -597,7 +597,7 @@ ocr-corrections.json   الحروف التي يخطئ فيها المحرّك ا
 </div>
 
 ```bash
-git clone https://github.com/basel2000de/glass_hud_translator.git
+git clone https://github.com/BaselMGAG/glass_hud_translator.git
 cd glass_hud_translator
 dotnet run --project tools/Replay -- --no-cache
 ```
@@ -684,7 +684,7 @@ Groq نفسها — كلها بدأت هكذا.
 
 ## شكر وتقدير
 
-بناء وتوجيه **[Basel](https://github.com/basel2000de)** — البنية المعمارية، وقرارات التصميم،
+بناء وتوجيه **[Basel](https://github.com/BaselMGAG)** — البنية المعمارية، وقرارات التصميم،
 واستراتيجية المزوّدين والحصص، وتتبّع الأخطاء، وقرارات ما يُصلَح وكيف.
 
 كُتبت الشيفرة بمساعدة ذكاء اصطناعي برمجي (Claude) وفق ذلك التوجيه.
