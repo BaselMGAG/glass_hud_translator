@@ -3,6 +3,35 @@
 Notable changes. Started once the app was working end to end, so everything before the first entry
 is "the thing being described in the README".
 
+## v0.8.1 — 12 August 2026
+
+Automatic mode, closer to what pressing the key yourself costs.
+
+### Changed
+
+- **Game dialogue is noticed twice as fast.** The app now looks at the screen four times a second
+  instead of twice, so a new line is seen within a quarter of a second rather than half of one. The
+  amount of *stillness* it then requires before translating is unchanged at half a second — that is
+  the margin that stops a line pausing mid-reveal from being translated half-written, which would
+  cost a request to show a fragment and a second request for the same sentence finished. Average
+  time from a line appearing to the Arabic being asked for drops by about a third of a second, and
+  the two confirming readings are now a quarter of a second apart rather than half.
+- Video mode is untouched: same waiting, same floor, same spending.
+
+### Fixed
+
+- **Pressing the translate key while automatic mode was working did nothing at all.** No answer, no
+  message, no change on screen — and it happened at exactly the moment somebody reaches for that key,
+  which is when automatic mode looks like it has missed a line. It now waits for the cycle to finish
+  and then answers, and says so if the wait runs out. A poll can be dropped because another is a
+  quarter of a second away; a key press is a question somebody asked out loud.
+- **A key press now costs nothing extra afterwards.** It put a line on the overlay without telling
+  the part of the app that decides whether the screen has changed — so the next automatic cycle
+  treated that same line as new, read it again, and threw the result away as a repeat. Correct, and
+  entirely wasted, in the one place the delay was already being complained about.
+- **"Did it skip a line?" is now answerable.** The self-test counts lines that were read and then
+  refused, which is the only thing that is genuinely a dropped line rather than a slow one.
+
 ## v0.8.0 — 12 August 2026
 
 Doing something about a bad line instead of watching it go past — and then a week of finding out
