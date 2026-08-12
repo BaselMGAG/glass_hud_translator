@@ -203,6 +203,24 @@ public sealed record ProviderConfig
     [JsonPropertyName("models")] public ModelEntry[] ModelEntries { get; init; } = [];
 
     /// <summary>
+    /// Models on this lane that can read an image, in fallback order. Empty — the default and the
+    /// state of every lane in an existing installation — means the lane cannot be asked to read
+    /// one, and it is skipped in silence.
+    ///
+    /// <para>
+    /// A separate list rather than a flag on <see cref="ModelEntries"/>, because the two orders are
+    /// answering different questions. The text list is ordered by daily allowance, which is the
+    /// quota policy; multimodal models are a different, usually shorter, and differently metered
+    /// set, and the model that leads a lane for text is not necessarily one that accepts an image
+    /// at all.
+    /// </para>
+    /// </summary>
+    [JsonPropertyName("visionModels")] public string[] VisionModels { get; init; } = [];
+
+    /// <summary>Whether this lane can be asked to read an image.</summary>
+    [JsonIgnore] public bool CanSee => VisionModels.Length > 0;
+
+    /// <summary>
     /// The model ids, in order. Computed rather than stored so that every existing reader - the
     /// providers, the settings screen, the router - keeps working unchanged now that an entry may
     /// carry more than a name.

@@ -58,6 +58,12 @@ public sealed class AppServices : IAsyncDisposable
     public IHotkeyService Hotkeys { get; }
     public TranslationPipeline Pipeline { get; }
 
+    /// <summary>
+    /// Whether any lane is both able to read a picture and holds a key. Read per call, so pasting a
+    /// key into Settings brings it to life without a restart — the same promise the text lanes keep.
+    /// </summary>
+    public bool CanReadImages { get; init; }
+
     /// <summary>Router diagnostics, surfaced in Settings - a deleted model must not fail silently.</summary>
     public List<string> RouterLog { get; }
 
@@ -141,8 +147,23 @@ public sealed class AppServices : IAsyncDisposable
         });
         router.ProviderUsed += (name, token) => quota.RecordAsync(name, token);
 
+        // The optional second reader. Built whether or not the user has switched it on, for the
+        // same reason every key slot is built whether or not it holds a key: turning it on in
+        // Settings has to take effect without a restart. Null when no lane in models.json declares
+        // a visionModels list, which is every installation that has not updated that file.
+        var seeing = models.Enabled(includeDevOnly: false).FirstOrDefault(c => c.CanSee);
+        var vision = seeing is null
+            ? null
+            : new VisionOcrReader(seeing, http,
+                () => seeing.Secret is null ? null : secrets.Get(seeing.Secret),
+                message =>
+                {
+                    routerLog.Add($"{DateTimeOffset.Now:HH:mm:ss}  {message}");
+                    if (routerLog.Count > 200) routerLog.RemoveAt(0);
+                });
+
         var pipeline = new TranslationPipeline(ocr, cache, new GlossaryMatcher(glossary), router,
-            corrections, log)
+            corrections, log, vision: vision)
         {
             GameName = profile.DisplayName,
             StyleHint = profile.StyleHint,
@@ -154,6 +175,7 @@ public sealed class AppServices : IAsyncDisposable
             profiles.Discover())
         {
             Profiles = profiles,
+            CanReadImages = vision?.IsConfigured ?? false,
         };
     }
 

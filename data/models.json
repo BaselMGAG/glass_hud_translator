@@ -127,7 +127,15 @@
       "rpm": 14,
       "rpd": 540,
       "maxOutputTokens": 4096,
-      "models": ["gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"]
+      "models": ["gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"],
+
+      // Models on this lane that can be shown a picture, for the "read it again" feature. Only
+      // Gemini has this list, and that is a decision rather than an omission: it is the one free
+      // lane whose vision-capable model is generally available rather than preview-tier, and its
+      // free tier prices image input at zero on the model that already leads the lane. The other
+      // free lane's only vision model is preview-tier with no published image-token formula at
+      // all, which is exactly the unknown that once cost this app an evening.
+      "visionModels": ["gemini-3.1-flash-lite", "gemini-3.5-flash"]
     },
     {
       "name": "groq",

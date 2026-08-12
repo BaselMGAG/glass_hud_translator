@@ -24,6 +24,7 @@ public sealed record ToolbarActions(
     Action ToggleDiacritics,
     Action ToggleDialect,
     Action ToggleRecording,
+    Action ToggleReadAgain,
     Action PinCorrection,
     Action Quit);
 
@@ -162,6 +163,7 @@ public sealed class ToolbarWindow : FloatingWindow
                 // for what belongs here.
                 Make("dialect", Icons.Dialect, t => t.ToolbarDialect, actions.ToggleDialect),
                 Make("recording", Icons.Recording, t => t.ToolbarRecording, actions.ToggleRecording),
+                Make("readagain", Icons.ReadAgain, t => t.ToolbarReadAgain, actions.ToggleReadAgain),
                 Make("pin", Icons.PinCorrection, t => t.ToolbarPinCorrection, actions.PinCorrection,
                     HotkeyAction.FlagTranslation),
                 Make("quit", Icons.Quit, t => t.ToolbarQuit, actions.Quit),
@@ -260,7 +262,8 @@ public sealed class ToolbarWindow : FloatingWindow
     /// button looks the same whether auto-watch is running is a row of shapes rather than a status.
     /// </summary>
     public void ShowState(bool autoWatch, bool overlayHidden, bool captureFrame, bool diacritics,
-        WatchMode mode, bool moveMode = false, bool egyptian = false, bool recordable = false)
+        WatchMode mode, bool moveMode = false, bool egyptian = false, bool recordable = false,
+        bool readAgain = false)
     {
         Highlight("watch", autoWatch);
         Highlight("hide", overlayHidden);
@@ -269,6 +272,7 @@ public sealed class ToolbarWindow : FloatingWindow
         Highlight("move", moveMode);
         Highlight("dialect", egyptian);
         Highlight("recording", recordable);
+        Highlight("readagain", readAgain);
 
         // Three states on one button, so the ICON has to carry which one - a lit/unlit pair cannot
         // express three. Dialogue box, film strip, gauge; lit whenever it is not the default.
@@ -439,6 +443,7 @@ public sealed class ToolbarWindow : FloatingWindow
         "move" => Icons.Move,
         "dialect" => Icons.Dialect,
         "recording" => Icons.Recording,
+        "readagain" => Icons.ReadAgain,
         "mode" => _modeIcon,
         _ => Icons.TranslateNow,
     };

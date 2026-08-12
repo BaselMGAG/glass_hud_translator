@@ -129,6 +129,7 @@ public partial class App : Application
         _services.Pipeline.Diacritics = settings.Diacritics;
         _services.Pipeline.MinimumBodyCharacters = settings.MinimumCharactersToTranslate;
         _services.Pipeline.Ignored = new Core.Text.IgnoreList(settings.IgnoredPhrases);
+        _services.Pipeline.ReadAgainWhenUnreadable = settings.ReadUnreadableLinesAgain;
 
         _session = new TranslationSession(_services, overlay, settings, RepoPaths.TestFrames)
         {
@@ -371,6 +372,13 @@ public partial class App : Application
                     overlay.HideFromCapture = settings.HideOverlayFromCapture;
                     RefreshToolbar(settings);
                 },
+                ToggleReadAgain: () =>
+                {
+                    // Through Settings rather than straight onto the pipeline, so the checkbox and
+                    // the button cannot end up disagreeing about a switch that spends quota.
+                    settingsWindow.ApplyReadAgain(!settings.ReadUnreadableLinesAgain);
+                    RefreshToolbar(settings);
+                },
                 PinCorrection: () => _ = settingsWindow.CorrectCurrentAsync(),
                 Quit: () => settingsWindow.Close()));
 
@@ -539,7 +547,8 @@ public partial class App : Application
             settings.Diacritics, settings.WatchMode,
             moveMode: _moveMode,
             egyptian: settings.Register == Core.Translation.ArabicRegister.Egyptian,
-            recordable: !settings.HideOverlayFromCapture);
+            recordable: !settings.HideOverlayFromCapture,
+            readAgain: settings.ReadUnreadableLinesAgain);
     }
 
     private static CaptureRegion WholeScreenFallback(Avalonia.Controls.Window window) =>
@@ -840,6 +849,7 @@ public partial class App : Application
             PickRegion: nothing, ToggleMoveMode: nothing, ToggleCaptureFrame: nothing,
             ToggleOverlay: nothing, OpenSettings: nothing, ToggleWatchMode: nothing,
             ToggleDiacritics: nothing, ToggleDialect: nothing, ToggleRecording: nothing,
+            ToggleReadAgain: nothing,
             PinCorrection: nothing, Quit: nothing);
 
         var toolbar = new ToolbarWindow(

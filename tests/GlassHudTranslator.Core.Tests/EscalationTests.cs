@@ -280,7 +280,32 @@ public class VisionEscalationPipelineTests
     private static TranslationPipeline Build(
         ScriptedOcr ocr, MemoryCache cache, FakeProvider provider, IVisionReader? vision) =>
         new(ocr, cache, new GlossaryMatcher(GlossaryStore.Empty),
-            new ProviderRouter([(provider, 600)]), vision: vision);
+            new ProviderRouter([(provider, 600)]), vision: vision)
+        {
+            // Switched on explicitly in every test below, because it is switched OFF in the
+            // product: it sends a picture of the screen to a third party, which is a different
+            // thing to agree to than sending text that has already been read locally.
+            ReadAgainWhenUnreadable = true,
+        };
+
+    [Fact]
+    public async Task NothingIsSentUnlessTheUserHasSwitchedItOn()
+    {
+        // The default, and the one behaviour that must not regress. A configured reader is not
+        // consent - the reader is built at startup so the switch can take effect without a
+        // restart, which means "a reader exists" and "the user asked for this" are different
+        // facts and only the second one may spend anything.
+        var ocr = Illegible(new ScriptedOcr());
+        var vision = new StubVisionReader("Something the model invented");
+
+        var pipeline = new TranslationPipeline(ocr, new MemoryCache(),
+            new GlossaryMatcher(GlossaryStore.Empty),
+            new ProviderRouter([(new FakeProvider("f"), 600)]), vision: vision);
+
+        await pipeline.ProcessAsync(AnyFrame);
+
+        Assert.Equal(0, vision.Calls);
+    }
 
     /// <summary>An illegible frame: words were seen, none survived the confidence filter.</summary>
     private static ScriptedOcr Illegible(ScriptedOcr ocr)
@@ -390,7 +415,10 @@ public class VisionEscalationPipelineTests
 
         var vision = new StubVisionReader("Reach me on the linkpearl");
         var pipeline = new TranslationPipeline(ocr, new MemoryCache(), new GlossaryMatcher(store),
-            new ProviderRouter([(new FakeProvider("f").Returns("ترجمة"), 600)]), vision: vision);
+            new ProviderRouter([(new FakeProvider("f").Returns("ترجمة"), 600)]), vision: vision)
+        {
+            ReadAgainWhenUnreadable = true,
+        };
 
         await pipeline.ProcessAsync(AnyFrame);
 

@@ -188,6 +188,13 @@ public sealed class TranslationPipeline(
     public IgnoreList Ignored { get; set; } = IgnoreList.Empty;
 
     /// <summary>
+    /// Whether an unreadable line may be sent as a picture for a second reading. Off by default,
+    /// and separate from whether a reader was CONFIGURED: the reader is built at startup so that
+    /// switching this on takes effect without a restart, exactly as pasting a key does.
+    /// </summary>
+    public bool ReadAgainWhenUnreadable { get; set; }
+
+    /// <summary>
     /// Whether the overlay shows tashkeel. Off by default.
     ///
     /// <para>
@@ -272,7 +279,7 @@ public sealed class TranslationPipeline(
         // refuses that case: nothing rejected means nothing was there, and only a handful of
         // rejected words means somebody wrote a sentence here that could not be read.
         var escalation = EscalationPolicy.Decide(
-            recognised, vision is not null, _memo.Remembers(recognised.RawText));
+            recognised, ReadAgainWhenUnreadable && vision is not null, _memo.Remembers(recognised.RawText));
 
         var reading = escalation.Escalate
             ? await ReadAgainAsync(frame, recognised, ct).ConfigureAwait(false)

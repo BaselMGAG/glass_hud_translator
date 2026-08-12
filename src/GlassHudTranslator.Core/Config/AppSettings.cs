@@ -167,6 +167,23 @@ public sealed record AppSettings
     /// </summary>
     public List<string> IgnoredPhrases { get; set; } = [];
 
+    /// <summary>
+    /// Whether a line the text recognition could not read may be sent, as a picture, to an AI model
+    /// for a second reading.
+    ///
+    /// <para>
+    /// <b>Off, and false is also default(bool), so an existing settings file lands on the right
+    /// answer with no migration.</b> Off is the right default for two independent reasons and either
+    /// would be enough. It sends a picture of part of the screen to a third party, where everything
+    /// else this app sends is text that has already been read locally — a materially different thing
+    /// to agree to, and not one to be opted into on a user's behalf. And it spends the same metered
+    /// allowance the translations come out of, on an installation whose whole quota argument is that
+    /// most lines are free.
+    /// </para>
+    /// </summary>
+    [JsonPropertyName("readUnreadableLinesAgain")]
+    public bool ReadUnreadableLinesAgain { get; set; }
+
     [JsonPropertyName("lastRegionProfile")] public string LastRegionProfile { get; set; } = "dialogue";
 
     [JsonPropertyName("hasCompletedFirstRun")] public bool HasCompletedFirstRun { get; set; }

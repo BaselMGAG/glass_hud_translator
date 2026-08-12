@@ -268,6 +268,32 @@ least states the layout each rule claims to handle. This is the highest-value th
 corpus would fix, and until then treat any threshold in `RegionFinderOptions` as a guess with a
 rationale, not as a measurement.
 
+**The second reader is off by default, and "a lane exists" is not consent.** It sends a *picture of
+part of the screen* to a third party, where everything else this app sends is text already read
+locally — a materially different thing to agree to. `VisionOcrReader` is nevertheless built at
+startup whether or not the switch is on, for the same reason every key slot is: turning it on in
+Settings has to work without a restart. So `ReadAgainWhenUnreadable` (the user's answer) and
+`vision is not null` (a lane being configured) are separate facts and only the first may spend
+anything. There is a test named for it.
+
+**A lane can see because `models.json` says so, not because code says so.** `visionModels` is a
+separate list from `models`, because the two orders answer different questions: the text list is
+ordered by daily allowance, which is the quota policy, while the multimodal set is shorter,
+differently metered, and need not contain the model that leads the lane. Only Gemini declares one
+today, and that is a decision — it is the one free lane whose vision model is generally available
+rather than preview-tier, and its free tier prices image input at zero on the model already leading
+it. The other free lane's only vision model is preview-tier with no published image-token formula at
+all, which is precisely the unknown that once cost this project an evening.
+
+**`VisionOcrReader` speaks the text lanes' wire shape and none of their code.** The OpenAI-compatible
+endpoints take a standard `image_url` content part carrying a base64 data URI, at the base URL
+already in the file. It does NOT widen `ChatMessage.Content` to `object` to get there: that record
+is used to *deserialise* responses as well as send them, where content is always a plain string, so
+making it polymorphic to serve one caller would put a cast in the path of every translation the app
+performs. Separate request records, one test pinning the JSON — because a wrong content shape is a
+400 with no useful message, and it is the one part of this feature that reading the code cannot
+confirm.
+
 **A second reading escalates on REJECTED WORDS, never on confidence — and the difference is the
 whole feature.** `OcrResult.Confidence` is a mean over the words that survived the filter, so a
 frame where nine of ten were thrown away still reports a serene 90: it cannot see the frames worth

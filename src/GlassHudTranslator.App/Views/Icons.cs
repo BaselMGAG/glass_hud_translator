@@ -57,6 +57,15 @@ public static class Icons
         "M 20,12 A 8,8 0 1 1 17.66,6.34",
         "M 21,3 L 21,9 L 15,9 Z");
 
+    /// <summary>
+    /// An eye over a page: something else looks at what could not be read. Deliberately distinct
+    /// from <see cref="HideOverlay"/>'s eye, which is struck through.
+    /// </summary>
+    public static readonly IconGeometry ReadAgain = new(
+        "M 3,6 L 3,19 L 14,19 L 14,6 Z M 6,10 L 11,10 M 6,13 L 11,13 "
+        + "M 13,9 A 5,4 0 0 1 22,9 A 5,4 0 0 1 13,9 Z",
+        "M 17.5,9 m -1.4,0 a 1.4,1.4 0 1 0 2.8,0 a 1.4,1.4 0 1 0 -2.8,0");
+
     /// <summary>A rectangle with grab handles: the region that gets read, every time.</summary>
     public static readonly IconGeometry PickRegion = new(
         "M 4,6 L 20,6 L 20,18 L 4,18 Z",

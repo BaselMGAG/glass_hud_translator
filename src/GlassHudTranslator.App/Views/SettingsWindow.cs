@@ -784,7 +784,39 @@ public sealed class SettingsWindow : Window
         _ignoredPhrases.LostFocus += (_, _) => SaveIgnoredPhrases();
         stack.Children.Add(_ignoredPhrases);
 
+        stack.Children.Add(Section(_text.ReadAgain));
+        stack.Children.Add(Note(_text.ReadAgainNote));
+        _readAgain = new CheckBox
+        {
+            Content = _text.ReadAgain,
+            IsChecked = _settings.ReadUnreadableLinesAgain,
+        };
+        _readAgain.IsCheckedChanged += (_, _) => ApplyReadAgain(_readAgain.IsChecked == true);
+        stack.Children.Add(_readAgain);
+
         return stack;
+    }
+
+    private CheckBox? _readAgain;
+
+    /// <summary>
+    /// Switches the second reader on or off, live. Straight into the running pipeline as well as
+    /// into the file, for the reason every other switch here is: a setting that needs a restart to
+    /// take effect reads as a setting that does not work.
+    /// </summary>
+    public void ApplyReadAgain(bool on)
+    {
+        _settings.ReadUnreadableLinesAgain = on;
+        _settings.Save();
+        _services.Pipeline.ReadAgainWhenUnreadable = on;
+
+        if (_readAgain is { } box && box.IsChecked != on) box.IsChecked = on;
+
+        // Said plainly rather than assumed. The lane only exists if models.json declares one and a
+        // key is present, and a switch that silently does nothing is worse than one that is absent.
+        _status.Text = !on ? _text.ReadAgainOff
+            : _services.CanReadImages ? _text.ReadAgainOn
+            : _text.ReadAgainUnavailable;
     }
 
     private TextBox? _editedSource;

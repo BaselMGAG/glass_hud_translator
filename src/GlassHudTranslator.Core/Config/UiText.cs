@@ -522,6 +522,12 @@ public sealed class UiText
     public required string IgnoredPhrasesSaved { get; init; }
     public required string LineIgnored { get; init; }
     public required string ToolbarRetry { get; init; }
+    public required string ToolbarReadAgain { get; init; }
+    public required string ReadAgain { get; init; }
+    public required string ReadAgainNote { get; init; }
+    public required string ReadAgainOn { get; init; }
+    public required string ReadAgainOff { get; init; }
+    public required string ReadAgainUnavailable { get; init; }
 
     // ── the history tab ──────────────────────────────────────────────────────────────────────
     public required string TabHistory { get; init; }
@@ -1078,6 +1084,16 @@ public sealed class UiText
         IgnoredPhrasesSaved = "Saved. {0} lines will be skipped.",
         LineIgnored = "That line is on your never-translate list.",
         ToolbarRetry = "Translate again",
+        ToolbarReadAgain = "Read hard lines with AI",
+        ReadAgain = "Let AI read lines the text recognition cannot",
+        ReadAgainNote =
+            "Off by default. When the text recognition sees writing it cannot make out, this sends "
+            + "that part of the screen — as a picture — to the AI to be read instead. It is the same "
+            + "free allowance your translations come out of, so it is only used on lines that came "
+            + "back unreadable, and never on an empty screen. Nothing is sent while this is off.",
+        ReadAgainOn = "On. Unreadable lines will be sent as a picture to be read.",
+        ReadAgainOff = "Off. Nothing is sent as a picture.",
+        ReadAgainUnavailable = "No provider set up for this yet — it needs a Gemini key.",
 
         TabHistory = "History",
         HistoryNote =
@@ -1608,6 +1624,16 @@ public sealed class UiText
         IgnoredPhrasesSaved = "حُفظ. سيُتخطّى {0} من السطور.",
         LineIgnored = "هذا السطر في قائمة «لا تترجم» عندك.",
         ToolbarRetry = "ترجم من جديد",
+        ToolbarReadAgain = "اقرأ السطور الصعبة بالذكاء الاصطناعي",
+        ReadAgain = "دع الذكاء الاصطناعي يقرأ ما تعجز عنه القراءة الضوئية",
+        ReadAgainNote =
+            "مُطفأ بشكل افتراضي. حين ترى القراءة الضوئية كتابةً لا تستطيع تمييزها، يُرسَل ذلك الجزء "
+            + "من الشاشة — كصورة — إلى الذكاء الاصطناعي ليقرأه بدلاً منها. وهو يستهلك الحصة المجانية "
+            + "نفسها التي تخرج منها ترجماتك، فلا يُستخدم إلا على السطور التي عادت غير مقروءة، ولا "
+            + "يُستخدم أبداً على شاشة فارغة. ولا يُرسَل شيء ما دام مُطفأً.",
+        ReadAgainOn = "يعمل. ستُرسَل السطور غير المقروءة كصورة لتُقرأ.",
+        ReadAgainOff = "مُطفأ. لا يُرسَل شيء كصورة.",
+        ReadAgainUnavailable = "لا مزوّد مهيّأ لهذا بعد — يحتاج مفتاح Gemini.",
 
         TabHistory = "السجلّ",
         HistoryNote =
