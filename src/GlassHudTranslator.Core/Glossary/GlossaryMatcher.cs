@@ -30,6 +30,28 @@ public sealed class GlossaryMatcher
             .ToArray();
     }
 
+    /// <summary>
+    /// How much of the vocabulary to hand a vision model. Larger than <see cref="DefaultMaxMatches"/>
+    /// because the two are answering different questions: a translation prompt wants the handful of
+    /// terms that appear in THIS line, while a reader that cannot make the line out needs the words
+    /// it might be looking at — which it cannot be matched against, precisely because the reading it
+    /// would be matched on is the garbled one.
+    /// </summary>
+    public const int VocabularyForReading = 60;
+
+    /// <summary>
+    /// The game's proper nouns, longest first, for a reader rather than a translator.
+    ///
+    /// <para>
+    /// Bounded, because a large game's glossary would otherwise be sent as input tokens on every
+    /// escalation. Longest first is the useful order here for the same reason it is in matching:
+    /// the multi-word names are the ones a reader is least likely to guess and most likely to
+    /// mangle into something plausible.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<GlossaryTerm> Vocabulary(int max = VocabularyForReading) =>
+        max <= 0 ? [] : [.. _surfaces.Select(x => x.Term).Distinct().Take(max)];
+
     public IReadOnlyList<GlossaryTerm> Match(string text, int max = DefaultMaxMatches)
     {
         if (string.IsNullOrWhiteSpace(text) || _surfaces.Length == 0 || max <= 0) return [];

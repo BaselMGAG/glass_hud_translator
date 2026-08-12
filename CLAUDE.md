@@ -268,6 +268,58 @@ least states the layout each rule claims to handle. This is the highest-value th
 corpus would fix, and until then treat any threshold in `RegionFinderOptions` as a guess with a
 rationale, not as a measurement.
 
+**A second reading escalates on REJECTED WORDS, never on confidence — and the difference is the
+whole feature.** `OcrResult.Confidence` is a mean over the words that survived the filter, so a
+frame where nine of ten were thrown away still reports a serene 90: it cannot see the frames worth
+escalating. Worse, low confidence is a *proper-noun detector* — this file already records
+"linkpearl" read perfectly at 39.2 — and multimodal models lose roughly 57 accuracy points on text
+that carries no semantics against about 5 for a supervised recogniser, because they read by knowing
+what a word probably is. Escalating on confidence would route precisely the invented vocabulary to
+the reader measurably worst at it. `EscalationPolicy` therefore triggers on
+`RejectedWordCount >= RejectedWordsThatMeanText`, and that constant is the difference between a free
+idle screen and an empty daily quota: one or two rejected fragments is what the EDGE of a capture
+region looks like with nothing on screen — the `|~`-at-confidence-8 case this file already names —
+and paying for those at the dialogue pacing is Gemini's whole free day in under half an hour.
+
+**The escalation decision sits ABOVE the empty-body guard, and only the policy makes that safe.**
+The flagship case — words seen, none legible — produces an *empty* `RawText`, so a decision placed
+after that guard could never see the one frame the feature exists for. Hoisting it above would
+normally be reckless, since an empty region is the commonest frame there is. What reconciles them is
+that "nothing there" and "illegible" are different facts about the same empty string, and
+`RejectedWordCount` is what tells them apart — a distinction `IOcrEngine` already documents.
+
+**A vision reading is believed only in proportion to how much it agrees with the reading it
+replaces.** Every other confidence signal fails on these lanes: logprobs are unavailable on three of
+four providers and are conceptually wrong anyway (a model reading unreadable pixels emits
+high-probability tokens about its own misreading), resampling the same model measures *worse* than
+not doing it, and verbalized confidence calibrates only on frontier models — which a
+free-lane-first router never reaches. Cross-checking against the traditional reading is what the
+measurement literature settles on, and `TextSimilarity` was already here. The danger is specific: a
+vision model's mistake is a **fluent, well-formed sentence that was never on screen**, where a
+Tesseract mistake is visible noise — and fluent wrong Arabic is undetectable to the reader this app
+exists for, and would be cached permanently. A real correction of a garble still shares most of its
+characters with the garble; an invention has no reason to.
+
+**Rejecting a reading must reject its translation with it.** The vision lane may return Arabic
+alongside the English, used only if the text router afterwards fails every lane. `VisionReading`
+drops `Understudy` on a `Rejected` verdict rather than leaving it for a caller to remember, because
+the alternative is the system's single most confident wrong answer displayed as fluent Arabic with
+no English beside it.
+
+**`VisionMemo` exists because neither of the two nets can see this one.** The cache is keyed on the
+CORRECTED text and the repeat guard remembers what was translated, so a re-read of the same
+unreadable line is a fresh garble to both — and a dialogue box over an animated scene never settles,
+so it is re-read every few seconds. Without a memo of its own the feature bills once per *poll*
+rather than once per line, which is the v0.5.2 "paying four times over for one sentence" defect one
+layer up.
+
+**The vision lane never sees `OcrPreprocessor` output.** Restoration cuts a traditional engine's
+error rate by about half and a vision model's by a few percent, and greyscale, auto-invert and the
+contrast stretch throw away colour and anti-aliasing the model uses — in FFXIV the colour is
+load-bearing, since speaker and item names are colour-coded. It gets the raw colour crop, scaled so
+the long edge meets the lane's cap and no further, because past it the provider downscales anyway
+and the extra upload buys nothing.
+
 **Don't raise `MinWordConfidence` back to 40.** At 40 it silently deleted the word "linkpearl",
 which Tesseract had actually read perfectly at confidence 39.2. Tesseract scores unusual proper
 nouns down, and unusual proper nouns are most of what a game glossary contains. A dropped word

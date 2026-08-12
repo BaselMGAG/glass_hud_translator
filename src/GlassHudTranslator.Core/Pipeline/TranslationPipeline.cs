@@ -116,7 +116,14 @@ public sealed class TranslationPipeline(
     ProviderRouter router,
     OcrCorrections? corrections = null,
     TranslationLog? log = null,
-    TimeProvider? clock = null)
+    TimeProvider? clock = null,
+
+    /// <summary>
+    /// The optional second reader. Null is the normal state — the feature is off by default and
+    /// every path through here works without it, which is what makes it safe to be optional rather
+    /// than a mode the whole pipeline has to know about.
+    /// </summary>
+    IVisionReader? vision = null)
 {
     /// <summary>
     /// How many previous lines ride along as context. Three, and the number is a policy rather
@@ -253,6 +260,36 @@ public sealed class TranslationPipeline(
         var styleHint = StyleHint;
 
         var recognised = await ocr.RecognizeAsync(frame, ct).ConfigureAwait(false);
+
+        // A second reading, when the first one is not worth using and the user has paid in.
+        //
+        // Placed HERE, before the guards rather than after them, and that placement is what makes
+        // the whole thing work. The flagship case - words seen, none legible - produces an EMPTY
+        // RawText, so an escalation sitting below the empty-body guard could never see the one
+        // frame the feature exists for. Hoisting it above that guard would ordinarily be reckless,
+        // because an empty region is the commonest frame there is and paying for each one would
+        // empty a day's free tier in half an hour. What makes it safe is that the policy itself
+        // refuses that case: nothing rejected means nothing was there, and only a handful of
+        // rejected words means somebody wrote a sentence here that could not be read.
+        var escalation = EscalationPolicy.Decide(
+            recognised, vision is not null, _memo.Remembers(recognised.RawText));
+
+        var reading = escalation.Escalate
+            ? await ReadAgainAsync(frame, recognised, ct).ConfigureAwait(false)
+            : null;
+
+        if (escalation.Why == EscalationReason.AlreadyAsked
+            && _memo.Recall(recognised.RawText) is { } remembered)
+        {
+            // Bought once, reused for as long as the same unreadable line is on screen.
+            recognised = recognised with { RawText = remembered };
+        }
+        else if (reading is { Verdict: not ReadingVerdict.Rejected, Text.Length: > 0 })
+        {
+            _memo.Remember(recognised.RawText, reading.Text);
+            recognised = recognised with { RawText = reading.Text, Words = [] };
+        }
+
         var normalized = TextNormalizer.Normalize(recognised.RawText, _corrections);
         var (speaker, body) = DialogueParser.Parse(normalized);
 
@@ -417,6 +454,41 @@ public sealed class TranslationPipeline(
         return new PipelineOutcome(body, body, speaker, body, hits, Present(result),
             OcrConfidence: 0, Stopwatch.GetElapsedTime(started), regionKey, source);
     }
+
+    /// <summary>
+    /// Asks the vision lane, and judges what comes back. Never throws: this is an accuracy
+    /// improvement bolted onto a pipeline whose contract is that it always produces something, so
+    /// every failure here degrades to the local reading in silence.
+    /// </summary>
+    private async Task<VisionReading?> ReadAgainAsync(Frame frame, OcrResult local, CancellationToken ct)
+    {
+        if (vision is not { IsConfigured: true }) return null;
+
+        try
+        {
+            var answer = await vision.ReadAsync(
+                new VisionRequest(
+                    VisionImagePrep.Prepare(frame),
+                    local.RawText,
+                    _glossary.Vocabulary(),
+                    GameName),
+                ct).ConfigureAwait(false);
+
+            return ReadingJudge.Judge(local.RawText, answer.Text, answer.Arabic);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Same contract as the router: an optional second opinion must never be the reason a
+            // line fails to appear.
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Which unreadable lines have already been paid for. Cleared with the repeat guard, since both
+    /// are answers about the line currently on screen.
+    /// </summary>
+    private readonly VisionMemo _memo = new();
 
     /// <summary>
     /// Records what was just shown, for the two things that need to remember it - the rolling
