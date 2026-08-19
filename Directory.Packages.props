@@ -12,11 +12,11 @@
       SkiaSharp is pinned to 2.88.9 because that is what Avalonia.Skia 11.3.18 depends on;
       bumping it independently causes a diamond conflict.
     -->
-    <PackageVersion Include="Avalonia" Version="11.3.18" />
-    <PackageVersion Include="Avalonia.Desktop" Version="11.3.18" />
-    <PackageVersion Include="Avalonia.Themes.Fluent" Version="11.3.18" />
-    <PackageVersion Include="Avalonia.Fonts.Inter" Version="11.3.18" />
-    <PackageVersion Include="Avalonia.Diagnostics" Version="11.3.18" />
+    <PackageVersion Include="Avalonia" Version="11.3.20" />
+    <PackageVersion Include="Avalonia.Desktop" Version="11.3.20" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="11.3.20" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="11.3.20" />
+    <PackageVersion Include="Avalonia.Diagnostics" Version="11.3.20" />
   </ItemGroup>
 
   <ItemGroup Label="Graphics">
