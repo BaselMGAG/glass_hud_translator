@@ -32,7 +32,7 @@
       (Microsoft.Extensions.AI.Abstractions) and gives typed exceptions per status code, which map
       onto ProviderFailure far more reliably than sniffing status codes out of raw HTTP.
     -->
-    <PackageVersion Include="Anthropic" Version="12.39.0" />
+    <PackageVersion Include="Anthropic" Version="12.42.1" />
   </ItemGroup>
 
   <ItemGroup Label="Windows">
